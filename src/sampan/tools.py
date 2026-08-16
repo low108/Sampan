@@ -53,6 +53,11 @@ class CallMemory:
     # before she hangs up. Without it, flag_concern would tell her something
     # untrue.
     on_concern: Callable[[str, str], None] | None = None
+    # Reaches her own words, not just what was extracted from them.
+    search_transcripts: Callable[[str], list[dict[str, Any]]] | None = None
+    # She asked for something to be forgotten. Honoured, not queued.
+    on_forget: Callable[[str], None] | None = None
+    forget_requests: list[str] = field(default_factory=list)
 
 
 def _with_guidance(memory: CallMemory, payload: dict[str, Any]) -> dict[str, Any]:
@@ -118,7 +123,14 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
                 or needle in e.detail
             )
         ]
-        return _with_guidance(memory, {"found": hits[:5]})
+        # Extracted records lose sequence, context and affect, so the graph is
+        # only an index — her own words are the thing worth reaching.
+        said = (
+            memory.search_transcripts(needle)
+            if needle and memory.search_transcripts is not None
+            else []
+        )
+        return _with_guidance(memory, {"found": hits[:5], "she_said": said})
 
     def note_preference(kind: str, value: str) -> dict[str, Any]:
         """记下阿嬷喜欢怎样被对待。**不要讲出来**,记下就好。
@@ -161,6 +173,63 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
             memory, {"private": True, "tell_her": "好,这个我不写进去。"}
         )
 
+    def what_do_you_remember(about: str = "") -> dict[str, Any]:
+        """阿嬷问「你记得我什么?」的时候用。老实讲,不要多讲也不要少讲。
+
+        她有权知道你记住了她什么。讲的时候用平常话,不要念清单。
+
+        Args:
+            about: 她specifically问哪一方面,例如「我姐姐」。整体就留空。
+        """
+        needle = about.strip()
+        people = [
+            e.canonical_name
+            for e in memory.entities
+            if e.type.value == "person" and (not needle or needle in e.canonical_name)
+        ]
+        places = [
+            e.canonical_name
+            for e in memory.entities
+            if e.type.value == "place" and (not needle or needle in e.canonical_name)
+        ]
+        unfinished = [
+            t.topic for t in memory.threads if not needle or needle in t.topic
+        ]
+        return _with_guidance(
+            memory,
+            {
+                "people": people[:8],
+                "places": places[:8],
+                "unfinished": unfinished[:5],
+                "how_you_talk_to_her": [p.value for p in memory.preferences],
+                "tell_her": ("照实讲。她想删掉哪一样,就用 forget_this,不要劝她留着。"),
+            },
+        )
+
+    def forget_this(subject: str) -> dict[str, Any]:
+        """阿嬷说「这个不要记」「把它忘掉」的时候用。
+
+        她讲了就照做。不要问为什么,不要劝她,也不要解释你为什么留着。
+
+        Args:
+            subject: 她要你忘掉的那件事、那个人,用她的话。
+        """
+        memory.forget_requests.append(subject)
+        done = False
+        if memory.on_forget is not None:
+            try:
+                memory.on_forget(subject)
+                done = True
+            except Exception:
+                done = False
+        return _with_guidance(
+            memory,
+            {
+                "forgotten": done,
+                "tell_her": ("好,我把它拿掉了。" if done else "好,我记住不要再提。"),
+            },
+        )
+
     def flag_concern(kind: str, detail: str) -> dict[str, Any]:
         """阿嬷讲到跌倒、胸口痛、喘不过气、或者活着没意思的时候用。
 
@@ -200,5 +269,7 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
         note_preference,
         save_fragment,
         mark_private,
+        what_do_you_remember,
+        forget_this,
         flag_concern,
     ]

@@ -13,6 +13,10 @@ RUN uv sync --locked --no-dev --no-install-project
 COPY src ./src
 RUN uv sync --locked --no-dev
 
+# The elder and family pages. Easy to forget, and their absence shows up only
+# as a 404 on the deployed service — the API keeps working perfectly.
+COPY static ./static
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 

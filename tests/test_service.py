@@ -157,3 +157,35 @@ class TestStoreSelection:
         )
 
         assert store.backend == "memory"
+
+
+class TestStaticPages:
+    """The pages 404'd on Cloud Run while every API route kept working, because
+    the path was resolved relative to the installed package and the image never
+    copied them. Both failures are invisible from a local checkout."""
+
+    def test_the_pages_are_found(self) -> None:
+        from sampan.app import find_static_dir
+
+        found = find_static_dir()
+
+        assert found is not None
+        assert (found / "index.html").is_file()
+
+    def test_the_image_copies_them(self) -> None:
+        from pathlib import Path
+
+        dockerfile = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+
+        assert "COPY static" in dockerfile
+
+    def test_every_page_the_pages_reference_exists(self) -> None:
+        """A missing worklet or manifest fails silently in the browser."""
+        from sampan.app import find_static_dir
+
+        static = find_static_dir()
+        assert static is not None
+        for name in ("index.html", "family.html", "worklet.js", "manifest.json"):
+            assert (static / name).is_file(), name

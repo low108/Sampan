@@ -31,6 +31,7 @@ STORIES = "stories"
 CONVERSATIONS = "conversations"
 ASKS = "asks"
 CONCERNS = "concerns"
+FORGOTTEN = "forgotten"
 
 
 class NarratorMemory(BaseModel):
@@ -156,6 +157,64 @@ class Repository:
             raw
             for raw in self._store.list(self._scoped(CONCERNS, narrator_id))
             if not raw.get("seen_by_family")
+        ]
+
+    # --- raw transcripts --------------------------------------------------
+
+    def search_transcripts(
+        self, narrator_id: str, query: str, limit: int = 3
+    ) -> list[dict]:
+        """Search what she actually said, not what was extracted from it.
+
+        Structured records lose sequence, context and affect (Pink et al.,
+        2025). The consensus design is a structured index that points back into
+        raw text, so the agent can reach her own words when the graph has only
+        a summary of them.
+        """
+        needle = query.strip()
+        if not needle:
+            return []
+        hits = []
+        for raw in self._store.list(self._scoped(CONVERSATIONS, narrator_id)):
+            transcript = raw.get("transcript") or ""
+            if needle not in transcript:
+                continue
+            for line in transcript.splitlines():
+                # Only her lines. The agent quoting itself back at her is not
+                # remembering.
+                if line.startswith("K:") and needle in line:
+                    hits.append(
+                        {
+                            "said": line[2:].strip(),
+                            "conversation_id": raw.get("conversation_id", ""),
+                            "when": raw.get("occurred_at", ""),
+                        }
+                    )
+        hits.sort(key=lambda h: h["when"], reverse=True)
+        return hits[:limit]
+
+    # --- forgetting -------------------------------------------------------
+
+    def forget(self, narrator_id: str, subject: str) -> None:
+        """Record that she asked for something to be forgotten.
+
+        A tombstone rather than a delete: the request itself has to survive, or
+        the next extraction pass would happily rebuild what she asked to lose.
+        """
+        key = subject.strip()
+        if not key:
+            return
+        self._store.put(
+            self._scoped(FORGOTTEN, narrator_id),
+            f"forget_{abs(hash(key)) % 10**12}",
+            {"subject": key, "asked_at": datetime.now(UTC).isoformat()},
+        )
+
+    def forgotten(self, narrator_id: str) -> list[str]:
+        return [
+            raw["subject"]
+            for raw in self._store.list(self._scoped(FORGOTTEN, narrator_id))
+            if raw.get("subject")
         ]
 
     # --- family asks ------------------------------------------------------

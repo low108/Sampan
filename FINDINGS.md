@@ -527,3 +527,31 @@ it and the station are one place to her, and only a projection insists otherwise
 
 **Lesson:** zooming does not fix crowding, it relocates it. Cluster, or accept that a map of
 someone's life is mostly a map of one street.
+
+---
+
+## The pages 404'd in production while every API route worked
+
+**2026-08-16, first full deploy.**
+
+The deployed service answered `/health`, `/api/family/…` and `/api/talk/…` correctly and
+returned 404 for `/family.html`, `/manifest.json`, `/icon.svg` and `/worklet.js`. Two
+independent bugs, neither visible from a local checkout:
+
+1. **The Dockerfile never copied `static/`.** It copies `pyproject.toml`, `uv.lock` and `src`,
+   which is everything Python needs and nothing a browser does.
+2. **The static path was resolved relative to `__file__`.** Once `uv sync` installs the
+   project, `sampan` lives under `.venv/lib/python3.12/site-packages/`, so
+   `parents[2] / "static"` points inside the virtualenv. Locally, running from a source
+   checkout, the same expression happened to land on the repo root — it worked by accident.
+
+Both were caught only by curling the deployed URL for pages rather than endpoints. A health
+check would not have found it; neither would any test that imports the app, because the app
+imports fine and simply mounts nothing.
+
+There are now three tests: the static directory resolves, the Dockerfile copies it, and every
+file the pages reference exists — a missing `worklet.js` fails silently in the browser, with
+the microphone button doing nothing and no error anywhere.
+
+**Lesson:** deploy verification has to fetch the things a *user* fetches. An API that answers
+200 tells you the container is alive, not that the product is.

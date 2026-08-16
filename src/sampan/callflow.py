@@ -87,6 +87,14 @@ def prepare_call(
         repository.raise_concern(narrator_id, kind, detail, conversation_id)
 
     memory.on_concern = deliver_concern
+    memory.search_transcripts = lambda query: repository.search_transcripts(
+        narrator_id, query
+    )
+
+    def forget(subject: str) -> None:
+        repository.forget(narrator_id, subject)
+
+    memory.on_forget = forget
 
     plan = build_session_plan(
         threads=stored.threads,

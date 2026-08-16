@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -84,6 +85,27 @@ class SmokeResult(BaseModel):
 
 def get_store() -> DocumentStore:
     return get_document_store()
+
+
+def find_static_dir() -> Path | None:
+    """Locate the web pages, in the image and in a checkout.
+
+    Once installed, `sampan` lives under site-packages, so resolving relative
+    to __file__ walks into the virtualenv rather than the repo. That worked
+    locally by accident and 404'd every page on Cloud Run while the API kept
+    answering perfectly.
+    """
+    candidates = [
+        Path(os.environ["SAMPAN_STATIC_DIR"])
+        if os.environ.get("SAMPAN_STATIC_DIR")
+        else None,
+        Path.cwd() / "static",
+        Path(__file__).resolve().parents[2] / "static",
+    ]
+    for candidate in candidates:
+        if candidate is not None and (candidate / "index.html").is_file():
+            return candidate
+    return None
 
 
 _PLACE_CACHE = "_places"
@@ -451,8 +473,8 @@ def create_app() -> FastAPI:
                     narrator_id=user_id,
                 )
 
-    static_dir = Path(__file__).resolve().parents[2] / "static"
-    if static_dir.is_dir():
+    static_dir = find_static_dir()
+    if static_dir is not None:
         app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 
     return app
