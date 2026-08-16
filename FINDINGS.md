@@ -74,6 +74,46 @@ her own 「坐船来的,槟城上岸」, and 一九六九年咖啡店结业 corr
 way. Anchor such fields to the source text, and say plainly that empty is an acceptable answer
 — otherwise "always filled" is indistinguishable from "always fabricated".
 
+## A persona cannot hold state, and a hardcoded greeting fires forever
+
+**2026-08-16, ticket 12.**
+
+The Companion's base instruction carried its own opening line, guarded in prose:
+
+> 第一次见面这样开场:「阿嬷,我是小船。你儿子伟伦叫我来陪你聊天…」
+> *("On the first meeting, open like this: …")*
+
+On a session-5 call — full memory loaded, the interrupted thread ranked, the family ask
+attributed — the agent opened by **introducing itself from scratch**. The condition read as a
+suggestion because nothing in its context could tell it whether this was the first meeting.
+Everything else about memory was working, and the very first thing she would have heard was
+an agent that had never met her.
+
+Moving the greeting out of the persona and into the rendered session plan fixed it: the plan
+knows `session_count`, so it either supplies the introduction or says *"you have spoken 4
+times, do not introduce yourself."* Session 1 now introduces; session 5 opens 「阿嬷,您好」
+and, one turn later, 「伟伦想知道,阿公有没留下什么东西?」
+
+**Lesson:** a persona is static text and cannot evaluate a condition about state it does not
+have. Any instruction of the form *"if X, say Y"* must be resolved by the code that knows X,
+and only the resolved branch handed to the model.
+
+## Watch your own test prompts before blaming the agent
+
+**2026-08-16, ticket 12.**
+
+Three times in one ticket the agent looked broken and was not:
+
+- Fed 「阿嬷,我是小船。你今天早上吃了没有?」 — *the agent's own line* — as a **user** turn, it
+  replied in the grandmother's voice. Correct: it was answering the person who said that.
+- Fed 「喂?小船啊?」 — literally *"is that Xiao Chuan?"* — it identified itself. Correct.
+- Fed a single 「喂」 and expected the full opener; the plan says read her first two turns
+  before offering anything, so greeting and waiting was the specified behaviour.
+
+Only the first-meeting problem was real. With a conversational agent the prompt is part of
+the test fixture, and a sloppy one produces a convincing false failure — the temptation each
+time was to go and "fix" behaviour that was already right.
+
 ## ADK builds its own genai client from the environment and never sees your config
 
 **2026-08-16, ticket 10.**

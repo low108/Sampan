@@ -210,6 +210,60 @@ def kin_role(surface_form: str) -> str | None:
     return KIN_ROLES.get(normalise(surface_form))
 
 
+class Ask(BaseModel):
+    """A question from a family member, waiting for her next call.
+
+    `from_name` is not optional and is never dropped: she has to hear *who*
+    was thinking about her. That attribution is the emotional payload of the
+    whole product, and the agent takes no credit for it.
+    """
+
+    ask_id: str
+    from_name: str
+    relation: str = Field(default="", description="儿子, 孙女, 女儿…")
+    question: str
+    voice_note_url: str | None = None
+    created_at: str | None = None
+
+
+class CandidateKind(StrEnum):
+    THREAD = "thread"
+    ASK = "ask"
+    DOMAIN = "domain"
+    DATE = "date"
+
+
+class Candidate(BaseModel):
+    """One thing the agent could open with, and why it ranked."""
+
+    kind: CandidateKind
+    label: str
+    say: str = Field(description="How to offer it out loud")
+    score: float
+    reason: str = Field(default="", description="Shown in the demo overlay")
+
+
+class SessionPlan(BaseModel):
+    """What the agent walks into a call intending to do.
+
+    A fallback, never an agenda: the instruction that renders this also tells
+    the agent to abandon it the moment she goes somewhere else.
+    """
+
+    greeting: str
+    # How many calls have already happened. The base instruction carries a
+    # first-meeting introduction, and nothing else tells the agent not to use
+    # it — an agent that reintroduces itself every week has no memory at all,
+    # whatever the rest of the state says.
+    session_count: int = 0
+    ask: Ask | None = None
+    offers: list[Candidate] = Field(default_factory=list)
+    light_offer: Candidate | None = None
+    considered: list[Candidate] = Field(
+        default_factory=list, description="Everything scored, for the overlay"
+    )
+
+
 class PreferenceType(StrEnum):
     """How she likes to be talked to.
 
