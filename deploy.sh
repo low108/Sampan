@@ -7,6 +7,14 @@
 #   --min-instances     0 while building; set to 1 only for recording, then back
 set -euo pipefail
 
+# Local config lives in .env, which is gitignored.
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
 # ^@^ sets @ as the env-var delimiter, so a key containing a comma cannot
 # silently split into a bogus extra variable.
 PROJECT_ID="${GOOGLE_CLOUD_PROJECT:?set GOOGLE_CLOUD_PROJECT}"
