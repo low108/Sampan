@@ -15,9 +15,12 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
+from sampan.anchors import apply_anchors, fold_anchors
 from sampan.config import Settings
 from sampan.entities import Resolution, Tiebreaker, resolve_mentions
 from sampan.models import (
+    Anchor,
+    AnchorCandidate,
     Closure,
     ClosureReason,
     Entity,
@@ -104,6 +107,18 @@ closure —— 这次对话是怎么结束的。**这一项很重要**:
 interrupted 和 fatigue 一定要分清楚。被打断表示她话讲到一半、还想讲;
 累了表示今天到此为止。下次开场要怎么讲,就看这一项。
 
+anchors —— 可以定年份的人生大事。老人家很少讲年份,可是一旦知道
+「结婚 = 1968」,以后她讲「结婚以前」就有时间了。
+- anchor_id 用这些固定的名称:anchor_birth(出生)、anchor_marriage(结婚)、
+  anchor_shop_open(开店)、anchor_shop_close(关店)、anchor_first_child(第一个孩子出世)、
+  anchor_arrival(祖辈南来)、anchor_husband_death(先生过世)、
+  anchor_sister_death(姐姐过世)。没有对应的就不要硬套
+- 只有她讲了明确年份(或算得出来)才列。猜的不要列
+- confidence: 她直接讲年份就高;要推算的就低
+
+story 的 when 栏位:如果她讲的是相对时间(「结婚以前」),
+请填 anchor_ref 指向对应的 anchor_id,年份不知道就留空 —— 我们会自己算。
+
 对话记录:
 ---
 {transcript}
@@ -116,6 +131,7 @@ class ExtractionResponse(BaseModel):
     entity_mentions: list[EntityMention] = []
     threads: list[ThreadUpdate] = []
     closure: Closure = Closure(reason=ClosureReason.UNKNOWN)
+    anchors: list[AnchorCandidate] = []
 
 
 class ConversationOutcome(BaseModel):
@@ -130,6 +146,7 @@ class ConversationOutcome(BaseModel):
     resolutions: list[Resolution] = []
     threads: list[Thread] = []
     closure: Closure = Closure(reason=ClosureReason.UNKNOWN)
+    anchors: list[Anchor] = []
 
     @property
     def pinned(self) -> list[ScoredStory]:
@@ -209,6 +226,7 @@ def ingest_conversation(
     *,
     known_entities: list[Entity] | None = None,
     known_threads: list[Thread] | None = None,
+    known_anchors: list[Anchor] | None = None,
     conversation_id: str = "conv_unknown",
     tiebreaker: Tiebreaker | None = None,
 ) -> ConversationOutcome:
@@ -228,6 +246,12 @@ def ingest_conversation(
         conversation_id=conversation_id,
         tiebreaker=tiebreaker,
     )
+    anchors = fold_anchors(
+        known_anchors or [], extracted.anchors, conversation_id=conversation_id
+    )
+    for candidate in extracted.stories:
+        candidate.when = apply_anchors(candidate.when, anchors)
+
     return ConversationOutcome(
         stories=[assess(c) for c in extracted.stories],
         entities=resolution.entities,
@@ -239,4 +263,5 @@ def ingest_conversation(
             conversation_id=conversation_id,
         ),
         closure=extracted.closure,
+        anchors=anchors,
     )

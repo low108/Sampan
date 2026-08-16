@@ -210,6 +210,33 @@ def kin_role(surface_form: str) -> str | None:
     return KIN_ROLES.get(normalise(surface_form))
 
 
+class AnchorCandidate(BaseModel):
+    """A dateable life event, as reported from one conversation."""
+
+    anchor_id: str = Field(
+        description="Stable slug, e.g. anchor_marriage, anchor_shop_open"
+    )
+    label: str = Field(description="Her event in a few words, e.g. 结婚")
+    year: int
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class Anchor(BaseModel):
+    """An accumulated anchor event.
+
+    Anchors are what make relative time resolvable. She says 结婚以前 far more
+    often than she says a year, and once 结婚 is known to be 1968 every such
+    phrase acquires a range.
+    """
+
+    anchor_id: str
+    label: str
+    year: int
+    confidence: float = Field(ge=0.0, le=1.0)
+    first_seen_in: str | None = None
+    corroborations: int = 1
+
+
 class ThreadStatus(StrEnum):
     OPEN = "open"
     CLOSED = "closed"
