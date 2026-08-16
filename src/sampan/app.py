@@ -14,7 +14,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -23,9 +29,15 @@ from sampan.archivist import GeminiStoryExtractor
 from sampan.auth import require_api_key
 from sampan.callflow import Transcript, finish_call, prepare_call
 from sampan.config import Settings, apply_genai_env, get_settings
+from sampan.corrections import (
+    Correction,
+    apply_correction,
+    duplicate_candidates,
+    needs_confirmation,
+)
 from sampan.family import build_cards, build_map, feed, stats, timeline
 from sampan.live import open_session, pump
-from sampan.models import AffectState
+from sampan.models import AffectState, Ask
 from sampan.places import GeminiPlaceResolver
 from sampan.repository import Repository
 from sampan.store import DocumentStore, get_document_store
@@ -39,6 +51,22 @@ class Health(BaseModel):
     configured: bool
     location: str
     backend: str
+
+
+# A ten-second Opus clip is tens of kilobytes; base64 in Firestore keeps the
+# demo to one storage service. Cloud Storage is the right answer for anything
+# longer, and the cap is here so nobody discovers the 1MB document limit in
+# production.
+MAX_VOICE_NOTE_CHARS = 700_000
+
+
+class AskRequest(BaseModel):
+    from_name: str = Field(min_length=1, max_length=40)
+    relation: str = Field(default="", max_length=20)
+    question: str = Field(min_length=1, max_length=500)
+    voice_note: str | None = Field(
+        default=None, description="base64 data URL of a short recording"
+    )
 
 
 class SmokeRequest(BaseModel):
@@ -198,6 +226,73 @@ def create_app() -> FastAPI:
         else:
             payload["stories"] = [c.model_dump() for c in feed(cards)]
         return payload
+
+    @app.post("/api/family/{narrator_id}/ask", dependencies=[Depends(require_api_key)])
+    def leave_ask(
+        narrator_id: str,
+        body: AskRequest,
+        store: Annotated[DocumentStore, Depends(get_store)],
+    ) -> dict[str, Any]:
+        """Leave a question, and optionally ten seconds of your own voice.
+
+        The voice note is the point. A text question arrives in the agent's
+        voice; a recording arrives in her son's, and that is the difference
+        between being told he was thinking of her and hearing it.
+        """
+        if body.voice_note and len(body.voice_note) > MAX_VOICE_NOTE_CHARS:
+            raise HTTPException(
+                status_code=413,
+                detail="Voice note too long; ten seconds is the intended length.",
+            )
+
+        ask = Ask(
+            ask_id=f"ask_{uuid.uuid4().hex[:10]}",
+            from_name=body.from_name,
+            relation=body.relation,
+            question=body.question,
+            voice_note_url=body.voice_note,
+            created_at=datetime.now(UTC).isoformat(),
+        )
+        Repository(store).queue_ask(narrator_id, ask)
+        return {
+            "ask_id": ask.ask_id,
+            "queued": True,
+            "has_voice": bool(body.voice_note),
+        }
+
+    @app.get(
+        "/api/family/{narrator_id}/corrections",
+        dependencies=[Depends(require_api_key)],
+    )
+    def pending_corrections(
+        narrator_id: str, store: Annotated[DocumentStore, Depends(get_store)]
+    ) -> dict[str, Any]:
+        """Whom the archive is unsure about, for the family to settle."""
+        entities = Repository(store).load_entities(narrator_id)
+        return {
+            "unconfirmed": [
+                e.model_dump(mode="json") for e in needs_confirmation(entities)
+            ],
+            "possible_duplicates": [
+                {"a": a.model_dump(mode="json"), "b": b.model_dump(mode="json")}
+                for a, b in duplicate_candidates(entities)
+            ],
+        }
+
+    @app.post(
+        "/api/family/{narrator_id}/corrections",
+        dependencies=[Depends(require_api_key)],
+    )
+    def correct(
+        narrator_id: str,
+        correction: Correction,
+        store: Annotated[DocumentStore, Depends(get_store)],
+    ) -> dict[str, Any]:
+        """Fix a name, a detail, or a place — or merge two people into one."""
+        result = apply_correction(Repository(store), narrator_id, correction)
+        if not result.applied:
+            raise HTTPException(status_code=400, detail=result.reason)
+        return result.model_dump()
 
     @app.websocket("/ws/talk")
     async def talk(websocket: WebSocket) -> None:

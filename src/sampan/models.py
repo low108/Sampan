@@ -148,6 +148,9 @@ class Entity(BaseModel):
     # correction path is also the feedback-capture path.
     confirmed_by_family: bool = False
     provisional: bool = True
+    # Set when the family merges this into another entity. Kept rather than
+    # deleted so old stories keep resolving and the merge stays reversible.
+    merged_into: str | None = None
 
     def knows(self, surface_form: str) -> bool:
         return normalise(surface_form) in {

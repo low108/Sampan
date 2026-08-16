@@ -51,6 +51,21 @@
   .tray h3 { color: var(--muted); }
   .empty { color: var(--muted); padding: 3rem 0; text-align: center; }
   code { background: #f0e9df; padding: .1rem .35rem; border-radius: .25rem; font-size: .85em; }
+  label { display: block; font-size: .85rem; color: var(--muted); margin: .9rem 0 .3rem; }
+  input, textarea, select {
+    width: 100%; font: inherit; padding: .6rem .7rem; border: 1px solid var(--line);
+    border-radius: .4rem; background: #fff; color: inherit;
+  }
+  textarea { min-height: 5rem; resize: vertical; }
+  .row { display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; margin-top: 1rem; }
+  .btn {
+    font: inherit; border: none; border-radius: .4rem; padding: .65rem 1.1rem;
+    background: var(--accent); color: #fff; cursor: pointer;
+  }
+  .btn.ghost { background: none; border: 1px solid var(--line); color: var(--ink); }
+  .btn.rec[data-on="true"] { background: #8b2f2f; }
+  .btn:disabled { background: #c9c0b6; cursor: default; }
+  .ok { color: var(--sea); font-size: .9rem; }
 </style>
 </head>
 <body>
@@ -64,6 +79,8 @@
   <button data-view="feed" aria-selected="true">最近 Recent</button>
   <button data-view="timeline" aria-selected="false">一生 Timeline</button>
   <button data-view="map" aria-selected="false">地图 Map</button>
+  <button data-view="ask" aria-selected="false">留话 Ask</button>
+  <button data-view="fix" aria-selected="false">更正 Fix</button>
 </nav>
 
 <main id="main"><p class="empty">Loading…</p></main>
@@ -146,8 +163,141 @@ function renderMap(m) {
      </article>`).join("")}`;
 }
 
+function renderAsk() {
+  return `<article class="card">
+    <h3>留一句话给阿嬷</h3>
+    <p class="meta"><span>她会先听到你的声音,小船才接着讲。</span></p>
+    <label>你是谁</label>
+    <div class="row" style="margin-top:0">
+      <input id="from" placeholder="伟伦" style="flex:2 1 10rem">
+      <input id="rel" placeholder="儿子" style="flex:1 1 6rem">
+    </div>
+    <label>想问她什么</label>
+    <textarea id="q" placeholder="阿公有没有留下什么东西?欣宜问我,我答不出来。"></textarea>
+    <label>录一段话(十秒左右)</label>
+    <div class="row" style="margin-top:.3rem">
+      <button class="btn rec ghost" id="rec" data-on="false">开始录音</button>
+      <span class="meta" id="recinfo">还没录</span>
+    </div>
+    <audio id="preview" controls style="display:none;width:100%;margin-top:.75rem"></audio>
+    <div class="row">
+      <button class="btn" id="send">送出</button>
+      <span class="ok" id="sent"></span>
+    </div>
+  </article>`;
+}
+
+let mediaRecorder, chunks = [], voiceData = null;
+
+function wireAsk() {
+  const rec = document.getElementById("rec");
+  const info = document.getElementById("recinfo");
+  const preview = document.getElementById("preview");
+
+  rec.onclick = async () => {
+    if (rec.dataset.on === "true") { mediaRecorder.stop(); return; }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    chunks = [];
+    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(chunks, { type: mediaRecorder.mimeType });
+      const reader = new FileReader();
+      reader.onload = () => {
+        voiceData = reader.result;
+        preview.src = voiceData; preview.style.display = "block";
+        info.textContent = `${(blob.size / 1024).toFixed(0)} KB`;
+      };
+      reader.readAsDataURL(blob);
+      rec.dataset.on = "false"; rec.textContent = "重录";
+    };
+    mediaRecorder.start();
+    rec.dataset.on = "true"; rec.textContent = "停止";
+    info.textContent = "录音中…";
+    // Ten seconds is the intended length, so it stops itself.
+    setTimeout(() => { if (rec.dataset.on === "true") mediaRecorder.stop(); }, 10000);
+  };
+
+  document.getElementById("send").onclick = async () => {
+    const body = {
+      from_name: document.getElementById("from").value.trim(),
+      relation: document.getElementById("rel").value.trim(),
+      question: document.getElementById("q").value.trim(),
+      voice_note: voiceData,
+    };
+    if (!body.from_name || !body.question) {
+      document.getElementById("sent").textContent = "名字和问题都要填"; return;
+    }
+    const res = await fetch(`/api/family/${narrator}/ask`, {
+      method: "POST",
+      headers: { "X-Sampan-Key": key, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    document.getElementById("sent").textContent =
+      res.ok ? "送出了。阿嬷下次接电话就会听到。" : `送不出 (${res.status})`;
+  };
+}
+
+async function renderFix() {
+  const res = await fetch(`/api/family/${narrator}/corrections`,
+                          { headers: { "X-Sampan-Key": key } });
+  const d = await res.json();
+  const card = (e) => `<article class="card">
+    <h3>${esc(e.canonical_name)}</h3>
+    <div class="meta">
+      <span>${esc(e.type)}</span>${e.role ? `<span>${esc(e.role)}</span>` : ""}
+      <span>提过 ${e.mention_count} 次</span>
+    </div>
+    ${e.detail ? `<p class="narrative">${esc(e.detail)}</p>` : ""}
+    <div class="row">
+      <input data-fix="${esc(e.entity_id)}" placeholder="正确的名字" style="flex:2 1 12rem">
+      <button class="btn ghost" data-save="${esc(e.entity_id)}">更正</button>
+    </div>
+  </article>`;
+
+  const dupes = d.possible_duplicates.map((p) => `<article class="card">
+    <h3>${esc(p.a.canonical_name)} · ${esc(p.b.canonical_name)}</h3>
+    <div class="meta"><span>会不会是同一个人?</span></div>
+    <div class="row">
+      <button class="btn ghost" data-merge="${esc(p.b.entity_id)}"
+              data-into="${esc(p.a.entity_id)}">是同一个人</button>
+    </div>
+  </article>`).join("");
+
+  return `${d.unconfirmed.length ? `<p class="era">还没确认的人 Unconfirmed</p>` : ""}
+    ${d.unconfirmed.map(card).join("")}
+    ${dupes ? `<p class="era">可能重复 Possible duplicates</p>${dupes}` : ""}
+    ${!d.unconfirmed.length && !dupes ? `<p class="empty">没有要更正的。</p>` : ""}`;
+}
+
+function wireFix() {
+  const post = async (payload) => {
+    await fetch(`/api/family/${narrator}/corrections`, {
+      method: "POST",
+      headers: { "X-Sampan-Key": key, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    load("fix");
+  };
+  document.querySelectorAll("[data-save]").forEach((b) => {
+    b.onclick = () => {
+      const id = b.dataset.save;
+      const value = document.querySelector(`[data-fix="${id}"]`).value.trim();
+      if (value) post({ kind: "entity_name", target: id, value });
+    };
+  });
+  document.querySelectorAll("[data-merge]").forEach((b) => {
+    b.onclick = () => post({
+      kind: "merge", target: b.dataset.merge, merge_into: b.dataset.into,
+    });
+  });
+}
+
 async function load(view) {
   main.innerHTML = `<p class="empty">Loading…</p>`;
+  if (view === "ask") { main.innerHTML = renderAsk(); wireAsk(); return; }
+  if (view === "fix") { main.innerHTML = await renderFix(); wireFix(); return; }
   const res = await fetch(`/api/family/${encodeURIComponent(narrator)}?view=${view}`,
                           { headers: { "X-Sampan-Key": key } });
   if (!res.ok) { main.innerHTML = `<p class="empty">读不到 (${res.status})</p>`; return; }
