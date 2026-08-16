@@ -142,6 +142,9 @@ def finish_call(
         turns=len(transcript),
     )
 
+    for subject in prepared.memory.private_marks:
+        repository.mark_private(narrator_id, subject)
+
     if prepared.memory.ask_delivered and prepared.memory.ask is not None:
         repository.mark_ask_delivered(narrator_id, prepared.memory.ask.ask_id)
 

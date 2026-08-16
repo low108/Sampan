@@ -40,6 +40,10 @@ class StoryCard(BaseModel):
     status: str = "pinnable"
     missing_fields: list[str] = Field(default_factory=list)
     conversation_id: str = ""
+    # Surfaced, not hidden. Two of the archive's most sensitive stories are
+    # ones she and her son each chose to tell — burying them with no way to
+    # unbury would be a worse record than marking them and treading carefully.
+    sensitivity: str = "routine"
 
 
 def _card(raw: dict[str, Any]) -> StoryCard:
@@ -61,6 +65,7 @@ def _card(raw: dict[str, Any]) -> StoryCard:
         status=raw.get("status", "pinnable"),
         missing_fields=raw.get("missing_fields", []) or [],
         conversation_id=raw.get("conversation_id", ""),
+        sensitivity=candidate.get("sensitivity", "routine"),
     )
 
 
@@ -78,8 +83,26 @@ def sort_key(card: StoryCard) -> tuple[int, int]:
     return (_UNDATED, _UNDATED)
 
 
-def build_cards(raw_stories: list[dict[str, Any]]) -> list[StoryCard]:
-    return [_card(raw) for raw in raw_stories]
+def build_cards(
+    raw_stories: list[dict[str, Any]], private_subjects: list[str] | None = None
+) -> list[StoryCard]:
+    """Story cards, minus anything she asked to keep off the family's view.
+
+    Filtering happens here rather than at each caller, because a story that
+    escapes into one view has escaped — and 「好,这个我不写进去」 was a promise,
+    not a preference.
+    """
+    cards = [_card(raw) for raw in raw_stories]
+    if not private_subjects:
+        return cards
+    return [
+        card
+        for card in cards
+        if not any(
+            subject and (subject in card.title or subject in card.narrative)
+            for subject in private_subjects
+        )
+    ]
 
 
 def timeline(cards: list[StoryCard]) -> list[StoryCard]:

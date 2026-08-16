@@ -68,6 +68,10 @@ class Health(BaseModel):
 MAX_VOICE_NOTE_CHARS = 700_000
 
 
+class AboutRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=300)
+
+
 class AskRequest(BaseModel):
     from_name: str = Field(min_length=1, max_length=40)
     relation: str = Field(default="", max_length=20)
@@ -300,6 +304,45 @@ def create_app() -> FastAPI:
             round_trip_ok=read_back is not None and read_back.get("note") == body.note,
         )
 
+    @app.post(
+        "/api/family/{narrator_id}/about",
+        dependencies=[Depends(require_api_key)],
+    )
+    def ask_about_her(
+        narrator_id: str,
+        body: AboutRequest,
+        settings: Annotated[Settings, Depends(get_settings)],
+        store: Annotated[DocumentStore, Depends(get_store)],
+    ) -> dict[str, Any]:
+        """Ask a question about someone, answered only from what she said.
+
+        When the archive does not contain the answer, the reply says so and
+        offers the question back — which is the useful half: a gap becomes the
+        next thing 小船 asks her.
+        """
+        from sampan.ask_about import GeminiAboutHer
+
+        repository = Repository(store)
+        member = next(
+            (m for m in list_members(repository) if m.narrator_id == narrator_id), None
+        )
+        agent = GeminiAboutHer(
+            settings,
+            who=member.display_name if member else narrator_id,
+            cards=cards_for(repository, narrator_id),
+            entities=repository.load_entities(narrator_id),
+        )
+        try:
+            answer = agent.answer(body.question)
+        except Exception as error:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=str(error)) from error
+
+        payload = answer.model_dump(mode="json")
+        # Turning the follow-up into a queued question is the family's choice,
+        # not something that happens because they were curious out loud.
+        payload["can_ask_her"] = bool(answer.follow_up)
+        return payload
+
     @app.get("/api/household", dependencies=[Depends(require_api_key)])
     def household(
         settings: Annotated[Settings, Depends(get_settings)],
@@ -363,7 +406,10 @@ def create_app() -> FastAPI:
         """
         repository = Repository(store)
         memory = repository.load_memory(narrator_id)
-        cards = build_cards(repository.load_stories(narrator_id))
+        cards = build_cards(
+            repository.load_stories(narrator_id),
+            repository.private_subjects(narrator_id),
+        )
         entities = repository.load_entities(narrator_id)
 
         payload: dict[str, Any] = {

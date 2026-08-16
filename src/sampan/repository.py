@@ -32,6 +32,7 @@ CONVERSATIONS = "conversations"
 ASKS = "asks"
 CONCERNS = "concerns"
 FORGOTTEN = "forgotten"
+PRIVATE = "private"
 
 
 class NarratorMemory(BaseModel):
@@ -157,6 +158,30 @@ class Repository:
             raw
             for raw in self._store.list(self._scoped(CONCERNS, narrator_id))
             if not raw.get("seen_by_family")
+        ]
+
+    # --- privacy ----------------------------------------------------------
+
+    def mark_private(self, narrator_id: str, subject: str) -> None:
+        """Record that she asked for something to stay off the family's view.
+
+        The agent tells her 「好,这个我不写进去」 when she asks. That sentence
+        has to be true, which means it has to survive the call.
+        """
+        key = subject.strip()
+        if not key:
+            return
+        self._store.put(
+            self._scoped(PRIVATE, narrator_id),
+            f"priv_{abs(hash(key)) % 10**12}",
+            {"subject": key, "marked_at": datetime.now(UTC).isoformat()},
+        )
+
+    def private_subjects(self, narrator_id: str) -> list[str]:
+        return [
+            raw["subject"]
+            for raw in self._store.list(self._scoped(PRIVATE, narrator_id))
+            if raw.get("subject")
         ]
 
     # --- raw transcripts --------------------------------------------------

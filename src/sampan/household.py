@@ -70,7 +70,11 @@ def save_member(repository: Repository, member: Member) -> None:
 
 
 def cards_for(repository: Repository, narrator_id: str) -> list[StoryCard]:
-    return build_cards(repository.load_stories(narrator_id))
+    """Her stories as the family may see them — never the private ones."""
+    return build_cards(
+        repository.load_stories(narrator_id),
+        repository.private_subjects(narrator_id),
+    )
 
 
 def to_pins(

@@ -585,3 +585,34 @@ because she never once said which house. Pins went 5 → 7, unlocated 3 → 1.
 *unjoined* data. An archive that accumulates across months will often already
 contain the answer, said in a different conversation, in a form no lookup would
 match.
+
+---
+
+## The same bug, a third time: a tool that reassures and does not act
+
+**2026-08-16, building the family chat agent.**
+
+`mark_private` appended to a list on an in-memory object and told her
+「好,这个我不写进去」 — *"alright, I won't write this down."* The list was
+discarded when the call ended. Nothing filtered anything, anywhere: the feed,
+the map and the new chat agent all served every story regardless.
+
+This is the third instance of one pattern. `flag_concern` returned
+`family_notified: True` and notified nobody. The extraction prompt filled
+`sense_detail` with a paraphrase rather than admit it had nothing. Now this.
+
+Each time, the reassuring branch was the easy one to write and the one nobody
+checks, because a green result looks like success. **Any string a model speaks
+on behalf of the system is a claim the system must make true** — and the
+strings that promise safety, privacy or delivery are exactly the ones a test
+suite full of happy paths will never contradict.
+
+The fix keeps her promise: private subjects persist, and `build_cards` filters
+them once, centrally, because a story that escapes into one view has escaped.
+
+**What was deliberately not done:** stories the extractor marks `sensitive` are
+still shown to the family, flagged rather than hidden. Both sensitive stories in
+the archive are ones the teller *chose* to tell — she described the shop closing
+when her son asked, and he described regretting the five-minute phone calls.
+Burying those behind an approval workflow that does not exist yet would be a
+worse record of the family than marking them and treading carefully.
