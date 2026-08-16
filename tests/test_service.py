@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sampan.app import SMOKE_COLLECTION, create_app, get_store
 from sampan.auth import API_KEY_HEADER
 from sampan.config import Settings, get_settings
-from sampan.store import InMemoryDocumentStore
+from sampan.store import InMemoryDocumentStore, build_store
 
 GOOD_KEY = "test-key-do-not-use-in-anger"
 
@@ -76,6 +76,18 @@ class TestSmokeAuth:
 
         assert response.status_code == 503
 
+    def test_rejects_a_non_ascii_key_without_erroring(self, client: TestClient) -> None:
+        """Starlette decodes headers as latin-1, so a high byte on the wire
+        reaches us as a non-ASCII str — and compare_digest raises TypeError on
+        those. That must be a 401, never an unhandled 500."""
+        response = client.post(
+            "/debug/smoke",
+            json={"note": "hi"},
+            headers={API_KEY_HEADER: b"k\xe9y-\xfc"},  # type: ignore[dict-item]
+        )
+
+        assert response.status_code == 401
+
 
 class TestSmokeRoundTrip:
     def test_writes_a_document_and_reads_it_back(self, client: TestClient) -> None:
@@ -108,3 +120,40 @@ class TestSmokeRoundTrip:
             )
 
         assert len(store.list(SMOKE_COLLECTION)) == 3
+
+    def test_names_the_backend_so_a_pass_cannot_be_misread(
+        self, client: TestClient
+    ) -> None:
+        """round_trip_ok alone doesn't say what it round-tripped to."""
+        body = client.post(
+            "/debug/smoke", json={"note": "hi"}, headers={API_KEY_HEADER: GOOD_KEY}
+        ).json()
+
+        assert body["backend"] == "memory"
+        assert client.get("/healthz").json()["backend"] == "memory"
+
+
+class TestStoreSelection:
+    def test_uses_firestore_when_a_project_is_configured(self) -> None:
+        store = build_store(
+            Settings(GOOGLE_CLOUD_PROJECT="a-project", SAMPAN_API_KEY=GOOD_KEY)
+        )
+
+        assert store.backend == "firestore"
+
+    def test_refuses_to_fall_back_silently_when_unconfigured(self) -> None:
+        """A deployed revision that lost its project id must fail loudly
+        rather than accept stories into a dictionary and report success."""
+        with pytest.raises(RuntimeError, match="GOOGLE_CLOUD_PROJECT"):
+            build_store(Settings(GOOGLE_CLOUD_PROJECT="", SAMPAN_API_KEY=GOOD_KEY))
+
+    def test_falls_back_only_on_explicit_opt_in(self) -> None:
+        store = build_store(
+            Settings(
+                GOOGLE_CLOUD_PROJECT="",
+                SAMPAN_API_KEY=GOOD_KEY,
+                SAMPAN_ALLOW_IN_MEMORY_STORE=True,
+            )
+        )
+
+        assert store.backend == "memory"

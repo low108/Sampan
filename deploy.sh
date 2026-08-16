@@ -7,6 +7,8 @@
 #   --min-instances     0 while building; set to 1 only for recording, then back
 set -euo pipefail
 
+# ^@^ sets @ as the env-var delimiter, so a key containing a comma cannot
+# silently split into a bogus extra variable.
 PROJECT_ID="${GOOGLE_CLOUD_PROJECT:?set GOOGLE_CLOUD_PROJECT}"
 REGION="${GOOGLE_CLOUD_LOCATION:-asia-southeast1}"
 SERVICE="${SAMPAN_SERVICE:-sampan}"
@@ -24,7 +26,7 @@ gcloud run deploy "$SERVICE" \
   --cpu=1 \
   --memory=1Gi \
   --concurrency=20 \
-  --set-env-vars="GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${REGION},SAMPAN_API_KEY=${API_KEY}"
+  --set-env-vars="^@^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@GOOGLE_CLOUD_LOCATION=${REGION}@SAMPAN_API_KEY=${API_KEY}"
 
 URL="$(gcloud run services describe "$SERVICE" \
   --project="$PROJECT_ID" --region="$REGION" --format='value(status.url)')"

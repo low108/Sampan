@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     # web traffic from draining the hackathon credits.
     api_key: str = Field(default="", alias="SAMPAN_API_KEY")
 
+    # --- Development ------------------------------------------------------
+    # Opt-in, and deliberately off by default: a deployed revision that lost
+    # its project id must fail loudly rather than quietly writing stories to a
+    # dictionary and reporting success.
+    allow_in_memory_store: bool = Field(
+        default=False, alias="SAMPAN_ALLOW_IN_MEMORY_STORE"
+    )
+
     @property
     def configured(self) -> bool:
         """True when the service has enough to talk to Google Cloud."""

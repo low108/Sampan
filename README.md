@@ -43,8 +43,11 @@ cp .env.example .env      # then fill in SAMPAN_API_KEY at minimum
 uv run uvicorn sampan.app:app --reload --port 8080
 ```
 
-With no `GOOGLE_CLOUD_PROJECT` set, the service falls back to an in-memory store, so it runs
-on a machine that has never seen a Google Cloud credential.
+With `SAMPAN_ALLOW_IN_MEMORY_STORE=true` the service runs against an in-memory store, so it
+works on a machine that has never seen a Google Cloud credential. The fallback is opt-in on
+purpose: a deployed revision that lost its project id must fail loudly rather than accept
+stories into a dictionary and report success. `/healthz` and `/debug/smoke` both name the
+backend they used, so a green round trip can't be misread as having reached Firestore.
 
 ```bash
 curl -s localhost:8080/healthz

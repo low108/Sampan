@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from sampan.auth import require_api_key
 from sampan.config import Settings, get_settings
-from sampan.store import DocumentStore, build_store
+from sampan.store import DocumentStore, get_document_store
 
 SMOKE_COLLECTION = "_smoke"
 
@@ -25,6 +25,7 @@ class Health(BaseModel):
     status: str
     configured: bool
     location: str
+    backend: str
 
 
 class SmokeRequest(BaseModel):
@@ -33,25 +34,30 @@ class SmokeRequest(BaseModel):
 
 class SmokeResult(BaseModel):
     doc_id: str
+    backend: str
     written: dict[str, Any]
     read_back: dict[str, Any] | None
     round_trip_ok: bool
 
 
-def get_store(
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> DocumentStore:
-    return build_store(settings)
+def get_store() -> DocumentStore:
+    return get_document_store()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Sampan", version="0.1.0")
 
     @app.get("/healthz", response_model=Health)
-    def healthz(settings: Annotated[Settings, Depends(get_settings)]) -> Health:
+    def healthz(
+        settings: Annotated[Settings, Depends(get_settings)],
+        store: Annotated[DocumentStore, Depends(get_store)],
+    ) -> Health:
         """Unauthenticated liveness probe for Cloud Run."""
         return Health(
-            status="ok", configured=settings.configured, location=settings.location
+            status="ok",
+            configured=settings.configured,
+            location=settings.location,
+            backend=store.backend,
         )
 
     @app.post(
@@ -77,6 +83,7 @@ def create_app() -> FastAPI:
         read_back = store.get(SMOKE_COLLECTION, doc_id)
         return SmokeResult(
             doc_id=doc_id,
+            backend=store.backend,
             written=payload,
             read_back=read_back,
             round_trip_ok=read_back is not None and read_back.get("note") == body.note,

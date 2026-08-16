@@ -31,8 +31,11 @@ def require_api_key(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Service is missing SAMPAN_API_KEY; refusing to serve.",
         )
+    # Compare as bytes: Starlette decodes headers as latin-1, and
+    # secrets.compare_digest raises TypeError on non-ASCII str, which would
+    # surface as a 500 with a traceback instead of a clean 401.
     if x_sampan_key is None or not secrets.compare_digest(
-        x_sampan_key, settings.api_key
+        x_sampan_key.encode("utf-8"), settings.api_key.encode("utf-8")
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
