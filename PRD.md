@@ -323,6 +323,22 @@ layer — "talking slowly" only means something relative to this person.
 | `looping` | Receive the repeated story as if it were the first time. Never say "你讲过了". Log count for the family only |
 | `distress` | Hard escalation. Alert family immediately, stay on the line, keep talking, do not hang up |
 
+**How the state reaches the agent (corrected 2026-08-16)**
+
+A live session's system instruction is sent once at connect, and every route for injecting
+direction mid-call was tried and fails — `role="user"` makes the agent read its own stage
+directions aloud, `role="system"` makes it acknowledge them aloud, `role="model"` breaks
+turn-taking (`FINDINGS.md`). **Continuous within-call modulation is therefore not achievable.**
+
+Affect reaches the agent three other ways:
+
+1. **The next call's instruction** — deterministic, testable, and what the demo shows
+2. **Tool responses**, which are never spoken aloud, so guidance rides back on any tool call
+3. **`enable_affective_dialog`** — the Live API's native in-turn adaptation
+
+The monitor still runs live: it drives the on-screen overlay, the care flags, and the
+end-of-call affect trace.
+
 **Invariants**
 
 - The agent **never names the detected state out loud**
@@ -719,6 +735,14 @@ than transcribed from footage.
    looking at their phone — is degraded to a notification chirp (§9.4).
 5. **Family-triggered only.** Elders with inattentive families get the fewest calls (§6.1).
 6. **Single narrator.** Cross-narrator features are untested; no second elder was available.
+7. **Affect adapts between calls, not continuously within one.** The Live API cannot be
+   steered mid-session (§7.5), so the agent's behaviour changes at the start of each call
+   rather than turn by turn as she tires. Native affective dialog covers some of the gap; how
+   much is unmeasured.
+8. **Affect discrimination is verified on synthesised speech, not elderly speech.** Controlled
+   TTS deliveries were correctly separated, including the sad-engaged versus sad-withdrawing
+   pair. Thresholds for real elderly prosody — tremor, genuine fatigue curve, age-related
+   pitch change — remain unvalidated.
 
 ---
 

@@ -74,6 +74,30 @@ her own 「坐船来的,槟城上岸」, and 一九六九年咖啡店结业 corr
 way. Anchor such fields to the source text, and say plainly that empty is an acceptable answer
 — otherwise "always filled" is indistinguishable from "always fabricated".
 
+## Tool responses are the only silent channel into a live call
+
+**2026-08-16, ticket 11.**
+
+Since a live session cannot be steered mid-call (below), the affect guidance had to reach the
+agent some other way. Tool responses turn out to be the one channel that works: the model
+reads them, acts on them, and **never speaks them**. Every tool therefore returns `_guidance`
+and `_turn_length` alongside its actual payload.
+
+Verified with the agent set to a `depleted` state: it called `get_pending_ask`, received
+「提早结束是好事」 in the response, and said only 「阿嬷,伟伦问阿公有没有留下什么东西?」 —
+no leak, where the injected-turn approach had read its own stage directions aloud.
+
+Two smaller things from the same ticket:
+
+**Tools have to be announced.** The first live attempt called nothing at all. ADK declares the
+functions to the model, but with no mention of them in the instruction the agent simply
+carried on talking. Listing them, with a line on *when* to reach for each, was what made it
+start using them.
+
+**A tool's docstring is its prompt.** ADK builds the declaration from the signature and
+docstring, so these are written in Chinese, addressed to the agent, in the register the rest
+of the instruction uses — 「查不到就不要装懂」 sits in `recall`'s docstring, not in a comment.
+
 ## A live session cannot be steered mid-call
 
 **2026-08-16, ticket 14.**

@@ -8,6 +8,7 @@ job land on top of this skeleton.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,11 +18,15 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from sampan.affect import GeminiAffectMonitor, policy, watch
 from sampan.auth import require_api_key
 from sampan.companion import build_agent
 from sampan.config import Settings, apply_genai_env, get_settings
 from sampan.live import open_session, pump
+from sampan.models import AffectState
+from sampan.opener import build_session_plan, render_plan
 from sampan.store import DocumentStore, get_document_store
+from sampan.tools import CallMemory, build_tools
 
 SMOKE_COLLECTION = "_smoke"
 
@@ -47,6 +52,33 @@ class SmokeResult(BaseModel):
 
 def get_store() -> DocumentStore:
     return get_document_store()
+
+
+async def _publish_affect(
+    websocket: WebSocket, memory: CallMemory, state: AffectState
+) -> None:
+    """Update the call's guidance channel and the on-screen overlay.
+
+    The state reaches the agent only via tool responses (a live session cannot
+    be steered mid-call), but it reaches the *screen* immediately, which is
+    what the demo shows.
+    """
+    memory.affect = state
+    knobs = policy(state)
+    with contextlib.suppress(Exception):
+        await websocket.send_json(
+            {
+                "affect": {
+                    "energy": state.energy.value,
+                    "engagement": state.engagement.value,
+                    "affect": state.affect.value,
+                    "flags": [f.value for f in state.flags],
+                    "topic_action": knobs.topic_action.value,
+                    "turn_length": knobs.turn_length,
+                    "care_flag": knobs.care_flag,
+                }
+            }
+        )
 
 
 def create_app() -> FastAPI:
@@ -116,8 +148,33 @@ def create_app() -> FastAPI:
         await websocket.accept()
         user_id = websocket.query_params.get("user", "ah_khim")
 
-        session = await open_session(build_agent(settings), settings, user_id=user_id)
+        # TODO(ticket 9): load real memory for this narrator from Firestore.
+        # Until then the call runs with an empty graph, which is session-1
+        # behaviour rather than a failure.
+        memory = CallMemory()
+        plan = build_session_plan(
+            threads=memory.threads,
+            sensitivities=memory.sensitivities,
+            ask=memory.ask,
+            session_count=0,
+        )
+        agent = build_agent(
+            settings,
+            preferences=memory.preferences,
+            sensitivities=memory.sensitivities,
+            session_plan=render_plan(plan),
+            tools=build_tools(memory),
+        )
+
+        session = await open_session(agent, settings, user_id=user_id)
         pump_task = asyncio.create_task(pump(session, websocket.send_json))
+        watch_task = asyncio.create_task(
+            watch(
+                session,
+                GeminiAffectMonitor(settings),
+                on_state=lambda state: _publish_affect(websocket, memory, state),
+            )
+        )
 
         try:
             while True:
@@ -132,6 +189,7 @@ def create_app() -> FastAPI:
             pass
         finally:
             session.close()
+            watch_task.cancel()
             pump_task.cancel()
 
     static_dir = Path(__file__).resolve().parents[2] / "static"

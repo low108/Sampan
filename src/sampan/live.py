@@ -199,6 +199,11 @@ def encode_event(event: Any) -> dict[str, Any] | None:
                 payload["sample_rate"] = OUTPUT_SAMPLE_RATE
             if getattr(part, "text", None):
                 payload["text"] = part.text
+            # Surfaced for the demo overlay: watching the agent reach for
+            # memory mid-sentence is the clearest evidence that it has any.
+            call = getattr(part, "function_call", None)
+            if call is not None and getattr(call, "name", None):
+                payload.setdefault("tool_calls", []).append(call.name)
 
     for flag in ("turn_complete", "interrupted"):
         if getattr(event, flag, None):
