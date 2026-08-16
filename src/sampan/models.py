@@ -106,6 +106,110 @@ class Emotion(BaseModel):
     labels: list[str] = Field(default_factory=list)
 
 
+class EntityType(StrEnum):
+    """One collection, discriminated by type.
+
+    Entities are first-class documents rather than name-keyed maps on stories,
+    because the map, the family tree and the filters all need to query them and
+    dedupe 怡保 / Ipoh / Ipoh town.
+    """
+
+    PERSON = "person"
+    PLACE = "place"
+    OBJECT = "object"
+    FOOD = "food"
+
+
+class EntityMention(BaseModel):
+    """Someone or something referred to in a conversation, before resolution."""
+
+    surface_form: str = Field(description="Exactly as she said it, e.g. 我姐姐")
+    type: EntityType
+    role: str | None = Field(
+        default=None, description="For people: father, sister, neighbour, husband…"
+    )
+    detail: str = Field(
+        default="", description="Anything new she said about them or it"
+    )
+
+
+class Entity(BaseModel):
+    """A person, place, object or food, accumulated across conversations."""
+
+    entity_id: str
+    type: EntityType
+    canonical_name: str
+    aliases: list[str] = Field(default_factory=list)
+    role: str | None = None
+    detail: str = ""
+    mention_count: int = 0
+    first_mentioned_in: str | None = None
+    # Provisional entities are shown to the family to confirm or merge. The
+    # correction path is also the feedback-capture path.
+    confirmed_by_family: bool = False
+    provisional: bool = True
+
+    def knows(self, surface_form: str) -> bool:
+        return normalise(surface_form) in {
+            normalise(name) for name in [self.canonical_name, *self.aliases]
+        }
+
+
+# Possessives and honorific padding carry no identity information.
+_STRIP_PREFIXES = ("我的", "我", "他的", "她的", "那个", "那间", "那条")
+_STRIP_SUFFIXES = ("的",)
+
+
+def normalise(surface_form: str) -> str:
+    """Reduce a surface form to something comparable.
+
+    她说「我姐姐」, 「姐姐」 and 「阿姐」 across three sessions and means one
+    person; the first two differ only by a possessive.
+    """
+    text = surface_form.strip().replace(" ", "")
+    changed = True
+    while changed:
+        changed = False
+        for prefix in _STRIP_PREFIXES:
+            if text.startswith(prefix) and len(text) > len(prefix):
+                text, changed = text[len(prefix) :], True
+        for suffix in _STRIP_SUFFIXES:
+            if text.endswith(suffix) and len(text) > len(suffix):
+                text, changed = text[: -len(suffix)], True
+    return text.lower()
+
+
+# Kin terms are near-unambiguous in Chinese and are the highest-confidence
+# resolution signal available, especially against a family intake.
+KIN_ROLES: dict[str, str] = {
+    "妈妈": "mother",
+    "母亲": "mother",
+    "阿妈": "mother",
+    "爸爸": "father",
+    "父亲": "father",
+    "阿爸": "father",
+    "姐姐": "elder_sister",
+    "阿姐": "elder_sister",
+    "妹妹": "younger_sister",
+    "哥哥": "elder_brother",
+    "弟弟": "younger_brother",
+    "先生": "husband",
+    "老公": "husband",
+    "太太": "wife",
+    "儿子": "son",
+    "女儿": "daughter",
+    "孙女": "granddaughter",
+    "孙子": "grandson",
+    "阿公": "grandfather",
+    "阿嬷": "grandmother",
+}
+
+
+def kin_role(surface_form: str) -> str | None:
+    """Map a kin term to a role, or None if it isn't one."""
+    return KIN_ROLES.get(normalise(surface_form))
+
+
 class Completeness(BaseModel):
     """The pinnability rubric, computed rather than guessed at by the model."""
 

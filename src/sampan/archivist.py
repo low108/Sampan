@@ -16,7 +16,8 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from sampan.config import Settings
-from sampan.models import ScoredStory, StoryCandidate, assess
+from sampan.entities import Resolution, Tiebreaker, resolve_mentions
+from sampan.models import Entity, EntityMention, ScoredStory, StoryCandidate, assess
 
 EXTRACTION_PROMPT = """\
 你是一位口述历史记录员。下面是一位老人家和陪伴她聊天的助手之间的对话记录。
@@ -52,6 +53,13 @@ pin_type 决定这个故事在哪里呈现,请照这个顺序判断:
 sensitivity 标 sensitive 的情况:钱、跟在世亲人的冲突、健康、
 她明显回避或转开话题的事。其他标 routine。
 
+另外请列出 entity_mentions —— 对话里出现过的人、地方、东西、食物。
+- surface_form 一定要用她原本的叫法(「我姐姐」就是「我姐姐」,不要改成名字)
+- 同一个人在同一次对话里讲了几次,只列一次
+- type: person / place / object / food
+- role: 只有人才填 —— father, mother, elder_sister, husband, son, neighbour 等
+- detail: 她讲过关于这个人/地方/东西的事,一句话就好
+
 对话记录:
 ---
 {transcript}
@@ -61,16 +69,19 @@ sensitivity 标 sensitive 的情况:钱、跟在世亲人的冲突、健康、
 
 class ExtractionResponse(BaseModel):
     stories: list[StoryCandidate]
+    entity_mentions: list[EntityMention] = []
 
 
 class ConversationOutcome(BaseModel):
     """Everything derived from one conversation.
 
-    Grows as tickets land: entities, threads, anchors and preferences join
-    `stories` here, and this stays the single return value of the seam.
+    Grows as tickets land: threads, anchors and preferences join `stories` and
+    `entities` here, and this stays the single return value of the seam.
     """
 
     stories: list[ScoredStory]
+    entities: list[Entity] = []
+    resolutions: list[Resolution] = []
 
     @property
     def pinned(self) -> list[ScoredStory]:
@@ -80,11 +91,16 @@ class ConversationOutcome(BaseModel):
     def fragments(self) -> list[ScoredStory]:
         return [s for s in self.stories if s.status == "fragment"]
 
+    @property
+    def new_entities(self) -> list[Entity]:
+        new_ids = {r.entity_id for r in self.resolutions if r.created}
+        return [e for e in self.entities if e.entity_id in new_ids]
+
 
 class StoryExtractor(Protocol):
     """Seam for the model call, so the pipeline can be exercised offline."""
 
-    def extract(self, transcript: str) -> list[StoryCandidate]: ...
+    def extract(self, transcript: str) -> ExtractionResponse: ...
 
 
 class GeminiStoryExtractor:
@@ -110,7 +126,7 @@ class GeminiStoryExtractor:
             )
         return self._cached_client
 
-    def extract(self, transcript: str) -> list[StoryCandidate]:
+    def extract(self, transcript: str) -> ExtractionResponse:
         from google.genai import types
 
         response = self._client.models.generate_content(
@@ -127,16 +143,35 @@ class GeminiStoryExtractor:
             raise RuntimeError(
                 f"Extraction returned no parseable JSON: {response.text}"
             )
-        return list(parsed.stories)
+        return parsed
 
 
 def ingest_conversation(
-    transcript: str, extractor: StoryExtractor
+    transcript: str,
+    extractor: StoryExtractor,
+    *,
+    known_entities: list[Entity] | None = None,
+    conversation_id: str | None = None,
+    tiebreaker: Tiebreaker | None = None,
 ) -> ConversationOutcome:
     """Turn a finished conversation into structured memory.
 
     This is seam 1. Text in, everything derived out — no audio, no streaming,
     no browser, so the whole spine is testable offline.
+
+    `known_entities` is the family's graph so far, seeded at setup by the
+    child-completed intake. Passing it is what turns 「我姐姐」 into a reference
+    rather than a fourth duplicate sister.
     """
-    candidates = extractor.extract(transcript)
-    return ConversationOutcome(stories=[assess(c) for c in candidates])
+    extracted = extractor.extract(transcript)
+    resolution = resolve_mentions(
+        extracted.entity_mentions,
+        known_entities or [],
+        conversation_id=conversation_id,
+        tiebreaker=tiebreaker,
+    )
+    return ConversationOutcome(
+        stories=[assess(c) for c in extracted.stories],
+        entities=resolution.entities,
+        resolutions=resolution.resolutions,
+    )

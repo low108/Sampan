@@ -1,0 +1,104 @@
+{
+  "_comment": "The child-completed family intake, filled in once at setup. It bootstraps entity resolution and stops the agent asking painful questions about people who have died. Persona per docs/persona-bible.md.",
+  "narrator": "林秀琴",
+  "entities": [
+    {
+      "entity_id": "ent_father",
+      "type": "person",
+      "canonical_name": "林亚福",
+      "aliases": ["我爸爸", "爸爸", "阿爸"],
+      "role": "father",
+      "detail": "割胶,后来在怡保板底街开咖啡店。1918-1981。已过世。",
+      "provisional": false,
+      "confirmed_by_family": true
+    },
+    {
+      "entity_id": "ent_mother",
+      "type": "person",
+      "canonical_name": "陈亚娣",
+      "aliases": ["我妈妈", "妈妈", "阿妈"],
+      "role": "mother",
+      "detail": "在店后面煮饭。1922-1998。已过世。",
+      "provisional": false,
+      "confirmed_by_family": true
+    },
+    {
+      "entity_id": "ent_sister",
+      "type": "person",
+      "canonical_name": "林秀珠",
+      "aliases": ["我姐姐", "姐姐", "阿珠"],
+      "role": "elder_sister",
+      "detail": "1941-2019。已过世。2017年吵架,到她走都没有再讲话。敏感话题。",
+      "provisional": false,
+      "confirmed_by_family": true
+    },
+    {
+      "entity_id": "ent_husband",
+      "type": "person",
+      "canonical_name": "陈永发",
+      "aliases": ["我先生", "阿发", "先生"],
+      "role": "husband",
+      "detail": "罗厘司机。1942-2015。已过世。",
+      "provisional": false,
+      "confirmed_by_family": true
+    },
+    {
+      "entity_id": "ent_son",
+      "type": "person",
+      "canonical_name": "陈伟伦",
+      "aliases": ["伟伦", "我儿子", "儿子"],
+      "role": "son",
+      "detail": "1970年生。在吉隆坡工作。",
+      "provisional": false,
+      "confirmed_by_family": true
+    },
+    {
+      "entity_id": "ent_daughter",
+      "type": "person",
+      "canonical_name": "陈美玲",
+      "aliases": ["美玲", "我女儿", "女儿"],
+      "role": "daughter",
+      "detail": "1973年生。2001年移民澳洲珀斯。",
+      "provisional": false,
+      "confirmed_by_family": true
+    },
+    {
+      "entity_id": "ent_granddaughter",
+      "type": "person",
+      "canonical_name": "陈欣宜",
+      "aliases": ["欣宜", "我孙女", "孙女"],
+      "role": "granddaughter",
+      "detail": "2007年生。伟伦的女儿。看不懂中文。",
+      "provisional": false,
+      "confirmed_by_family": true
+    },
+    {
+      "entity_id": "ent_grandfather",
+      "type": "person",
+      "canonical_name": "林长兴",
+      "aliases": ["我阿公", "阿公"],
+      "role": "grandfather",
+      "detail": "福建永春人,1928年到槟城。她没见过他。",
+      "provisional": false,
+      "confirmed_by_family": true
+    },
+    {
+      "entity_id": "ent_ipoh",
+      "type": "place",
+      "canonical_name": "怡保",
+      "aliases": ["Ipoh"],
+      "detail": "她现在住的地方。",
+      "provisional": false,
+      "confirmed_by_family": true
+    },
+    {
+      "entity_id": "ent_sungai_siput",
+      "type": "place",
+      "canonical_name": "双溪镇",
+      "aliases": ["Sungai Siput"],
+      "detail": "她出生长大的树胶园所在。园区已经不在了。",
+      "provisional": false,
+      "confirmed_by_family": true
+    }
+  ]
+}
