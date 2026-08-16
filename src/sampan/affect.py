@@ -346,6 +346,42 @@ def policy(state: AffectState) -> Knobs:
     )
 
 
+async def watch(
+    session: Any,
+    monitor: AffectMonitor,
+    *,
+    interval_seconds: float = 90.0,
+    min_seconds: float = 20.0,
+    on_state: Any = None,
+) -> AffectState:
+    """Read her every ninety seconds, off the conversation's latency path.
+
+    Never a tool the Companion calls: a tool would put a second model round
+    trip inside her turn. This runs beside the call and its output goes to the
+    overlay, the care flags, and the next call's instruction.
+    """
+    import asyncio
+
+    state = AffectState()
+    while True:
+        await asyncio.sleep(interval_seconds)
+        pcm = session.audio.snapshot()
+        # Too little audio to read anything from — she has been quiet, which
+        # the transcript will show but prosody cannot.
+        if len(pcm) < min_seconds * INPUT_SAMPLE_RATE * BYTES_PER_SAMPLE:
+            continue
+        try:
+            assessment = await asyncio.to_thread(monitor.assess, pcm)
+        except Exception:
+            # A failed reading must never end a call. Keep the last state.
+            continue
+        state = apply_assessment(state, assessment)
+        if on_state is not None:
+            result = on_state(state)
+            if asyncio.iscoroutine(result):
+                await result
+
+
 def describe_for_instruction(state: AffectState) -> str:
     """The live block appended to the agent's instruction mid-call.
 

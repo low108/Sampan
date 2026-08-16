@@ -128,6 +128,21 @@ class LiveSession:
             types.Content(role="user", parts=[types.Part(text=text)])
         )
 
+    # NOTE: there is deliberately no `steer()` here.
+    #
+    # A live session's system instruction is sent once at connect, so a dynamic
+    # instruction provider never reaches it, and every way of injecting
+    # direction mid-call was tried and fails:
+    #   role="user"   — the agent reads the stage direction out loud, fence and
+    #                   all, to an eighty-year-old
+    #   role="system" — the agent acknowledges it aloud (「好的,明白了」)
+    #   role="model"  — turn-taking breaks; it stops answering her
+    #
+    # So affect steers three other ways instead: it shapes the *next* call's
+    # instruction, it rides back on tool responses (which are never spoken),
+    # and `enable_affective_dialog` handles in-turn adaptation natively.
+    # See FINDINGS.md.
+
     async def events(self) -> AsyncIterator[Any]:
         async for event in self.runner.run_live(
             user_id=self.user_id,

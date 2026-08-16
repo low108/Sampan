@@ -74,6 +74,35 @@ her own 「坐船来的,槟城上岸」, and 一九六九年咖啡店结业 corr
 way. Anchor such fields to the source text, and say plainly that empty is an acceptable answer
 — otherwise "always filled" is indistinguishable from "always fabricated".
 
+## A live session cannot be steered mid-call
+
+**2026-08-16, ticket 14.**
+
+The affect monitor reads her every ninety seconds, so the obvious next step is to change how
+the agent is behaving *during* the call. It cannot be done. A live session's system
+instruction is sent once at connect, so ADK's `InstructionProvider` — a callable resolved per
+invocation — never gets re-evaluated. Injecting direction as a turn was tried three ways, all
+verified by running them:
+
+| How | What happened |
+|---|---|
+| `role="user"`, fenced with 「不要念出来」 | Agent read the fence out loud: 「[系统提示,不是阿嬷讲的话。」 |
+| `role="system"` | Agent acknowledged it aloud: 「好的,明白了。准备收尾。」 |
+| `role="model"` | Turn-taking broke; it stopped answering her entirely |
+
+The first is the worst outcome available: an eighty-year-old hears the machine read its own
+stage directions about her.
+
+So affect steers three other ways instead, none of them mid-turn:
+
+1. **The next call's instruction** — real, deterministic, and the thing the demo shows
+2. **Tool responses**, which are never spoken, so guidance can ride back on any tool the agent
+   calls
+3. **`enable_affective_dialog`**, the Live API's native in-turn adaptation
+
+`LiveSession` has a comment where `steer()` would go, so the next person does not spend an
+afternoon rediscovering this.
+
 ## The three-axis affect model earned its keep, then a bug erased the benefit
 
 **2026-08-16, tickets 13-14.**
