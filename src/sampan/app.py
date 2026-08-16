@@ -37,6 +37,12 @@ from sampan.corrections import (
     needs_confirmation,
 )
 from sampan.family import build_cards, build_map, feed, stats, timeline
+from sampan.household import (
+    cards_for,
+    list_members,
+    to_pins,
+    unplaced,
+)
 from sampan.live import open_session, pump
 from sampan.models import AffectState, Ask
 from sampan.places import GeminiPlaceResolver
@@ -293,6 +299,55 @@ def create_app() -> FastAPI:
             read_back=read_back,
             round_trip_ok=read_back is not None and read_back.get("note") == body.note,
         )
+
+    @app.get("/api/household", dependencies=[Depends(require_api_key)])
+    def household(
+        settings: Annotated[Settings, Depends(get_settings)],
+        store: Annotated[DocumentStore, Depends(get_store)],
+        member: str | None = None,
+    ) -> dict[str, Any]:
+        """The shared family map, or one member's scoped to them.
+
+        The only view that crosses narrators. Everywhere else the archive is
+        one person's, because that is how the agent remembers.
+        """
+        repository = Repository(store)
+        members = list_members(repository)
+        wanted = [m for m in members if member is None or m.narrator_id == member]
+
+        pins: list[dict[str, Any]] = []
+        without_place: list[dict[str, Any]] = []
+        for person in wanted:
+            cards = cards_for(repository, person.narrator_id)
+            if not cards:
+                continue
+            places = _resolve_places(settings, store, cards)
+            places = _link_relational_places(
+                settings, store, person.narrator_id, places
+            )
+            pins.extend(
+                p.model_dump(mode="json")
+                for p in to_pins(
+                    cards,
+                    places,
+                    narrator_id=person.narrator_id,
+                    narrator_name=person.display_name,
+                )
+            )
+            without_place.extend(
+                {
+                    **c.model_dump(),
+                    "narrator_id": person.narrator_id,
+                    "narrator_name": person.display_name,
+                }
+                for c in unplaced(cards, places)
+            )
+
+        return {
+            "members": [m.model_dump(mode="json") for m in members],
+            "pins": pins,
+            "unplaced": without_place,
+        }
 
     @app.get("/api/family/{narrator_id}", dependencies=[Depends(require_api_key)])
     def family_view(
