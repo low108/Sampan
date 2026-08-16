@@ -7,3 +7,6 @@ __pycache__/
 .scratch/
 *.wav
 *.mp4
+
+google-cloud-sdk/
+.DS_Store
