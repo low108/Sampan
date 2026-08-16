@@ -49,6 +49,10 @@ class CallMemory:
     private_marks: list[str] = field(default_factory=list)
     concerns: list[dict[str, str]] = field(default_factory=list)
     ask_delivered: bool = False
+    # Called the moment a concern is raised, so a fall reaches the family
+    # before she hangs up. Without it, flag_concern would tell her something
+    # untrue.
+    on_concern: Callable[[str, str], None] | None = None
 
 
 def _with_guidance(memory: CallMemory, payload: dict[str, Any]) -> dict[str, Any]:
@@ -167,11 +171,24 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
             detail: 她讲了什么。
         """
         memory.concerns.append({"kind": kind, "detail": detail})
+        delivered = False
+        if memory.on_concern is not None:
+            try:
+                memory.on_concern(kind, detail)
+                delivered = True
+            except Exception:
+                # Say only what is true. If it did not reach the family, the
+                # agent must not tell her that it did.
+                delivered = False
         return _with_guidance(
             memory,
             {
-                "family_notified": True,
-                "tell_her": "阿嬷,这个我会跟伟伦讲一声,让他知道。",
+                "family_notified": delivered,
+                "tell_her": (
+                    "阿嬷,这个我记下来了,让伟伦看到。"
+                    if delivered
+                    else "阿嬷,这个我记下来了。"
+                ),
                 "stay_on_the_line": True,
             },
         )

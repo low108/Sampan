@@ -30,6 +30,7 @@ ENTITIES = "entities"
 STORIES = "stories"
 CONVERSATIONS = "conversations"
 ASKS = "asks"
+CONCERNS = "concerns"
 
 
 class NarratorMemory(BaseModel):
@@ -122,6 +123,40 @@ class Repository:
                 **extra,
             },
         )
+
+    # --- care -------------------------------------------------------------
+
+    def raise_concern(
+        self, narrator_id: str, kind: str, detail: str, conversation_id: str = ""
+    ) -> str:
+        """Record something the family needs to know about, now.
+
+        Written the moment it is flagged rather than at the end of the call:
+        the agent has just told her it is telling her family, and a fall should
+        not wait for her to hang up.
+        """
+        concern_id = f"care_{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
+        self._store.put(
+            self._scoped(CONCERNS, narrator_id),
+            concern_id,
+            {
+                "concern_id": concern_id,
+                "narrator_id": narrator_id,
+                "kind": kind,
+                "detail": detail,
+                "conversation_id": conversation_id,
+                "raised_at": datetime.now(UTC).isoformat(),
+                "seen_by_family": False,
+            },
+        )
+        return concern_id
+
+    def open_concerns(self, narrator_id: str) -> list[dict]:
+        return [
+            raw
+            for raw in self._store.list(self._scoped(CONCERNS, narrator_id))
+            if not raw.get("seen_by_family")
+        ]
 
     # --- family asks ------------------------------------------------------
 

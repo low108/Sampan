@@ -466,3 +466,42 @@ confident.
 Related: the ambiguity was partly self-inflicted. The persona bible calls her hometown 双溪镇,
 which is not what Malaysian Chinese actually call Sungai Siput. An invented name inherited an
 invented ambiguity — worth remembering when fixtures stand in for real data.
+
+---
+
+## An agent must not say it did something it did not do
+
+**2026-08-16, audit.**
+
+`flag_concern` — the tool for falls, chest pain, breathlessness, hopelessness — returned
+`family_notified: True` and told her 「阿嬷,这个我会跟伟伦讲一声」. Nothing was sent anywhere.
+It appended to an in-memory list that the Archivist did not even read.
+
+Every other gap found in the same audit was a missing feature. This one was the agent stating
+a falsehood to an eighty-year-old about her own safety, in the one code path where being
+believed matters most, and it had been sitting there since the tools were written.
+
+It now writes to Firestore the moment it is called — not at the end of the call, because a
+fall should not wait for her to hang up — and the family view carries open concerns on every
+tab rather than behind one. And when delivery fails, the agent says only 「这个我记下来了」 and
+`family_notified` is false. There are tests for both the failure and the nothing-wired-up case,
+because the honest sentence is the one that has to survive.
+
+**Lesson:** any string a model speaks on behalf of the system is a claim the system has to
+make true. Reassurance is the easiest thing for a tool to return and the easiest thing to
+leave unimplemented.
+
+## A route needs an order, and inventing one is not allowed either
+
+**2026-08-16, journey view.**
+
+The journey view sorts her stops by year. 阿公坐船南来 has no year — 「二十几年吧,我也不清楚」
+was correctly left unresolved — so it sorted last, putting the origin of the family's migration
+*after* her 1969, below a sea-crossing marker that then fired twice.
+
+The tempting fix was to infer it: China precedes Malaysia, a grandfather precedes his
+granddaughter, so put it first. All true, and all guessed. Undated stops are now shown under
+「年份还没讲」 instead, the same way unplaceable ones sit in a tray.
+
+Same shape as the pin problem: a plausible wrong position is worse than an admitted gap,
+because the gap is the thing that gets the next call to ask her about it.

@@ -67,6 +67,14 @@ def prepare_call(
     entities = repository.load_entities(narrator_id)
     ask = repository.pending_ask(narrator_id)
 
+    # Second resolution alone collides: Live API sessions cap at roughly
+    # fifteen minutes, so a dropped call and its redial can land in the same
+    # second, and the second call's stories would overwrite the first's.
+    conversation_id = (
+        f"conv_{narrator_id}_{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+        f"_{uuid.uuid4().hex[:6]}"
+    )
+
     memory = CallMemory(
         threads=stored.threads,
         entities=entities,
@@ -74,6 +82,11 @@ def prepare_call(
         sensitivities=stored.sensitivities,
         ask=ask,
     )
+
+    def deliver_concern(kind: str, detail: str) -> None:
+        repository.raise_concern(narrator_id, kind, detail, conversation_id)
+
+    memory.on_concern = deliver_concern
 
     plan = build_session_plan(
         threads=stored.threads,
@@ -91,13 +104,6 @@ def prepare_call(
         tools=build_tools(memory),
     )
 
-    # Second resolution alone collides: Live API sessions cap at roughly
-    # fifteen minutes, so a dropped call and its redial can land in the same
-    # second, and the second call's stories would overwrite the first's.
-    conversation_id = (
-        f"conv_{narrator_id}_{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
-        f"_{uuid.uuid4().hex[:6]}"
-    )
     return PreparedCall(
         agent=agent, memory=memory, stored=stored, conversation_id=conversation_id
     )

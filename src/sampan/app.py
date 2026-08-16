@@ -248,11 +248,17 @@ def create_app() -> FastAPI:
             "narrator_id": narrator_id,
             "session_count": memory.session_count,
             "stats": stats(cards, len(entities), memory.session_count).model_dump(),
+            # Surfaced on every view, not tucked into a tab. The agent has
+            # already told her it was passing this on.
+            "concerns": repository.open_concerns(narrator_id),
         }
 
         if view == "map":
             places = _resolve_places(settings, store, cards)
             payload["map"] = build_map(cards, places).model_dump(mode="json")
+            # The journey view needs every story's year to order the stops,
+            # not just the ones grouped under a pin.
+            payload["allStories"] = [c.model_dump() for c in timeline(cards)]
         elif view == "timeline":
             payload["stories"] = [c.model_dump() for c in timeline(cards)]
         else:

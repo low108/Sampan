@@ -70,6 +70,32 @@
   .letterbox summary { cursor: pointer; color: var(--accent); font-size: .9rem; }
   .letter-zh { font-size: 1.08rem; line-height: 1.9; margin: .9rem 0 0; }
   .letter-en { color: #5d554d; margin: .9rem 0 0; }
+  /* The journey. No tiles, no API key, nothing to fail on camera. */
+  .journey { max-width: 42rem; }
+  .stop { display: grid; grid-template-columns: 4rem 2rem 1fr; align-items: start; }
+  .stop .year { text-align: right; padding-right: .9rem; color: var(--muted);
+                font-variant-numeric: tabular-nums; padding-top: .15rem; }
+  .stop .rail { position: relative; height: 100%; min-height: 4.5rem; }
+  .stop .rail::before {
+    content: ""; position: absolute; left: 50%; top: 1rem; bottom: -.4rem;
+    width: 2px; background: var(--line); transform: translateX(-50%);
+  }
+  .stop:last-child .rail::before { display: none; }
+  .stop .node {
+    position: absolute; left: 50%; top: .3rem; width: .7rem; height: .7rem;
+    border-radius: 50%; background: var(--sea); transform: translateX(-50%);
+  }
+  .stop.unsure .node { background: var(--paper); border: 2px solid var(--muted); }
+  /* The crossing: a gap in the rail, because it was one. */
+  .stop.crossing .rail::before {
+    background: none;
+    border-left: 2px dotted var(--line); left: calc(50% - 1px); width: 0;
+  }
+  .stop .body { padding: 0 0 1.6rem .6rem; }
+  .stop h3 { margin: 0; font-size: 1.05rem; }
+  .stop .titles { color: var(--muted); font-size: .85rem; }
+  .sea { color: var(--muted); font-size: .8rem; letter-spacing: .3em;
+         padding: .2rem 0 .6rem .6rem; }
 </style>
 </head>
 <body>
@@ -152,6 +178,60 @@ function renderStories(stories, grouped) {
   return html;
 }
 
+// Her stops in the order she lived them. A geographic projection would put one
+// dot in Fujian and four inside 90km of each other in Perak — legible as a
+// route, illegible as a map.
+function renderJourney(m, stories) {
+  const byPlace = {};
+  for (const s of stories) if (s.where_said) (byPlace[s.where_said] ||= []).push(s);
+
+  const stops = [...m.pins, ...m.unlocated]
+    .map((p) => {
+      const at = byPlace[p.place.raw_name] || p.stories || [];
+      const yrs = at.map((s) => s.year_from || s.year_to).filter(Boolean);
+      return {
+        place: p.place,
+        stories: at,
+        year: yrs.length ? Math.min(...yrs) : null,
+        country: p.place.country || "",
+      };
+    })
+    .filter((s) => s.stories.length)
+    .sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
+
+  // A stop with no year has no place in a route. Putting 阿公坐船南来 at the
+  // end of her life because 「二十几年吧」 could not be resolved would be a
+  // fabricated order — so undated stops are shown separately, the same way
+  // unplaceable ones are.
+  const dated = stops.filter((s) => s.year !== null);
+  const undated = stops.filter((s) => s.year === null);
+
+  let previousCountry = null;
+  const rail = (list) => `<div class="journey">${list.map((s) => {
+    const unsure = ["town", "region", "unknown"].includes(s.place.precision);
+    // A change of country is the crossing. Mark it once, where it happened.
+    const crossed = previousCountry && s.country && s.country !== previousCountry;
+    previousCountry = s.country || previousCountry;
+    const sea = crossed ? `<p class="sea">～ 南海 ～</p>` : "";
+    return `${sea}<div class="stop ${unsure ? "unsure" : ""} ${crossed ? "crossing" : ""}">
+      <div class="year">${s.year || "?"}</div>
+      <div class="rail"><span class="node"></span></div>
+      <div class="body">
+        <h3>${esc(s.place.display_name || s.place.raw_name)}</h3>
+        <div class="titles">
+          ${s.stories.map((x) => esc(x.title)).join(" · ")}
+          ${unsure ? " · <em>待确认</em>" : ""}
+        </div>
+        ${s.place.note ? `<p class="gap">${esc(s.place.note)}</p>` : ""}
+      </div>
+    </div>`;
+  }).join("")}</div>`;
+
+  return `${rail(dated)}
+    ${undated.length ? `<p class="era">年份还没讲 · When not yet told</p>
+       ${rail(undated)}` : ""}`;
+}
+
 function renderMap(m) {
   const pin = (p, provisional) => `<article class="card ${provisional ? "provisional" : ""}">
     <div class="pin ${provisional ? "provisional" : ""}">
@@ -171,7 +251,8 @@ function renderMap(m) {
   const sure = m.pins.filter((p) => !["town", "region"].includes(p.place.precision));
   const maybe = m.pins.filter((p) => ["town", "region"].includes(p.place.precision));
 
-  return `${sure.map((p) => pin(p, false)).join("")}
+  return `<p class="era">每个地方 Every place</p>
+    ${sure.map((p) => pin(p, false)).join("")}
     ${maybe.length ? `<p class="era">待确认 To confirm</p>` : ""}
     ${maybe.map((p) => pin(p, true)).join("")}
     ${m.unlocated.length ? `<p class="era">还找不到的地方 Not yet placed</p>` : ""}
@@ -354,7 +435,7 @@ async function load(view) {
 
   LETTERS = data.letters || {};
   main.innerHTML = view === "map"
-    ? renderMap(data.map)
+    ? renderJourney(data.map, data.allStories || []) + renderMap(data.map)
     : renderStories(data.stories, view === "timeline");
 }
 

@@ -142,14 +142,50 @@ class TestPrivacy:
 
 
 class TestCare:
-    def test_a_concern_is_recorded_and_she_is_told(self, memory: CallMemory) -> None:
-        """The agent is transparent when it flags something. Nothing happens
-        behind her back."""
+    def test_a_concern_reaches_the_family_immediately(self, memory: CallMemory) -> None:
+        """A fall should not wait for her to hang up."""
+        delivered: list[tuple[str, str]] = []
+        memory.on_concern = lambda kind, detail: delivered.append((kind, detail))
+
         result = tool(memory, "flag_concern")("fall", "早上在浴室滑倒")
 
-        assert memory.concerns[0]["kind"] == "fall"
+        assert delivered == [("fall", "早上在浴室滑倒")]
         assert result["family_notified"] is True
-        assert "跟伟伦讲" in result["tell_her"]
+
+    def test_she_is_told_it_was_passed_on(self, memory: CallMemory) -> None:
+        """The agent is transparent when it flags something. Nothing happens
+        behind her back."""
+        memory.on_concern = lambda kind, detail: None
+
+        result = tool(memory, "flag_concern")("fall", "滑倒")
+
+        assert "伟伦" in result["tell_her"]
+
+    def test_it_does_not_claim_delivery_that_did_not_happen(
+        self, memory: CallMemory
+    ) -> None:
+        """Saying it told her family when it did not is a lie to an eighty-
+        year-old about her own safety."""
+
+        def explode(kind: str, detail: str) -> None:
+            raise ConnectionError("firestore down")
+
+        memory.on_concern = explode
+        result = tool(memory, "flag_concern")("pain", "胸口闷")
+
+        assert result["family_notified"] is False
+        assert "伟伦" not in result["tell_her"]
+
+    def test_nor_when_nothing_is_wired_up_at_all(self, memory: CallMemory) -> None:
+        result = tool(memory, "flag_concern")("pain", "胸口闷")
+
+        assert result["family_notified"] is False
+        assert "伟伦" not in result["tell_her"]
+
+    def test_the_concern_is_still_recorded_locally(self, memory: CallMemory) -> None:
+        tool(memory, "flag_concern")("fall", "滑倒")
+
+        assert memory.concerns[0]["kind"] == "fall"
 
     def test_it_keeps_her_on_the_line(self, memory: CallMemory) -> None:
         assert tool(memory, "flag_concern")("pain", "胸口闷")["stay_on_the_line"]
