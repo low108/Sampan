@@ -555,3 +555,33 @@ the microphone button doing nothing and no error anywhere.
 
 **Lesson:** deploy verification has to fetch the things a *user* fetches. An API that answers
 200 tells you the container is alive, not that the product is.
+
+---
+
+## The best stories had no place, and the answer was already in the archive
+
+**2026-08-16.**
+
+Four of eleven stories could not be put on the map — and they were the four
+*best* stories, every one scoring 6/6, including the emotional peak of the whole
+demo: the day her father closed the coffee shop and poured her a cup of Ovaltine
+they could not normally afford, 「他讲，喝了就没有了」.
+
+The reason was mundane. She names places by **relationship, not address**:
+「爸爸的咖啡店」, 「家里」. A geocoder can do nothing with "my father's coffee
+shop", so all four sat in the unlocated tray while the map showed her lesser
+stories.
+
+But she had already said where the shop was — six weeks earlier, in a different
+session: 「一九五八年在怡保开了一间咖啡店,在板底街」. And 板底街 *was* placed, at
+street precision. The two names had simply never been joined.
+
+Linking them requires the same discipline as everything else here: each link
+must carry **her own sentence** as evidence, and links without one are dropped.
+That placed 「爸爸的咖啡店」 and 「line house」 — and correctly refused 「家里」,
+because she never once said which house. Pins went 5 → 7, unlocated 3 → 1.
+
+**Lesson:** before treating a gap as missing data, check whether it is
+*unjoined* data. An archive that accumulates across months will often already
+contain the answer, said in a different conversation, in a form no lookup would
+match.

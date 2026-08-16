@@ -40,6 +40,10 @@ class Place(BaseModel):
     display_name: str = Field(default="", description="What to show on the pin")
     note: str = Field(default="", description="Why it is imprecise, if it is")
     confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+    # Set when this place was placed by linking it to somewhere she named
+    # elsewhere — 「爸爸的咖啡店」 sits on 板底街 because she said so.
+    linked_from: str = ""
+    linked_evidence: str = ""
 
     @property
     def locatable(self) -> bool:
@@ -128,6 +132,131 @@ class GeminiPlaceResolver:
         if parsed is None:
             return [Place(raw_name=name) for name in names]
         return list(parsed.places)
+
+
+LINK_PROMPT = """\
+一位老人家讲自己的故事时,常常不讲地址,只讲关系 ——「爸爸的咖啡店」、「家里」、
+「我们住的地方」。可是她在别的时候,可能已经讲过那个地方在哪里。
+
+下面是她提到过、但定不到位置的地名,以及她已经讲清楚位置的地名。
+请判断:哪些「关系型」的地名,其实指的就是那些已知的地方?
+
+**一定要有根据。** evidence 栏位必须是她自己讲过的一句话,能证明这个关系。
+- ✅ 她讲过「一九五八年在怡保开了一间咖啡店,在板底街」
+     → 「爸爸的咖啡店」 = 板底街
+- ❌ 「家里」大概就是她住的地方吧 —— 这是猜的,不要连
+
+找不到根据就**不要连**。宁可留白,家里人自己会补。
+
+定不到的地名:
+{unknown}
+
+已经知道位置的地名:
+{known}
+
+她讲过的话:
+---
+{transcripts}
+---
+"""
+
+
+class PlaceLink(BaseModel):
+    raw_name: str = Field(description="The relational name, e.g. 爸爸的咖啡店")
+    resolves_to: str = Field(description="A place she named elsewhere")
+    evidence: str = Field(description="Her own sentence proving the link")
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class _Links(BaseModel):
+    links: list[PlaceLink]
+
+
+class GeminiPlaceLinker:
+    """Place a story by what she said elsewhere, never by inference.
+
+    Her best stories name places by relationship — 「爸爸的咖啡店」, 「家里」 —
+    and a geocoder can do nothing with those. But she often gave the address in
+    another session, so the information is already in the archive and only
+    needs joining. Every link must carry the sentence that justifies it.
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        self._cached_client: Any | None = None
+
+    @property
+    def _client(self) -> Any:
+        if self._cached_client is None:
+            from google import genai
+
+            self._cached_client = genai.Client(
+                vertexai=True,
+                project=self._settings.project_id,
+                location=self._settings.vertex_location,
+            )
+        return self._cached_client
+
+    def link(
+        self, unknown: list[str], known: list[Place], transcripts: str
+    ) -> list[PlaceLink]:
+        if not unknown or not known or not transcripts.strip():
+            return []
+        from google.genai import types
+
+        response = self._client.models.generate_content(
+            model=self._settings.archivist_model,
+            contents=LINK_PROMPT.format(
+                unknown="\n".join(f"- {n}" for n in unknown),
+                known="\n".join(
+                    f"- {p.raw_name} ({p.display_name or p.raw_name})" for p in known
+                ),
+                transcripts=transcripts[:60000],
+            ),
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=_Links,
+                temperature=0.0,
+            ),
+        )
+        parsed = response.parsed
+        if parsed is None:
+            return []
+        # A link without her words behind it is a guess, and guesses are what
+        # this whole mechanism exists to avoid.
+        return [
+            link
+            for link in parsed.links
+            if link.evidence.strip() and link.resolves_to in {p.raw_name for p in known}
+        ]
+
+
+def apply_links(places: list[Place], links: list[PlaceLink]) -> list[Place]:
+    """Give linked places the coordinates of the place she named."""
+    by_name = {p.raw_name: p for p in places}
+    out = []
+    for place in places:
+        link = next((x for x in links if x.raw_name == place.raw_name), None)
+        parent = by_name.get(link.resolves_to) if link else None
+        if link is None or parent is None or not parent.locatable:
+            out.append(place)
+            continue
+        out.append(
+            place.model_copy(
+                update={
+                    "lat": parent.lat,
+                    "lng": parent.lng,
+                    # Never more precise than the place it borrowed from.
+                    "precision": parent.precision,
+                    "country": parent.country,
+                    "confidence": min(link.confidence, parent.confidence),
+                    "linked_from": parent.raw_name,
+                    "linked_evidence": link.evidence,
+                    "note": f"她讲过:「{link.evidence}」",
+                }
+            )
+        )
+    return out
 
 
 def split_tray(places: list[Place]) -> tuple[list[Place], list[Place]]:

@@ -175,6 +175,50 @@ def _resolve_places(
     return cached
 
 
+_LINK_CACHE = "_place_links"
+
+
+def _link_relational_places(
+    settings: Settings, store: DocumentStore, narrator_id: str, places: list[Any]
+) -> list[Any]:
+    """Place stories she located by relationship rather than address.
+
+    Her best stories name a place as 「爸爸的咖啡店」 or 「家里」, which no
+    geocoder can touch — but she often gave the address in another session, so
+    the answer is already in the archive and only needs joining. Every link
+    carries the sentence that justifies it; links without one are dropped.
+    """
+    from sampan.places import GeminiPlaceLinker, PlaceLink, apply_links
+
+    unknown = [p.raw_name for p in places if not p.locatable]
+    known = [p for p in places if p.locatable]
+    if not unknown or not known:
+        return places
+
+    cached = store.get(_LINK_CACHE, narrator_id)
+    if cached is not None:
+        links = [PlaceLink.model_validate(x) for x in cached.get("links", [])]
+        return apply_links(places, links)
+
+    if not settings.configured:
+        return places
+
+    repository = Repository(store)
+    transcripts = "\n\n".join(
+        raw.get("transcript", "") for raw in store.list(f"conversations__{narrator_id}")
+    )
+    links: list[Any] = []
+    with contextlib.suppress(Exception):
+        links = GeminiPlaceLinker(settings).link(unknown, known, transcripts)
+    store.put(
+        _LINK_CACHE,
+        narrator_id,
+        {"links": [link.model_dump(mode="json") for link in links]},
+    )
+    _ = repository
+    return apply_links(places, links)
+
+
 async def _publish_affect(
     websocket: WebSocket, memory: CallMemory, state: AffectState
 ) -> None:
@@ -278,6 +322,7 @@ def create_app() -> FastAPI:
 
         if view == "map":
             places = _resolve_places(settings, store, cards)
+            places = _link_relational_places(settings, store, narrator_id, places)
             payload["map"] = build_map(cards, places).model_dump(mode="json")
             # The journey view needs every story's year to order the stops,
             # not just the ones grouped under a pin.
