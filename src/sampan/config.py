@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # are not available in every location, and story data stays in asia-southeast1
     # regardless of where inference runs.
     vertex_location: str = Field(default="global", alias="SAMPAN_VERTEX_LOCATION")
+    # The Live API is served from a different set of regions than the text
+    # models, and native audio is not offered at `global`. Verified by probing:
+    # global/gemini-live-2.5-flash works, us-central1/…-native-audio works,
+    # and the Gemini API's model names do not exist on Vertex at all.
+    live_location: str = Field(default="us-central1", alias="SAMPAN_LIVE_LOCATION")
     firestore_database: str = Field(default="(default)", alias="FIRESTORE_DATABASE")
 
     # --- Models -----------------------------------------------------------
@@ -35,7 +40,7 @@ class Settings(BaseSettings):
     )
     affect_model: str = Field(default="gemini-3.7-flash", alias="SAMPAN_AFFECT_MODEL")
     live_model: str = Field(
-        default="gemini-3.1-flash-live-preview", alias="SAMPAN_LIVE_MODEL"
+        default="gemini-live-2.5-flash-native-audio", alias="SAMPAN_LIVE_MODEL"
     )
 
     # --- Auth -------------------------------------------------------------
@@ -60,3 +65,27 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+def apply_genai_env(settings: Settings | None = None) -> None:
+    """Export the variables ADK's internal genai client reads.
+
+    ADK constructs its own `genai.Client` from the environment and never sees a
+    settings object, so configuration has to be pushed to it rather than passed.
+    Without this it looks for a Gemini API key and fails with a message about
+    api-key docs, which points nowhere near the actual problem.
+
+    Note the location split: models are served from `vertex_location`, while
+    story data stays in `location`. ADK only cares about the former.
+    """
+    import os
+
+    settings = settings or get_settings()
+    if not settings.configured:
+        return
+
+    os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
+    os.environ.setdefault("GOOGLE_CLOUD_PROJECT", settings.project_id)
+    # ADK is only used for the live loop, so this is the live region. The
+    # Archivist builds its own client and passes `vertex_location` explicitly.
+    os.environ["GOOGLE_CLOUD_LOCATION"] = settings.live_location

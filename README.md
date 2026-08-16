@@ -12,9 +12,15 @@ Built for the **All Things Agentic Hackathon** — Collaborative Partner track.
 
 ## Status
 
-Early. Ticket 1 of 20 (`docs/spec-p0.md`, `docs/build-plan.md`) — the walking skeleton: a
-deployable service that proves the Firestore round trip and refuses unauthenticated traffic.
-The Companion voice agent and the Archivist pipeline land on top of this.
+The data spine is complete and the voice loop works end to end.
+
+- **Archivist** (tickets 2-6): transcript → scored stories, entity graph, threads with the
+  interrupted/tired distinction, anchors resolving relative time, and the learned preference
+  layer. Gate 1 passes: 36 integration tests over four chained sessions against the real model.
+- **Companion** (ticket 10): browser mic → Cloud Run WebSocket → ADK → Live API → native audio
+  back, with the affect-monitor audio fork in place.
+
+Next: Companion tools, the session opener, and the affect monitor.
 
 ## Documents
 
@@ -110,11 +116,16 @@ matters most: the 300s default kills calls mid-story and looks like a Live API b
 
 ## Models
 
-| Role | Model |
-|---|---|
-| Voice | `gemini-3.1-flash-live-preview` |
-| Archivist (extraction) | `gemini-3.7-flash` |
-| Affect monitor | `gemini-3.7-flash` |
+| Role | Model | Region |
+|---|---|---|
+| Voice | `gemini-live-2.5-flash-native-audio` | `us-central1` |
+| Archivist (extraction) | `gemini-3.7-flash` | `global` |
+| Affect monitor | `gemini-3.7-flash` | `global` |
+
+Three regions, each for a different reason: story data lives in `asia-southeast1` (PDPA),
+text models are served from `global`, and the Live API's native-audio model is only available
+from `us-central1`. Verified by probing — see `FINDINGS.md`; the documented model names do not
+all exist on Vertex.
 
 The hackathon requires Gemini 3.5 or newer. No Live dialog model currently meets that bar, so
 the requirement is satisfied by the Archivist and affect monitor running on 3.7 — stated here

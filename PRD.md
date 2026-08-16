@@ -532,6 +532,11 @@ The hackathon requires **Gemini 3.5 or newer**. The available Live dialog models
 **`gemini-3.7-flash`**. The requirement is satisfied via 3.7, and this is **stated explicitly
 in the submission write-up** rather than left for a judge to work out.
 
+**Confirmed by probing (2026-08-16):** `gemini-3.1-flash-live-preview` does not exist on
+Vertex; `gemini-live-2.5-flash-native-audio` is served from `us-central1` but not `global`.
+The Live API therefore runs in its own region, separate from both the text models (`global`)
+and the story data (`asia-southeast1`).
+
 Note: `gemini-3.5-flash` exists but is documented as legacy. There is no GA Gemini 3.x Pro text
 model. The Gemini 2.5 family retires 2026-10-16 — irrelevant to this build, relevant to anyone
 continuing it.

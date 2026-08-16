@@ -74,6 +74,68 @@ her own 「坐船来的,槟城上岸」, and 一九六九年咖啡店结业 corr
 way. Anchor such fields to the source text, and say plainly that empty is an acceptable answer
 — otherwise "always filled" is indistinguishable from "always fabricated".
 
+## ADK builds its own genai client from the environment and never sees your config
+
+**2026-08-16, ticket 10.**
+
+The first attempt at a live session failed with:
+
+> `ValueError: No API key was provided. Please pass a valid API key. Learn how to create an
+> API key at https://ai.google.dev/gemini-api/docs/api-key`
+
+The project was configured, credentials were fine, and the Archivist had been calling Vertex
+successfully for days. The message points at the Gemini API — a completely different product
+— and says nothing about the actual cause: **ADK constructs its own `genai.Client` from
+environment variables** and has no way to receive a settings object. Without
+`GOOGLE_GENAI_USE_VERTEXAI=true` it defaults to the Gemini API and looks for a key that was
+never going to exist.
+
+Configuration has to be *pushed* to ADK rather than passed. `apply_genai_env()` exports what
+it reads, and is called at app startup.
+
+## The Live API's model names and regions are not the ones in the docs
+
+**2026-08-16, ticket 10.**
+
+Research said the Gemini API offers `gemini-3.1-flash-live-preview` and Google Cloud offers a
+GA `gemini-live-2.5-flash-native-audio`. Both true, and neither directly usable: the first
+does not exist on Vertex at all, and the second is not served from `global`. Probing:
+
+| Location | Model | |
+|---|---|---|
+| `global` | `gemini-3.1-flash-live-preview` | ✗ no such publisher model |
+| `global` | `gemini-live-2.5-flash-native-audio` | ✗ |
+| `global` | `gemini-live-2.5-flash` | ✓ |
+| `us-central1` | `gemini-live-2.5-flash-native-audio` | ✓ |
+| `us-central1` | `gemini-2.0-flash-live-preview-04-09` | ✗ |
+
+So the Live API needs its **own region**, separate from the text models: native audio at
+`us-central1`, while the Archivist runs `gemini-3.7-flash` at `global`. Three regions in total
+once the Firestore data region is counted, each for a different reason.
+
+This also confirms empirically what the hackathon-compliance note in PRD §9.2 assumed: the
+best available Live dialog model is 2.5, below the required 3.5, so compliance rests on the
+Archivist and affect monitor running 3.7.
+
+**Lesson:** for preview-tier model availability, a five-line probe beats any documentation.
+Write it once and keep it.
+
+## ADK's `run_live` generator cannot be left early
+
+**2026-08-16, ticket 10.**
+
+`break`, `return` or `cancel` inside `async for event in runner.run_live(...)` produces:
+
+> `RuntimeError: generator didn't stop after athrow()`
+
+followed by orphaned pending tasks. This is not an edge case — **a browser disconnect does
+exactly that on every call**, so the naive implementation raises on every hang-up.
+
+The correct shape is to never leave the loop: close the `LiveRequestQueue` and let the
+generator wind down on its own. `pump` closes the queue when the client goes away and
+suppresses that specific RuntimeError for the cases where the generator still cannot finish
+cleanly, while letting any other RuntimeError through.
+
 ## Give the model the vocabulary, or nothing downstream can unify its labels
 
 **2026-08-16, ticket 6.**

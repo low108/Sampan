@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sampan</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2rem; padding: 2rem;
+    font-family: system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    background: #faf7f2; color: #2b2622;
+  }
+  h1 { font-size: 2rem; font-weight: 500; margin: 0; }
+  p.sub { font-size: 1.25rem; color: #6b625a; margin: 0; text-align: center; }
+  /* Elderly-first: large target, high contrast, no small text anywhere. */
+  button {
+    width: 15rem; height: 15rem; border-radius: 50%; border: none;
+    font-size: 2.25rem; font-family: inherit; color: #fff; background: #b4552d;
+    cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  }
+  button:active { transform: scale(.98); }
+  button[data-live="true"] { background: #3f6b52; }
+  button:disabled { background: #b0a89f; cursor: default; }
+  #log {
+    width: min(40rem, 100%); min-height: 6rem; font-size: 1.25rem; line-height: 1.7;
+    background: #fff; border-radius: .75rem; padding: 1.25rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); white-space: pre-wrap;
+  }
+  .muted { color: #8a8078; }
+</style>
+</head>
+<body>
+  <h1>小船</h1>
+  <p class="sub">按一下,就可以开始讲</p>
+  <button id="talk">讲话</button>
+  <div id="log" class="muted">还没开始</div>
+
+<script>
+const SAMPLE_RATE_IN = 16000;
+const talk = document.getElementById("talk");
+const log = document.getElementById("log");
+
+let ws, ctx, node, stream, live = false;
+let playAt = 0, playCtx;
+
+const key = new URLSearchParams(location.search).get("key") || "";
+
+function say(text, muted = false) {
+  log.textContent = text;
+  log.className = muted ? "muted" : "";
+}
+
+// The model returns 24 kHz PCM; queue chunks end to end so speech is smooth.
+function playPcm(bytes, rate) {
+  playCtx ||= new AudioContext();
+  const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+  const buf = playCtx.createBuffer(1, pcm.length, rate);
+  const channel = buf.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 32768;
+  const src = playCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(playCtx.destination);
+  playAt = Math.max(playAt, playCtx.currentTime);
+  src.start(playAt);
+  playAt += buf.duration;
+}
+
+async function start() {
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+  });
+
+  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/talk?key=${encodeURIComponent(key)}`);
+  ws.binaryType = "arraybuffer";
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.audio) {
+      playPcm(Uint8Array.from(atob(msg.audio), (c) => c.charCodeAt(0)), msg.sample_rate || 24000);
+    }
+    if (msg.user_transcript) say("你: " + msg.user_transcript);
+    if (msg.agent_transcript) say("小船: " + msg.agent_transcript);
+    if (msg.interrupted) playAt = 0;
+  };
+
+  ws.onclose = () => stop("讲完了");
+  ws.onerror = () => stop("连不上");
+
+  ctx = new AudioContext({ sampleRate: SAMPLE_RATE_IN });
+  await ctx.audioWorklet.addModule("worklet.js");
+  node = new AudioWorkletNode(ctx, "pcm-capture");
+  node.port.onmessage = (e) => {
+    if (ws?.readyState === WebSocket.OPEN) ws.send(e.data);
+  };
+  ctx.createMediaStreamSource(stream).connect(node);
+  node.connect(ctx.destination);
+
+  live = true;
+  talk.dataset.live = "true";
+  talk.textContent = "讲完了";
+  say("我在听……");
+}
+
+function stop(message = "讲完了") {
+  live = false;
+  talk.dataset.live = "false";
+  talk.textContent = "讲话";
+  say(message, true);
+  ws?.close(); ctx?.close(); playCtx?.close();
+  stream?.getTracks().forEach((t) => t.stop());
+  ws = ctx = playCtx = stream = null;
+  playAt = 0;
+}
+
+talk.onclick = async () => {
+  if (live) return stop();
+  talk.disabled = true;
+  try { await start(); }
+  catch (err) { say("开不了麦克风:" + err.message, true); }
+  finally { talk.disabled = false; }
+};
+</script>
+</body>
+</html>
