@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sampan</title>
+<title>小船 Sampan</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#b4552d">
+<link rel="icon" href="icon.svg">
 <style>
   :root { color-scheme: light; }
   body {
@@ -46,6 +49,23 @@
   .pill.alert { background: #8b2f2f; }
   #overlay .knob { color: #a89a89; }
   #overlay .tool { color: #9fc0aa; }
+  /* An incoming call, as close as a PWA is allowed to get. */
+  #incoming {
+    position: fixed; inset: 0; background: #3f6b52; color: #fff; z-index: 10;
+    display: none; flex-direction: column; align-items: center;
+    justify-content: center; gap: 1.5rem; padding: 2rem; text-align: center;
+  }
+  #incoming.on { display: flex; animation: breathe 2s ease-in-out infinite; }
+  @keyframes breathe { 50% { background: #4a7a5e; } }
+  #incoming .who { font-size: 2.6rem; font-weight: 500; }
+  #incoming .what { font-size: 1.4rem; opacity: .9; }
+  #incoming button {
+    width: 11rem; height: 11rem; font-size: 1.8rem; background: #fff; color: #3f6b52;
+  }
+  #incoming .later {
+    width: auto; height: auto; font-size: 1.15rem; background: none;
+    color: #d8e6dc; box-shadow: none; text-decoration: underline;
+  }
 </style>
 </head>
 <body>
@@ -53,6 +73,13 @@
   <p class="sub">按一下,就可以开始讲</p>
   <button id="talk">讲话</button>
   <div id="log" class="muted">还没开始</div>
+
+  <div id="incoming">
+    <p class="what">有人找你</p>
+    <p class="who" id="caller">—</p>
+    <button id="answer">接</button>
+    <button class="later" id="later">等一下再说</button>
+  </div>
 
   <div id="overlay">
     <h4>小船 · state</h4>
@@ -164,6 +191,39 @@ function stop(message = "讲完了") {
   playAt = 0;
 }
 
+// A PWA cannot ring. What it can do is notice, the moment she opens it, that
+// her son left something — and lead with his voice rather than the agent's.
+let pendingVoice = null;
+
+async function checkPending() {
+  try {
+    const res = await fetch(`/api/talk/ah_khim/pending`, { headers: { "X-Sampan-Key": key } });
+    if (!res.ok) return;
+    const p = await res.json();
+    if (!p.waiting) return;
+    pendingVoice = p.voice_note || null;
+    document.getElementById("caller").textContent =
+      p.relation ? `${p.from_name}(${p.relation})` : p.from_name;
+    document.getElementById("incoming").classList.add("on");
+    if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
+  } catch { /* offline is not an error worth showing her */ }
+}
+
+document.getElementById("later").onclick = () =>
+  document.getElementById("incoming").classList.remove("on");
+
+document.getElementById("answer").onclick = async () => {
+  document.getElementById("incoming").classList.remove("on");
+  // His voice first. The agent explains itself afterwards.
+  if (pendingVoice) {
+    const a = new Audio(pendingVoice);
+    say("……");
+    await a.play().catch(() => {});
+    await new Promise((r) => { a.onended = r; setTimeout(r, 12000); });
+  }
+  talk.click();
+};
+
 talk.onclick = async () => {
   if (live) return stop();
   talk.disabled = true;
@@ -171,6 +231,8 @@ talk.onclick = async () => {
   catch (err) { say("开不了麦克风:" + err.message, true); }
   finally { talk.disabled = false; }
 };
+
+checkPending();
 </script>
 </body>
 </html>

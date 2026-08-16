@@ -1,0 +1,17 @@
+{
+  "name": "小船 Sampan",
+  "short_name": "小船",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf7f2",
+  "theme_color": "#b4552d",
+  "lang": "zh-Hans",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

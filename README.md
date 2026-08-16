@@ -104,8 +104,14 @@ while recording the demo, and put it back to `0` immediately after. Set a billin
 Browser ──WebSocket──> Cloud Run (FastAPI + ADK) ──> Gemini Live API
                             │
                             ├── audio fork ──> affect monitor (Gemini 3.7 Flash)
-                            └── Pub/Sub ──> Archivist job ──> Firestore
+                            └── on hang-up ──> Archivist ──> Firestore
 ```
+
+The Archivist runs in a worker thread once the socket closes, not via Pub/Sub. The call is
+over for her the moment she hangs up, so extraction never holds the connection — but it is
+in-process, which means a crash between hang-up and write loses that call's extraction. The
+transcript is stored first, so nothing she said is lost and the call can be re-extracted.
+Pub/Sub is the right answer at any real volume and is deliberately not built (`PRD.md` §6).
 
 ADK is server-side and has no client-direct path, so the browser cannot connect to the Live
 API itself — doing so would remove ADK entirely, taking tools, sessions and the audio fork

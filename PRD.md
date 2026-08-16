@@ -530,7 +530,7 @@ available; it is simply not needed at seed scale).
 | Affect monitor | **`gemini-3.7-flash`** (or `-lite`) | Side-channel over forked audio, every 90s–3min |
 | Agent framework | **Google ADK (Python)** | `run_live` bidi streaming; satisfies the framework requirement |
 | State & graph | **Firestore** | Stories, entities, threads, asks, profiles |
-| Async orchestration | **Pub/Sub** + Cloud Run job | Call-ended event triggers the Archivist |
+| Async orchestration | **In-process worker thread** | Runs on hang-up. Pub/Sub is correct at volume and is a documented gap (§16) |
 | Hosting | **Cloud Run** | Backend only in P0; frontend served locally |
 | Geocoding / map | **Geocoding API** + Maps JavaScript API | |
 | Memory Bank | **Agent Engine Memory Bank** (GA) | P1 |
@@ -739,7 +739,11 @@ than transcribed from footage.
    steered mid-session (§7.5), so the agent's behaviour changes at the start of each call
    rather than turn by turn as she tires. Native affective dialog covers some of the gap; how
    much is unmeasured.
-8. **Affect discrimination is verified on synthesised speech, not elderly speech.** Controlled
+8. **Four P0 items are not built.** Web Push (so her phone cannot alert her when the app is
+   closed — she sees the call screen on opening it), Pub/Sub (the Archivist runs in-process on
+   hang-up), the 22:00–08:00 DND queue, and a geographic map (the journey view renders her
+   stops as a route instead).
+9. **Affect discrimination is verified on synthesised speech, not elderly speech.** Controlled
    TTS deliveries were correctly separated, including the sad-engaged versus sad-withdrawing
    pair. Thresholds for real elderly prosody — tremor, genuine fatigue curve, age-related
    pitch change — remain unvalidated.

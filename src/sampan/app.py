@@ -354,6 +354,26 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=result.reason)
         return result.model_dump()
 
+    @app.get("/api/talk/{narrator_id}/pending", dependencies=[Depends(require_api_key)])
+    def pending_for_her(
+        narrator_id: str, store: Annotated[DocumentStore, Depends(get_store)]
+    ) -> dict[str, Any]:
+        """Whether someone has left her something.
+
+        Her phone cannot truly ring — a PWA has no access to a full-screen
+        incoming call (PRD 9.4). So the app asks, and if her son has left a
+        question it shows his name and plays his voice.
+        """
+        ask = Repository(store).pending_ask(narrator_id)
+        if ask is None:
+            return {"waiting": False}
+        return {
+            "waiting": True,
+            "from_name": ask.from_name,
+            "relation": ask.relation,
+            "voice_note": ask.voice_note_url,
+        }
+
     @app.websocket("/ws/talk")
     async def talk(websocket: WebSocket) -> None:
         """One call.
