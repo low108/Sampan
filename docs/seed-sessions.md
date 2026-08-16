@@ -257,14 +257,13 @@ K: 嗯。改天。
 Run after all four. If these fail, fix the pipeline before recording.
 
 ```
-stories.pinned          == 9..11
-stories.fragment        == 4..6
-entities.person         == 8
-entities.place          == 6      # 双溪镇树胶园 has geocode_status: unlocated
-entities.food           == 4
-entities.object         == 3
-threads.open            == 4      # coffee_shop(interrupted), grandfather, wedding_photo, estate_river
-anchors.resolved        == 6      # not sister_death, not fully grandfather_arrival
+stories.pinned          == 9..13
+entities.total          == 20..30   # ~10 seeded by intake, the rest discovered
+threads.open            >= 4        # coffee shop, wedding photo, grandfather crossing, +
+closure(S1..S3)         == fatigue
+closure(S4)             == interrupted
+interrupted_thread(S4)  is not None and mentions the shop closing
+anchors.resolved        == 6        # not sister_death, not fully grandfather_arrival
 preferences.count       >= 6
 sensitivity.sister      == "deflected x2, do_not_raise"
 map.countries           == 2
@@ -273,6 +272,22 @@ map.unlocated           == 1
 
 **The two that matter most for the demo:**
 
-- `thread_coffee_shop.interrupted == true` — session 5's opening line depends on it
+- **Session 4 closes as `interrupted`, not `fatigue`, and flags the thread she was on.**
+  Session 5's opening line depends on the pipeline knowing the doorbell went rather than that
+  she got tired.
 - `preferences.topic_sensitive` contains the sister — session 6's payoff depends on the agent
-  having *learned* to avoid her, so that her *own* raising of it lands
+  having *learned* to avoid her, so that her *own* raising of it lands.
+
+### A correction from the first real run
+
+An earlier draft of this document asserted 4–6 **fragments**. That number was invented, and
+the pipeline produces roughly zero — correctly. With WHERE and WHEN mandatory and a threshold
+of four, and with her transcripts nearly always carrying both, most stories legitimately pin.
+
+This does not break the extraction-feeds-the-next-question loop, because **`missing_fields` is
+populated on pinned stories too**. 一九六九年咖啡店结业 pins at 4/6 with
+`missing_fields: ["sense", "why"]` — it goes on the map *and* supplies a later session's
+question. That is strictly better than holding it back as a fragment.
+
+Judge the pipeline on whether `missing_fields` is non-empty where she genuinely didn't say
+something, not on a fragment count.

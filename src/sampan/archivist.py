@@ -17,7 +17,18 @@ from pydantic import BaseModel
 
 from sampan.config import Settings
 from sampan.entities import Resolution, Tiebreaker, resolve_mentions
-from sampan.models import Entity, EntityMention, ScoredStory, StoryCandidate, assess
+from sampan.models import (
+    Closure,
+    ClosureReason,
+    Entity,
+    EntityMention,
+    ScoredStory,
+    StoryCandidate,
+    Thread,
+    ThreadUpdate,
+    assess,
+)
+from sampan.threads import fold_threads, open_threads
 
 EXTRACTION_PROMPT = """\
 你是一位口述历史记录员。下面是一位老人家和陪伴她聊天的助手之间的对话记录。
@@ -27,7 +38,13 @@ EXTRACTION_PROMPT = """\
 什么算一个故事:
 - 有开头有结尾的一件事,不是笼统的感想
 - 「我小时候很穷」不是故事;「我们吃白饭配酱油,妈妈说她已经吃过了」是故事
-- 一次对话通常有 1 到 4 个故事。宁可少,不要硬凑
+
+**讲了一半的也要列出来。** 她提起了一件事,可是没讲完、没讲清楚是什么时候、
+在哪里、或者被打断了 —— 这些一样要列进去,把不知道的栏位留空就好。
+这些「碎片」很重要:下次聊天的时候,就是靠这些空栏位知道要问她什么。
+
+所以一次对话通常有 2 到 6 个 story:讲完整的,加上讲了一半的。
+只有一点要守住:**不要编造**。她没讲的就留空,不要用猜的填满。
 
 每个故事请尽量填齐这几样,但**绝对不要编造**。她没讲的就留空:
 - where: 地点,用她自己讲的名字
@@ -36,9 +53,18 @@ EXTRACTION_PROMPT = """\
   precision 用 relative 或 era
 - who: 出现的人,用她称呼的方式(「我姐姐」、「阿水」)
 - what: 发生了什么事
-- sense_detail: **最重要的一项**。**一个**具体的感官细节 —— 一种味道、
-  一个声音、一个画面。只要一个,不要列一串。
-  这是「事实」和「故事」的分别。找不到就留空,不要用形容词凑
+- sense_detail: **最重要的一项,也最容易做错**。
+  必须是**她自己讲出来的**一个具体感官细节 —— 一种味道、一个声音、
+  一样看得到摸得到的东西。要能从对话里指出是哪一句。
+  只要一个,不要列一串。
+
+  ✅ 「缝纫机咔嗒咔嗒的声音」—— 她讲过这个声音
+  ✅ 「白饭配酱油」—— 她讲过吃什么
+  ❌ 「南渡的画面」「艰苦的岁月」—— 这是你替她总结的,不是她讲的
+  ❌ 把这个故事的事实换句话说,再加上「的画面」「的情景」
+
+  简单的检查:如果这一句是你归纳出来的,而不是她说的,就**留空**。
+  留空完全没关系 —— 下次聊天就会问她。硬凑一个反而毁了这个栏位。
 - why_it_matters: 为什么这件事留在她心里
 - narrative: 80-150 字,用第一人称,尽量用她原本的用词
 - verbatim_quotes: 她的原话,一两句
@@ -60,6 +86,24 @@ sensitivity 标 sensitive 的情况:钱、跟在世亲人的冲突、健康、
 - role: 只有人才填 —— father, mother, elder_sister, husband, son, neighbour 等
 - detail: 她讲过关于这个人/地方/东西的事,一句话就好
 
+threads —— 这次对话里「讲了但还没讲完」的话题:
+- topic: 短短一个标题,例如「爸爸的咖啡店」
+- action: opened(第一次提起)/ advanced(接着上次讲)/ closed(讲完了)
+- left_off_at: 她还没讲到的部分。下次就是从这里接下去,所以要具体
+
+closure —— 这次对话是怎么结束的。**这一项很重要**:
+- reason:
+  - interrupted: 外面的事打断了(有人按门铃、电话响、有人来找她)
+  - fatigue: 她累了、想休息、话变短了
+  - natural: 讲完了,自然结束
+  - refused: 她不想讲
+  - unknown: 看不出来
+- evidence: 对话里显示出来的那一句
+- active_topic: 结束的时候她正在讲哪个话题
+
+interrupted 和 fatigue 一定要分清楚。被打断表示她话讲到一半、还想讲;
+累了表示今天到此为止。下次开场要怎么讲,就看这一项。
+
 对话记录:
 ---
 {transcript}
@@ -70,6 +114,8 @@ sensitivity 标 sensitive 的情况:钱、跟在世亲人的冲突、健康、
 class ExtractionResponse(BaseModel):
     stories: list[StoryCandidate]
     entity_mentions: list[EntityMention] = []
+    threads: list[ThreadUpdate] = []
+    closure: Closure = Closure(reason=ClosureReason.UNKNOWN)
 
 
 class ConversationOutcome(BaseModel):
@@ -82,6 +128,8 @@ class ConversationOutcome(BaseModel):
     stories: list[ScoredStory]
     entities: list[Entity] = []
     resolutions: list[Resolution] = []
+    threads: list[Thread] = []
+    closure: Closure = Closure(reason=ClosureReason.UNKNOWN)
 
     @property
     def pinned(self) -> list[ScoredStory]:
@@ -95,6 +143,15 @@ class ConversationOutcome(BaseModel):
     def new_entities(self) -> list[Entity]:
         new_ids = {r.entity_id for r in self.resolutions if r.created}
         return [e for e in self.entities if e.entity_id in new_ids]
+
+    @property
+    def open_threads(self) -> list[Thread]:
+        return open_threads(self.threads)
+
+    @property
+    def interrupted_thread(self) -> Thread | None:
+        """What she was cut off mid-way through. The next call's opener."""
+        return next((t for t in self.threads if t.interrupted), None)
 
 
 class StoryExtractor(Protocol):
@@ -151,7 +208,8 @@ def ingest_conversation(
     extractor: StoryExtractor,
     *,
     known_entities: list[Entity] | None = None,
-    conversation_id: str | None = None,
+    known_threads: list[Thread] | None = None,
+    conversation_id: str = "conv_unknown",
     tiebreaker: Tiebreaker | None = None,
 ) -> ConversationOutcome:
     """Turn a finished conversation into structured memory.
@@ -174,4 +232,11 @@ def ingest_conversation(
         stories=[assess(c) for c in extracted.stories],
         entities=resolution.entities,
         resolutions=resolution.resolutions,
+        threads=fold_threads(
+            known_threads or [],
+            extracted.threads,
+            extracted.closure,
+            conversation_id=conversation_id,
+        ),
+        closure=extracted.closure,
     )

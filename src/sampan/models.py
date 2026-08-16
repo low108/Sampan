@@ -210,6 +210,74 @@ def kin_role(surface_form: str) -> str | None:
     return KIN_ROLES.get(normalise(surface_form))
 
 
+class ThreadStatus(StrEnum):
+    OPEN = "open"
+    CLOSED = "closed"
+
+
+class ThreadAction(StrEnum):
+    OPENED = "opened"
+    ADVANCED = "advanced"
+    CLOSED = "closed"
+
+
+class ClosureReason(StrEnum):
+    """Why the conversation ended.
+
+    The distinction that matters is INTERRUPTED versus FATIGUE. If the doorbell
+    went, she was mid-story and wants to come back to it. If she was tired, the
+    story is finished for now and reopening it reads as nagging.
+    """
+
+    NATURAL = "natural"
+    FATIGUE = "fatigue"
+    INTERRUPTED = "interrupted"
+    REFUSED = "refused"
+    UNKNOWN = "unknown"
+
+
+class Closure(BaseModel):
+    """How this conversation ended, and on what."""
+
+    reason: ClosureReason
+    evidence: str = Field(
+        default="", description="The line in the transcript that shows it"
+    )
+    active_topic: str = Field(
+        default="", description="What she was talking about when it ended"
+    )
+
+
+class ThreadUpdate(BaseModel):
+    """One thread's movement in a single conversation."""
+
+    topic: str = Field(description="Short label, e.g. 爸爸的咖啡店")
+    action: ThreadAction
+    left_off_at: str = Field(
+        default="",
+        description="What she had not told yet. Becomes the next opener.",
+    )
+
+
+class Thread(BaseModel):
+    """An unfinished story, carried between sessions.
+
+    The highest-value thing the agent can open a call with, and the cheapest
+    memory feature to build: 「上次讲到一半,隔壁的来按门铃」.
+    """
+
+    thread_id: str
+    topic: str
+    status: ThreadStatus = ThreadStatus.OPEN
+    # Set only when the conversation was cut short from outside, never when she
+    # simply tired. Drives whether the next opener reopens this thread.
+    interrupted: bool = False
+    left_off_at: str = ""
+    opened_in: str | None = None
+    last_touched: str | None = None
+    touch_count: int = 0
+
+
 class Completeness(BaseModel):
     """The pinnability rubric, computed rather than guessed at by the model."""
 

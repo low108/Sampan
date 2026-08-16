@@ -50,6 +50,48 @@ lamp. The constraint is what makes it a story instead of an inventory.
 **Lesson:** structured output guarantees the *shape*, never the *judgement*. Any field whose
 value is a decision rather than a transcription needs the decision procedure written out.
 
+## A model will satisfy a qualitative field by paraphrasing the answer back at you
+
+**2026-08-16, ticket 4.**
+
+`sense_detail` is the field the whole product leans on — the difference between 「我们很穷」
+and 「我们吃白饭配酱油,妈妈说她已经吃过了」. Asking for "one concrete sensory detail" got it
+filled every single time, which looked like success until the values were read:
+
+> `sense_detail: '从福建永春坐船在槟城上岸的迁徙画面'`
+> *("the scene of migrating from Yongchun and landing at Penang")*
+
+She never described a boat, the sea, or anything she perceived. The model restated the story's
+own facts and appended 「的画面」 — *the scene of*. A fact wearing a sensory costume. It passed
+every structural check: non-empty, one item, on topic.
+
+What fixed it was demanding **quotability** rather than describing the quality wanted: it must
+be something she said, pointable to a line in the transcript, plus worked examples of the
+failure mode, plus explicit permission to leave it empty. After that, 阿公坐船到槟城 returned
+her own 「坐船来的,槟城上岸」, and 一九六九年咖啡店结业 correctly returned **nothing at all**.
+
+**Lesson:** a field a model can satisfy by rephrasing its own output will be satisfied that
+way. Anchor such fields to the source text, and say plainly that empty is an acceptable answer
+— otherwise "always filled" is indistinguishable from "always fabricated".
+
+## An invented target number nearly caused a real regression
+
+**2026-08-16, ticket 4.**
+
+`docs/seed-sessions.md` asserted the seed run should produce "4-6 fragments". The pipeline
+produced zero, and the reflex was to loosen the pinning rule until the number matched.
+
+The number was invented when the document was written, with no run behind it. With WHERE and
+WHEN mandatory at a threshold of four, and her transcripts nearly always carrying both, almost
+every story legitimately pins — and the extraction-feeds-the-next-question loop works anyway,
+because `missing_fields` is populated on *pinned* stories too. 一九六九年咖啡店结业 pins at
+4/6 with `["sense", "why"]`: it reaches the map *and* supplies a later question. Strictly
+better than withholding it.
+
+The document was corrected to match the pipeline. **Planning documents written before any code
+contain guesses stated in the same tone as requirements**, and the tone is not a reliable
+guide to which is which.
+
 ## Date inference across a transcript works better than expected
 
 **2026-08-16, ticket 2.**
