@@ -45,6 +45,7 @@ from sampan.household import (
 )
 from sampan.live import open_session, pump
 from sampan.models import AffectState, Ask
+from sampan.notifications import mark_seen, notifications_for, unseen_count
 from sampan.places import GeminiPlaceResolver
 from sampan.quiet import is_quiet
 from sampan.repository import Repository
@@ -66,6 +67,10 @@ class Health(BaseModel):
 # longer, and the cap is here so nobody discovers the 1MB document limit in
 # production.
 MAX_VOICE_NOTE_CHARS = 700_000
+
+
+class SeenRequest(BaseModel):
+    ids: list[str] = Field(default_factory=list)
 
 
 class AboutRequest(BaseModel):
@@ -342,6 +347,34 @@ def create_app() -> FastAPI:
         # not something that happens because they were curious out loud.
         payload["can_ask_her"] = bool(answer.follow_up)
         return payload
+
+    @app.get("/api/bell/{viewer_id}", dependencies=[Depends(require_api_key)])
+    def bell(
+        viewer_id: str, store: Annotated[DocumentStore, Depends(get_store)]
+    ) -> dict[str, Any]:
+        """What this person should see when they open the bell."""
+        repository = Repository(store)
+        items = notifications_for(repository, viewer_id, list_members(repository))
+        return {
+            "unseen": unseen_count(items),
+            "notifications": [n.model_dump(mode="json") for n in items],
+        }
+
+    @app.post("/api/bell/{viewer_id}/seen", dependencies=[Depends(require_api_key)])
+    def bell_seen(
+        viewer_id: str,
+        body: SeenRequest,
+        store: Annotated[DocumentStore, Depends(get_store)],
+    ) -> dict[str, Any]:
+        repository = Repository(store)
+        # Expand groups: dismissing 「讲了 11 个新故事」 must settle all eleven.
+        items = notifications_for(repository, viewer_id, list_members(repository))
+        expanded = list(body.ids)
+        for item in items:
+            if item.id in body.ids:
+                expanded.extend(item.covers)
+        mark_seen(repository, viewer_id, expanded)
+        return {"ok": True, "settled": len(expanded)}
 
     @app.get("/api/household", dependencies=[Depends(require_api_key)])
     def household(
