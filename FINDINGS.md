@@ -505,3 +505,25 @@ granddaughter, so put it first. All true, and all guessed. Undated stops are now
 
 Same shape as the pin problem: a plausible wrong position is worse than an admitted gap,
 because the gap is the thing that gets the next call to ask her about it.
+
+---
+
+## The same crowding problem recurs at every zoom level
+
+**2026-08-16, geographic view.**
+
+The argument against a conventional map was that her pins are one dot in Fujian at 25°N and
+four inside ninety kilometres of each other in Perak — illegible at any single scale. So the
+SVG map got a Perak inset.
+
+At inset scale, three of those four pins landed on **the same coordinate**: 板底街, the room
+above the shop, and the railway station where the wedding photo was taken are a few hundred
+metres apart. Three labels, one dot. The fix that solved the problem at ocean scale simply
+moved it down one level.
+
+They are now drawn as one marker named 「板底街 +2」, sized by story count, with all three
+names in the tooltip — which is arguably truer to the life anyway: the shop, the room above
+it and the station are one place to her, and only a projection insists otherwise.
+
+**Lesson:** zooming does not fix crowding, it relocates it. Cluster, or accept that a map of
+someone's life is mostly a map of one street.

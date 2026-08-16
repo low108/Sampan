@@ -96,6 +96,15 @@
   .stop .titles { color: var(--muted); font-size: .85rem; }
   .sea { color: var(--muted); font-size: .8rem; letter-spacing: .3em;
          padding: .2rem 0 .6rem .6rem; }
+  .geo { background: #eef3f4; border-radius: .7rem; padding: .5rem; margin-bottom: 1rem; }
+  .geo svg { width: 100%; height: auto; display: block; }
+  .geo .land { fill: #dfe6dd; stroke: #cfd8cd; stroke-width: .6; }
+  .geo .route { stroke: #b4552d; stroke-width: 1.4; fill: none;
+                stroke-dasharray: 4 3; opacity: .75; }
+  .geo .pin { fill: #3f6b52; }
+  .geo .pin.unsure { fill: #eef3f4; stroke: #857a70; stroke-width: 1.2; }
+  .geo text { font-size: 4px; fill: #4a423b; }
+  .geo .scalenote { font-size: 3.2px; fill: #857a70; }
 </style>
 </head>
 <body>
@@ -230,6 +239,81 @@ function renderJourney(m, stories) {
   return `${rail(dated)}
     ${undated.length ? `<p class="era">年份还没讲 · When not yet told</p>
        ${rail(undated)}` : ""}`;
+}
+
+// A real projection of her life: one dot in Fujian at 25°N and four inside
+// 90km of each other in Perak. So the peninsula gets an inset — the alternative
+// is four pins on top of one another.
+function renderGeo(m) {
+  const pins = m.pins.filter((p) => p.place.lat != null && p.place.lng != null);
+  if (!pins.length) return "";
+
+  // Equirectangular is fine over this span and needs no projection library.
+  const W = 200, H = 150;
+  const lonlat = (lng, lat, box) => {
+    const [x0, y0, w, h, lng0, lat0, lng1, lat1] = box;
+    return [
+      x0 + ((lng - lng0) / (lng1 - lng0)) * w,
+      y0 + ((lat1 - lat) / (lat1 - lat0)) * h,
+    ];
+  };
+  // Overview: South China Sea. Inset: Perak.
+  const OVER = [8, 8, 110, 134, 98, 0, 122, 28];
+  const INSET = [128, 46, 64, 64, 100.6, 3.9, 101.6, 5.2];
+
+  const inPerak = (p) => p.place.lat > 3 && p.place.lat < 6 && p.place.lng < 102;
+  const far = pins.filter((p) => !inPerak(p));
+  const near = pins.filter(inPerak);
+
+  // Her Ipoh places are a few hundred metres apart — the shop, the room above
+  // it, the railway station where the photo was taken. At any zoom that also
+  // holds Fujian they are one dot, so they are drawn as one and named together.
+  const cluster = (list, box) => {
+    const groups = [];
+    for (const p of list) {
+      const [x, y] = lonlat(p.place.lng, p.place.lat, box);
+      const near = groups.find((g) => Math.hypot(g.x - x, g.y - y) < 5);
+      if (near) near.places.push(p); else groups.push({ x, y, places: [p] });
+    }
+    return groups;
+  };
+
+  const dot = (g) => {
+    const unsure = g.places.every((p) =>
+      ["town", "region"].includes(p.place.precision));
+    const label = g.places.length === 1
+      ? esc(g.places[0].place.raw_name)
+      : `${esc(g.places[0].place.raw_name)} +${g.places.length - 1}`;
+    const stories = g.places.reduce((n, p) => n + p.stories.length, 0);
+    return `<circle class="pin ${unsure ? "unsure" : ""}" cx="${g.x}" cy="${g.y}"
+        r="${Math.min(2 + stories * 0.5, 4.5)}"><title>${
+        g.places.map((p) => esc(p.place.raw_name)).join(" · ")}</title></circle>
+      <text x="${g.x + 5}" y="${g.y + 1.5}">${label}</text>`;
+  };
+
+  // The crossing, drawn only when both ends exist.
+  let route = "";
+  if (far.length && near.length) {
+    const [x1, y1] = lonlat(far[0].place.lng, far[0].place.lat, OVER);
+    const [x2, y2] = lonlat(101.1, 4.6, OVER);
+    route = `<path class="route" d="M${x1} ${y1} Q ${x1 - 14} ${(y1 + y2) / 2} ${x2} ${y2}"/>`;
+  }
+
+  return `<div class="geo"><svg viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="Her places, from Fujian to Perak">
+    <!-- Deliberately coarse coastlines: this is an orientation sketch, not a
+         chart, and a wrong-looking coastline is less misleading than a
+         wrong-looking pin. -->
+    <path class="land" d="M96 14 L120 10 L124 22 L112 30 L104 26 Z"/>
+    <path class="land" d="M46 92 L58 74 L62 88 L70 96 L66 116 L54 124 L44 110 Z"/>
+    <path class="land" d="M78 118 L104 112 L116 126 L96 140 L78 134 Z"/>
+    ${route}
+    ${cluster(far, OVER).map(dot).join("")}
+    <rect x="128" y="46" width="64" height="64" fill="none"
+          stroke="#cfd8cd" stroke-width=".8" rx="2"/>
+    <text class="scalenote" x="128" y="43">霹雳 Perak · 放大 zoomed</text>
+    ${cluster(near, INSET).map(dot).join("")}
+  </svg></div>`;
 }
 
 function renderMap(m) {
@@ -435,7 +519,7 @@ async function load(view) {
 
   LETTERS = data.letters || {};
   main.innerHTML = view === "map"
-    ? renderJourney(data.map, data.allStories || []) + renderMap(data.map)
+    ? renderGeo(data.map) + renderJourney(data.map, data.allStories || []) + renderMap(data.map)
     : renderStories(data.stories, view === "timeline");
 }
 

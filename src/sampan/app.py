@@ -39,6 +39,7 @@ from sampan.family import build_cards, build_map, feed, stats, timeline
 from sampan.live import open_session, pump
 from sampan.models import AffectState, Ask
 from sampan.places import GeminiPlaceResolver
+from sampan.quiet import is_quiet
 from sampan.repository import Repository
 from sampan.store import DocumentStore, get_document_store
 from sampan.tools import CallMemory
@@ -356,7 +357,9 @@ def create_app() -> FastAPI:
 
     @app.get("/api/talk/{narrator_id}/pending", dependencies=[Depends(require_api_key)])
     def pending_for_her(
-        narrator_id: str, store: Annotated[DocumentStore, Depends(get_store)]
+        narrator_id: str,
+        settings: Annotated[Settings, Depends(get_settings)],
+        store: Annotated[DocumentStore, Depends(get_store)],
     ) -> dict[str, Any]:
         """Whether someone has left her something.
 
@@ -364,6 +367,10 @@ def create_app() -> FastAPI:
         incoming call (PRD 9.4). So the app asks, and if her son has left a
         question it shows his name and plays his voice.
         """
+        # Queued instantly, shown when she is awake.
+        if is_quiet(settings):
+            return {"waiting": False, "quiet_hours": True}
+
         ask = Repository(store).pending_ask(narrator_id)
         if ask is None:
             return {"waiting": False}

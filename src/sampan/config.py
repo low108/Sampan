@@ -43,6 +43,14 @@ class Settings(BaseSettings):
         default="gemini-live-2.5-flash-native-audio", alias="SAMPAN_LIVE_MODEL"
     )
 
+    # --- Quiet hours ------------------------------------------------------
+    # Her son's pang of missing her arrives at 2pm, when she is awake — that is
+    # why delivery is instant rather than scheduled. But a question left at
+    # 11pm must not greet her at 11pm.
+    timezone: str = Field(default="Asia/Kuala_Lumpur", alias="SAMPAN_TIMEZONE")
+    quiet_from_hour: int = Field(default=22, alias="SAMPAN_QUIET_FROM")
+    quiet_until_hour: int = Field(default=8, alias="SAMPAN_QUIET_UNTIL")
+
     # --- Auth -------------------------------------------------------------
     # Shared secret guarding every non-public route. Cheap, and it keeps stray
     # web traffic from draining the hackathon credits.
