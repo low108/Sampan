@@ -43,7 +43,7 @@ echo
 echo "Deployed: $URL"
 echo
 echo "Ticket 1 acceptance — health:"
-echo "  curl -s ${URL}/healthz"
+echo "  curl -s ${URL}/health"
 echo
 echo "Ticket 1 acceptance — Firestore round trip:"
 echo "  curl -s -X POST ${URL}/debug/smoke \\"

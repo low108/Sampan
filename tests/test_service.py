@@ -44,13 +44,13 @@ def keyless_client(store: InMemoryDocumentStore) -> Iterator[TestClient]:
 
 class TestHealth:
     def test_is_public(self, client: TestClient) -> None:
-        response = client.get("/healthz")
+        response = client.get("/health")
 
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
 
     def test_reports_whether_cloud_is_configured(self, client: TestClient) -> None:
-        assert client.get("/healthz").json()["configured"] is False
+        assert client.get("/health").json()["configured"] is False
 
 
 class TestSmokeAuth:
@@ -130,7 +130,7 @@ class TestSmokeRoundTrip:
         ).json()
 
         assert body["backend"] == "memory"
-        assert client.get("/healthz").json()["backend"] == "memory"
+        assert client.get("/health").json()["backend"] == "memory"
 
 
 class TestStoreSelection:

@@ -47,8 +47,10 @@ def get_store() -> DocumentStore:
 def create_app() -> FastAPI:
     app = FastAPI(title="Sampan", version="0.1.0")
 
-    @app.get("/healthz", response_model=Health)
-    def healthz(
+    # Not /healthz: Cloud Run's front end intercepts that path and answers with
+    # its own 404 before the request reaches the container.
+    @app.get("/health", response_model=Health)
+    def health(
         settings: Annotated[Settings, Depends(get_settings)],
         store: Annotated[DocumentStore, Depends(get_store)],
     ) -> Health:
