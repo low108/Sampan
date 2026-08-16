@@ -19,14 +19,15 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from sampan.affect import GeminiAffectMonitor, policy, watch
+from sampan.archivist import GeminiStoryExtractor
 from sampan.auth import require_api_key
-from sampan.companion import build_agent
+from sampan.callflow import Transcript, finish_call, prepare_call
 from sampan.config import Settings, apply_genai_env, get_settings
 from sampan.live import open_session, pump
 from sampan.models import AffectState
-from sampan.opener import build_session_plan, render_plan
+from sampan.repository import Repository
 from sampan.store import DocumentStore, get_document_store
-from sampan.tools import CallMemory, build_tools
+from sampan.tools import CallMemory
 
 SMOKE_COLLECTION = "_smoke"
 
@@ -148,26 +149,22 @@ def create_app() -> FastAPI:
         await websocket.accept()
         user_id = websocket.query_params.get("user", "ah_khim")
 
-        # TODO(ticket 9): load real memory for this narrator from Firestore.
-        # Until then the call runs with an empty graph, which is session-1
-        # behaviour rather than a failure.
-        memory = CallMemory()
-        plan = build_session_plan(
-            threads=memory.threads,
-            sensitivities=memory.sensitivities,
-            ask=memory.ask,
-            session_count=0,
+        repository = Repository(get_document_store())
+        prepared = await asyncio.to_thread(
+            prepare_call, repository, settings, narrator_id=user_id
         )
-        agent = build_agent(
-            settings,
-            preferences=memory.preferences,
-            sensitivities=memory.sensitivities,
-            session_plan=render_plan(plan),
-            tools=build_tools(memory),
-        )
+        memory = prepared.memory
+        transcript = Transcript()
 
-        session = await open_session(agent, settings, user_id=user_id)
-        pump_task = asyncio.create_task(pump(session, websocket.send_json))
+        async def relay(message: dict[str, Any]) -> None:
+            if (text := message.get("user_transcript")) is not None:
+                transcript.add("user", text)
+            if (text := message.get("agent_transcript")) is not None:
+                transcript.add("agent", text)
+            await websocket.send_json(message)
+
+        session = await open_session(prepared.agent, settings, user_id=user_id)
+        pump_task = asyncio.create_task(pump(session, relay))
         watch_task = asyncio.create_task(
             watch(
                 session,
@@ -191,6 +188,17 @@ def create_app() -> FastAPI:
             session.close()
             watch_task.cancel()
             pump_task.cancel()
+            # The call is over for her the moment she hangs up; extraction
+            # happens afterwards and must never hold the socket open.
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(
+                    finish_call,
+                    repository,
+                    GeminiStoryExtractor(settings),
+                    prepared,
+                    transcript,
+                    narrator_id=user_id,
+                )
 
     static_dir = Path(__file__).resolve().parents[2] / "static"
     if static_dir.is_dir():

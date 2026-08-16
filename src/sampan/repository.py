@@ -1,0 +1,166 @@
+"""Storing and loading what the agent remembers.
+
+Shapes follow PRD section 8. The split matters: a narrator's *memory* — threads,
+anchors, preferences, sensitivities — is small and always read whole, so it
+lives in one profile document. Stories and entities grow without bound and get
+a collection each, because a single document would hit Firestore's 1MB limit
+inside a year of daily calls.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+from pydantic import BaseModel, Field
+
+from sampan.models import (
+    Anchor,
+    Ask,
+    ClosureReason,
+    Entity,
+    Preference,
+    ScoredStory,
+    SensitiveTopic,
+    Thread,
+)
+from sampan.store import DocumentStore
+
+PROFILES = "profiles"
+ENTITIES = "entities"
+STORIES = "stories"
+CONVERSATIONS = "conversations"
+ASKS = "asks"
+
+
+class NarratorMemory(BaseModel):
+    """Everything a call needs to know before it starts.
+
+    Read whole at the top of every call, written whole at the end. Small by
+    construction: the things that grow live elsewhere.
+    """
+
+    narrator_id: str
+    display_name: str = ""
+    threads: list[Thread] = Field(default_factory=list)
+    anchors: list[Anchor] = Field(default_factory=list)
+    preferences: list[Preference] = Field(default_factory=list)
+    sensitivities: list[SensitiveTopic] = Field(default_factory=list)
+    session_count: int = 0
+    last_closure: ClosureReason | None = None
+    updated_at: str | None = None
+
+
+class Repository:
+    """Persistence for one family's archive."""
+
+    def __init__(self, store: DocumentStore) -> None:
+        self._store = store
+
+    # --- narrator memory --------------------------------------------------
+
+    def load_memory(self, narrator_id: str) -> NarratorMemory:
+        """Return stored memory, or an empty one for a narrator we have never
+        spoken to. A first call is not an error."""
+        raw = self._store.get(PROFILES, narrator_id)
+        if raw is None:
+            return NarratorMemory(narrator_id=narrator_id)
+        return NarratorMemory.model_validate(raw)
+
+    def save_memory(self, memory: NarratorMemory) -> None:
+        memory.updated_at = datetime.now(UTC).isoformat()
+        self._store.put(PROFILES, memory.narrator_id, memory.model_dump(mode="json"))
+
+    # --- entities ---------------------------------------------------------
+
+    def load_entities(self, narrator_id: str) -> list[Entity]:
+        return [
+            Entity.model_validate(raw)
+            for raw in self._store.list(self._scoped(ENTITIES, narrator_id))
+        ]
+
+    def save_entities(self, narrator_id: str, entities: list[Entity]) -> None:
+        collection = self._scoped(ENTITIES, narrator_id)
+        for entity in entities:
+            self._store.put(
+                collection, entity.entity_id, entity.model_dump(mode="json")
+            )
+
+    # --- stories ----------------------------------------------------------
+
+    def save_stories(
+        self, narrator_id: str, conversation_id: str, stories: list[ScoredStory]
+    ) -> list[str]:
+        """Store one call's stories. Returns the ids written."""
+        collection = self._scoped(STORIES, narrator_id)
+        written: list[str] = []
+        for index, story in enumerate(stories):
+            story_id = f"{conversation_id}_{index:02d}"
+            payload = story.model_dump(mode="json")
+            payload["story_id"] = story_id
+            payload["narrator_id"] = narrator_id
+            payload["conversation_id"] = conversation_id
+            self._store.put(collection, story_id, payload)
+            written.append(story_id)
+        return written
+
+    def load_stories(self, narrator_id: str) -> list[dict]:
+        return self._store.list(self._scoped(STORIES, narrator_id))
+
+    # --- conversations ----------------------------------------------------
+
+    def save_conversation(
+        self, narrator_id: str, conversation_id: str, transcript: str, **extra: object
+    ) -> None:
+        self._store.put(
+            self._scoped(CONVERSATIONS, narrator_id),
+            conversation_id,
+            {
+                "conversation_id": conversation_id,
+                "narrator_id": narrator_id,
+                "transcript": transcript,
+                "occurred_at": datetime.now(UTC).isoformat(),
+                **extra,
+            },
+        )
+
+    # --- family asks ------------------------------------------------------
+
+    def queue_ask(self, narrator_id: str, ask: Ask) -> None:
+        payload = ask.model_dump(mode="json")
+        payload["delivered"] = False
+        payload["created_at"] = ask.created_at or datetime.now(UTC).isoformat()
+        self._store.put(self._scoped(ASKS, narrator_id), ask.ask_id, payload)
+
+    def pending_ask(self, narrator_id: str) -> Ask | None:
+        """The oldest undelivered question.
+
+        One per call by design: two would turn a conversation into an inbox.
+        """
+        undelivered = [
+            raw
+            for raw in self._store.list(self._scoped(ASKS, narrator_id))
+            if not raw.get("delivered")
+        ]
+        if not undelivered:
+            return None
+        oldest = min(undelivered, key=lambda raw: raw.get("created_at") or "")
+        return Ask.model_validate({k: v for k, v in oldest.items() if k != "delivered"})
+
+    def mark_ask_delivered(self, narrator_id: str, ask_id: str) -> None:
+        collection = self._scoped(ASKS, narrator_id)
+        raw = self._store.get(collection, ask_id)
+        if raw is None:
+            return
+        raw["delivered"] = True
+        raw["delivered_at"] = datetime.now(UTC).isoformat()
+        self._store.put(collection, ask_id, raw)
+
+    @staticmethod
+    def _scoped(collection: str, narrator_id: str) -> str:
+        """One collection per narrator.
+
+        Firestore subcollections would be tidier, but the DocumentStore
+        protocol is deliberately flat so the whole pipeline stays runnable
+        against a dictionary.
+        """
+        return f"{collection}__{narrator_id}"

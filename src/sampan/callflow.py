@@ -1,0 +1,170 @@
+"""Starting a call from stored memory, and folding the result back in.
+
+This is where the loop closes. Everything else produces or consumes state;
+this module is what makes the state survive a restart, and therefore what makes
+session 5 differ from session 1 in production rather than only in a test.
+"""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+
+from sampan.archivist import StoryExtractor, ingest_conversation
+from sampan.companion import build_agent
+from sampan.config import Settings
+from sampan.opener import build_session_plan, render_plan
+from sampan.preferences import fold_preferences
+from sampan.repository import NarratorMemory, Repository
+from sampan.tools import CallMemory, build_tools
+
+
+@dataclass
+class Transcript:
+    """Both sides of one call, in order.
+
+    Kept as plain turns because that is what the Archivist reads — the same
+    shape as the seed transcripts, so production and fixtures stay identical.
+    """
+
+    turns: list[tuple[str, str]] = field(default_factory=list)
+
+    def add(self, speaker: str, text: str) -> None:
+        text = text.strip()
+        if not text:
+            return
+        # The Live API streams transcription incrementally, so consecutive
+        # fragments from one speaker are revisions rather than new turns.
+        if self.turns and self.turns[-1][0] == speaker:
+            self.turns[-1] = (speaker, text)
+            return
+        self.turns.append((speaker, text))
+
+    def render(self) -> str:
+        labels = {"user": "K", "agent": "A"}
+        return "\n".join(
+            f"{labels.get(speaker, speaker)}: {text}" for speaker, text in self.turns
+        )
+
+    def __len__(self) -> int:
+        return len(self.turns)
+
+
+@dataclass
+class PreparedCall:
+    agent: object
+    memory: CallMemory
+    stored: NarratorMemory
+    conversation_id: str
+
+
+def prepare_call(
+    repository: Repository, settings: Settings, *, narrator_id: str
+) -> PreparedCall:
+    """Load everything this call should already know."""
+    stored = repository.load_memory(narrator_id)
+    entities = repository.load_entities(narrator_id)
+    ask = repository.pending_ask(narrator_id)
+
+    memory = CallMemory(
+        threads=stored.threads,
+        entities=entities,
+        preferences=stored.preferences,
+        sensitivities=stored.sensitivities,
+        ask=ask,
+    )
+
+    plan = build_session_plan(
+        threads=stored.threads,
+        sensitivities=stored.sensitivities,
+        ask=ask,
+        session_count=stored.session_count,
+        last_closure=stored.last_closure,
+    )
+
+    agent = build_agent(
+        settings,
+        preferences=stored.preferences,
+        sensitivities=stored.sensitivities,
+        session_plan=render_plan(plan),
+        tools=build_tools(memory),
+    )
+
+    # Second resolution alone collides: Live API sessions cap at roughly
+    # fifteen minutes, so a dropped call and its redial can land in the same
+    # second, and the second call's stories would overwrite the first's.
+    conversation_id = (
+        f"conv_{narrator_id}_{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+        f"_{uuid.uuid4().hex[:6]}"
+    )
+    return PreparedCall(
+        agent=agent, memory=memory, stored=stored, conversation_id=conversation_id
+    )
+
+
+# Below this, a call was too short to have contained a story. Running the
+# Archivist on a misdial wastes a model call and pollutes the archive.
+MIN_TURNS_TO_EXTRACT = 4
+
+
+def finish_call(
+    repository: Repository,
+    extractor: StoryExtractor,
+    prepared: PreparedCall,
+    transcript: Transcript,
+    *,
+    narrator_id: str,
+) -> NarratorMemory | None:
+    """Fold a finished call back into stored memory.
+
+    Returns the updated memory, or None if the call was too short to extract
+    anything from.
+    """
+    repository.save_conversation(
+        narrator_id,
+        prepared.conversation_id,
+        transcript.render(),
+        turns=len(transcript),
+    )
+
+    if prepared.memory.ask_delivered and prepared.memory.ask is not None:
+        repository.mark_ask_delivered(narrator_id, prepared.memory.ask.ask_id)
+
+    if len(transcript) < MIN_TURNS_TO_EXTRACT:
+        return None
+
+    outcome = ingest_conversation(
+        transcript.render(),
+        extractor,
+        known_entities=prepared.memory.entities,
+        known_threads=prepared.stored.threads,
+        known_anchors=prepared.stored.anchors,
+        known_preferences=prepared.stored.preferences,
+        known_sensitivities=prepared.stored.sensitivities,
+        conversation_id=prepared.conversation_id,
+    )
+
+    # Preferences the agent noticed mid-call, via note_preference, are folded
+    # in alongside the ones extraction inferred afterwards.
+    preferences = fold_preferences(
+        outcome.preferences,
+        prepared.memory.noted_preferences,
+        conversation_id=prepared.conversation_id,
+    )
+
+    updated = NarratorMemory(
+        narrator_id=narrator_id,
+        display_name=prepared.stored.display_name,
+        threads=outcome.threads,
+        anchors=outcome.anchors,
+        preferences=preferences,
+        sensitivities=outcome.sensitivities,
+        session_count=prepared.stored.session_count + 1,
+        last_closure=outcome.closure.reason,
+    )
+
+    repository.save_memory(updated)
+    repository.save_entities(narrator_id, outcome.entities)
+    repository.save_stories(narrator_id, prepared.conversation_id, outcome.stories)
+    return updated
