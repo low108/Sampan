@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sampan — 阿嬷的故事</title>
+<style>
+  :root {
+    --ink: #2b2622; --muted: #857a70; --line: #e6ded3;
+    --paper: #faf7f2; --card: #fff; --accent: #b4552d; --sea: #3f6b52;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    line-height: 1.65;
+  }
+  header { padding: 2.5rem 1.5rem 1rem; max-width: 60rem; margin: 0 auto; }
+  h1 { margin: 0; font-size: 1.9rem; font-weight: 600; }
+  .sub { color: var(--muted); margin: .25rem 0 0; }
+  .stats { display: flex; flex-wrap: wrap; gap: 1.75rem; margin: 1.5rem 0 0; }
+  .stat b { display: block; font-size: 1.6rem; font-weight: 600; }
+  .stat span { color: var(--muted); font-size: .85rem; }
+  nav { max-width: 60rem; margin: 1.5rem auto 0; padding: 0 1.5rem;
+        border-bottom: 1px solid var(--line); display: flex; gap: .35rem; }
+  nav button {
+    background: none; border: none; font: inherit; color: var(--muted);
+    padding: .6rem 1rem; cursor: pointer; border-bottom: 2px solid transparent;
+  }
+  nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  main { max-width: 60rem; margin: 0 auto; padding: 1.5rem; }
+  .card {
+    background: var(--card); border-radius: .7rem; padding: 1.25rem 1.4rem;
+    margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.07);
+  }
+  .card h3 { margin: 0 0 .35rem; font-size: 1.15rem; }
+  .meta { color: var(--muted); font-size: .85rem; display: flex; flex-wrap: wrap; gap: .9rem; }
+  .sense {
+    margin: .85rem 0 0; padding-left: .9rem; border-left: 3px solid var(--accent);
+    font-size: 1.05rem;
+  }
+  .narrative { margin: .7rem 0 0; color: #4a423b; }
+  .gap { margin-top: .8rem; font-size: .85rem; color: var(--muted); }
+  .gap b { color: var(--accent); font-weight: 600; }
+  .era { color: var(--muted); font-size: .8rem; letter-spacing: .06em;
+         text-transform: uppercase; margin: 2rem 0 .6rem; }
+  .pin { display: flex; gap: 1rem; align-items: baseline; }
+  .pin .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--sea); flex: none; }
+  .pin.provisional .dot { background: none; border: 2px solid var(--muted); }
+  .tray { border: 1px dashed var(--line); background: none; }
+  .tray h3 { color: var(--muted); }
+  .empty { color: var(--muted); padding: 3rem 0; text-align: center; }
+  code { background: #f0e9df; padding: .1rem .35rem; border-radius: .25rem; font-size: .85em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>阿嬷的故事</h1>
+  <p class="sub">Collected by 小船 · <span id="sessions">—</span></p>
+  <div class="stats" id="stats"></div>
+</header>
+
+<nav>
+  <button data-view="feed" aria-selected="true">最近 Recent</button>
+  <button data-view="timeline" aria-selected="false">一生 Timeline</button>
+  <button data-view="map" aria-selected="false">地图 Map</button>
+</nav>
+
+<main id="main"><p class="empty">Loading…</p></main>
+
+<script>
+const key = new URLSearchParams(location.search).get("key") || "";
+const narrator = new URLSearchParams(location.search).get("user") || "ah_khim";
+const main = document.getElementById("main");
+
+const esc = (s) => (s ?? "").replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const years = (c) =>
+  c.year_from && c.year_to && c.year_from !== c.year_to ? `${c.year_from}–${c.year_to}`
+  : c.year_from ? `${c.year_from}`
+  : c.year_to ? `–${c.year_to}`
+  : "";
+
+function storyCard(c) {
+  // missing_fields is what the agent will ask her about next time; showing it
+  // turns a gap into something the family can watch being filled.
+  const gap = c.missing_fields.length
+    ? `<p class="gap">还没讲到 · <b>${c.missing_fields.map(esc).join("、")}</b></p>` : "";
+  const sense = c.sense_detail
+    ? `<p class="sense">${esc(c.sense_detail)}</p>` : "";
+  return `<article class="card">
+    <h3>${esc(c.title)}</h3>
+    <div class="meta">
+      ${years(c) ? `<span>${years(c)}</span>` : ""}
+      ${c.when_said ? `<span>「${esc(c.when_said)}」</span>` : ""}
+      ${c.where_said ? `<span>${esc(c.where_said)}</span>` : ""}
+      ${c.people.length ? `<span>${c.people.map(esc).join("、")}</span>` : ""}
+    </div>
+    ${sense}
+    <p class="narrative">${esc(c.narrative)}</p>
+    ${gap}
+  </article>`;
+}
+
+function renderStories(stories, grouped) {
+  if (!stories.length) return `<p class="empty">还没有故事。</p>`;
+  if (!grouped) return stories.map(storyCard).join("");
+  let html = "", era = null;
+  for (const c of stories) {
+    const decade = c.year_from ? `${Math.floor(c.year_from / 10) * 10}s`
+                 : c.year_to ? `${Math.floor(c.year_to / 10) * 10}s` : "年份未定 Undated";
+    if (decade !== era) { era = decade; html += `<p class="era">${era}</p>`; }
+    html += storyCard(c);
+  }
+  return html;
+}
+
+function renderMap(m) {
+  const pin = (p, provisional) => `<article class="card ${provisional ? "provisional" : ""}">
+    <div class="pin ${provisional ? "provisional" : ""}">
+      <span class="dot"></span>
+      <div>
+        <h3>${esc(p.place.display_name || p.place.raw_name)}</h3>
+        <div class="meta">
+          <span>${esc(p.place.precision)}</span>
+          <span>${p.stories.length} 个故事</span>
+          ${provisional ? `<span>请家人确认 needs confirming</span>` : ""}
+        </div>
+        ${p.place.note ? `<p class="gap">${esc(p.place.note)}</p>` : ""}
+      </div>
+    </div>
+  </article>`;
+
+  const sure = m.pins.filter((p) => !["town", "region"].includes(p.place.precision));
+  const maybe = m.pins.filter((p) => ["town", "region"].includes(p.place.precision));
+
+  return `${sure.map((p) => pin(p, false)).join("")}
+    ${maybe.length ? `<p class="era">待确认 To confirm</p>` : ""}
+    ${maybe.map((p) => pin(p, true)).join("")}
+    ${m.unlocated.length ? `<p class="era">还找不到的地方 Not yet placed</p>` : ""}
+    ${m.unlocated.map((p) => `<article class="card tray">
+       <h3>${esc(p.place.raw_name)}</h3>
+       <div class="meta"><span>${p.stories.length} 个故事</span></div>
+       ${p.place.note ? `<p class="gap">${esc(p.place.note)}</p>` : ""}
+     </article>`).join("")}`;
+}
+
+async function load(view) {
+  main.innerHTML = `<p class="empty">Loading…</p>`;
+  const res = await fetch(`/api/family/${encodeURIComponent(narrator)}?view=${view}`,
+                          { headers: { "X-Sampan-Key": key } });
+  if (!res.ok) { main.innerHTML = `<p class="empty">读不到 (${res.status})</p>`; return; }
+  const data = await res.json();
+
+  document.getElementById("sessions").textContent = `${data.session_count} 次聊天`;
+  const s = data.stats;
+  document.getElementById("stats").innerHTML = `
+    <div class="stat"><b>${s.stories}</b><span>stories</span></div>
+    <div class="stat"><b>${s.years_spanned}</b><span>years spanned</span></div>
+    <div class="stat"><b>${s.places}</b><span>places</span></div>
+    <div class="stat"><b>${s.people}</b><span>people</span></div>`;
+
+  main.innerHTML = view === "map"
+    ? renderMap(data.map)
+    : renderStories(data.stories, view === "timeline");
+}
+
+document.querySelectorAll("nav button").forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll("nav button")
+      .forEach((x) => x.setAttribute("aria-selected", String(x === b)));
+    load(b.dataset.view);
+  };
+});
+
+load("feed");
+</script>
+</body>
+</html>

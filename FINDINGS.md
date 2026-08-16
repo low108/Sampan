@@ -439,3 +439,30 @@ say so explicitly in the write-up rather than leaving a judge to work it out.
 Also: Vertex AI's generative-AI documentation is frozen and the platform has been renamed to
 Gemini Enterprise Agent Platform. Anything referencing `vertex-ai/generative-ai` paths is
 months stale — including, in practice, a lot of AI-generated GCP config.
+
+---
+
+## Place resolution produces confident wrong answers on exactly the names that matter
+
+**2026-08-16, tickets 8 and 17.**
+
+A conventional geocoder is the wrong tool for this archive — the places that matter most are
+a village named the way her father said it, an estate that stopped existing decades ago,
+「板底街」 rather than Jalan Bandar. So resolution is a model call that must state its own
+precision, and it does that well: 板底街 came back as Jalan Bandar Timah at street precision,
+怡保火车站 as exact, 福建永春 as a region, and three places it could not place at all landed
+in the tray with honest notes (「胶园工人排屋统称，无具体地理位置」).
+
+But **双溪镇 resolved to Sungkai** — a real town in Perak, ninety kilometres from the one she
+meant. Plausible, specific, and wrong, which is the failure mode I had predicted for a
+geocoder and then reproduced.
+
+The fix is not a better prompt. Anything coarser than street precision is now marked
+`needs_confirmation` and rendered as a hollow pin under 「待确认」, because **a plausible wrong
+pin is worse than an obviously missing one — nobody corrects what looks right.** The tray was
+always designed to be visible; this extends the same reasoning to pins that merely look
+confident.
+
+Related: the ambiguity was partly self-inflicted. The persona bible calls her hometown 双溪镇,
+which is not what Malaysian Chinese actually call Sungai Siput. An invented name inherited an
+invented ambiguity — worth remembering when fixtures stand in for real data.

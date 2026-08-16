@@ -23,8 +23,10 @@ from sampan.archivist import GeminiStoryExtractor
 from sampan.auth import require_api_key
 from sampan.callflow import Transcript, finish_call, prepare_call
 from sampan.config import Settings, apply_genai_env, get_settings
+from sampan.family import build_cards, build_map, feed, stats, timeline
 from sampan.live import open_session, pump
 from sampan.models import AffectState
+from sampan.places import GeminiPlaceResolver
 from sampan.repository import Repository
 from sampan.store import DocumentStore, get_document_store
 from sampan.tools import CallMemory
@@ -53,6 +55,41 @@ class SmokeResult(BaseModel):
 
 def get_store() -> DocumentStore:
     return get_document_store()
+
+
+_PLACE_CACHE = "_places"
+
+
+def _resolve_places(
+    settings: Settings, store: DocumentStore, cards: list[Any]
+) -> list[Any]:
+    """Resolve place names, caching results.
+
+    Cached because a place does not move, and because the map is the view a
+    family opens most often — re-resolving on every load would be the single
+    largest avoidable cost in the product.
+    """
+    from sampan.places import Place
+
+    names = sorted({c.where_said for c in cards if c.where_said})
+    cached: list[Place] = []
+    missing: list[str] = []
+    for name in names:
+        raw = store.get(_PLACE_CACHE, name)
+        if raw is None:
+            missing.append(name)
+        else:
+            cached.append(Place.model_validate(raw))
+
+    if missing and settings.configured:
+        with contextlib.suppress(Exception):
+            for place in GeminiPlaceResolver(settings).resolve(missing):
+                store.put(_PLACE_CACHE, place.raw_name, place.model_dump(mode="json"))
+                cached.append(place)
+
+    resolved = {p.raw_name for p in cached}
+    cached.extend(Place(raw_name=name) for name in names if name not in resolved)
+    return cached
 
 
 async def _publish_affect(
@@ -129,6 +166,38 @@ def create_app() -> FastAPI:
             read_back=read_back,
             round_trip_ok=read_back is not None and read_back.get("note") == body.note,
         )
+
+    @app.get("/api/family/{narrator_id}", dependencies=[Depends(require_api_key)])
+    def family_view(
+        narrator_id: str,
+        settings: Annotated[Settings, Depends(get_settings)],
+        store: Annotated[DocumentStore, Depends(get_store)],
+        view: str = "feed",
+    ) -> dict[str, Any]:
+        """Her archive, in whichever projection was asked for.
+
+        Feed, timeline and map are three orderings of the same stories, so they
+        share one endpoint rather than three that could drift apart.
+        """
+        repository = Repository(store)
+        memory = repository.load_memory(narrator_id)
+        cards = build_cards(repository.load_stories(narrator_id))
+        entities = repository.load_entities(narrator_id)
+
+        payload: dict[str, Any] = {
+            "narrator_id": narrator_id,
+            "session_count": memory.session_count,
+            "stats": stats(cards, len(entities), memory.session_count).model_dump(),
+        }
+
+        if view == "map":
+            places = _resolve_places(settings, store, cards)
+            payload["map"] = build_map(cards, places).model_dump(mode="json")
+        elif view == "timeline":
+            payload["stories"] = [c.model_dump() for c in timeline(cards)]
+        else:
+            payload["stories"] = [c.model_dump() for c in feed(cards)]
+        return payload
 
     @app.websocket("/ws/talk")
     async def talk(websocket: WebSocket) -> None:
