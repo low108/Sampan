@@ -66,6 +66,10 @@
   .btn.rec[data-on="true"] { background: #8b2f2f; }
   .btn:disabled { background: #c9c0b6; cursor: default; }
   .ok { color: var(--sea); font-size: .9rem; }
+  .letterbox { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: .7rem; }
+  .letterbox summary { cursor: pointer; color: var(--accent); font-size: .9rem; }
+  .letter-zh { font-size: 1.08rem; line-height: 1.9; margin: .9rem 0 0; }
+  .letter-en { color: #5d554d; margin: .9rem 0 0; }
 </style>
 </head>
 <body>
@@ -116,8 +120,23 @@ function storyCard(c) {
     </div>
     ${sense}
     <p class="narrative">${esc(c.narrative)}</p>
+    ${letter(c.story_id)}
     ${gap}
   </article>`;
+}
+
+let LETTERS = {};
+
+// Bilingual because she speaks Mandarin and her granddaughter does not read
+// Chinese. An archive in one language is inherited by people who cannot open it.
+function letter(id) {
+  const l = LETTERS[id];
+  if (!l) return "";
+  return `<details class="letterbox">
+    <summary>读这封信 Read the letter</summary>
+    <p class="letter-zh">${esc(l.chinese)}</p>
+    <p class="letter-en"><b>${esc(l.title_en)}</b><br>${esc(l.english)}</p>
+  </details>`;
 }
 
 function renderStories(stories, grouped) {
@@ -256,6 +275,20 @@ async function renderFix() {
     </div>
   </article>`;
 
+  const places = (d.places || []).map((p) => `<article class="card">
+    <h3>${esc(p.raw_name)}</h3>
+    <div class="meta">
+      <span>${p.locatable === false || p.precision === "unknown" ? "找不到" : esc(p.precision)}</span>
+      <span>${p.stories} 个故事</span>
+    </div>
+    ${p.note ? `<p class="gap">${esc(p.note)}</p>` : ""}
+    <div class="row">
+      <input data-place="${esc(p.raw_name)}" placeholder="正确的地方,例如 Sungai Siput, Perak"
+             style="flex:2 1 14rem">
+      <button class="btn ghost" data-savePlace="${esc(p.raw_name)}">更正</button>
+    </div>
+  </article>`).join("");
+
   const dupes = d.possible_duplicates.map((p) => `<article class="card">
     <h3>${esc(p.a.canonical_name)} · ${esc(p.b.canonical_name)}</h3>
     <div class="meta"><span>会不会是同一个人?</span></div>
@@ -265,10 +298,11 @@ async function renderFix() {
     </div>
   </article>`).join("");
 
-  return `${d.unconfirmed.length ? `<p class="era">还没确认的人 Unconfirmed</p>` : ""}
+  return `${places ? `<p class="era">要确认的地方 Places to confirm</p>${places}` : ""}
+    ${d.unconfirmed.length ? `<p class="era">还没确认的人 Unconfirmed</p>` : ""}
     ${d.unconfirmed.map(card).join("")}
     ${dupes ? `<p class="era">可能重复 Possible duplicates</p>${dupes}` : ""}
-    ${!d.unconfirmed.length && !dupes ? `<p class="empty">没有要更正的。</p>` : ""}`;
+    ${!d.unconfirmed.length && !dupes && !places ? `<p class="empty">没有要更正的。</p>` : ""}`;
 }
 
 function wireFix() {
@@ -285,6 +319,13 @@ function wireFix() {
       const id = b.dataset.save;
       const value = document.querySelector(`[data-fix="${id}"]`).value.trim();
       if (value) post({ kind: "entity_name", target: id, value });
+    };
+  });
+  document.querySelectorAll("[data-savePlace]").forEach((b) => {
+    b.onclick = () => {
+      const name = b.getAttribute("data-savePlace");
+      const value = document.querySelector(`[data-place="${name}"]`).value.trim();
+      if (value) post({ kind: "place", target: name, value, by: "family" });
     };
   });
   document.querySelectorAll("[data-merge]").forEach((b) => {
@@ -311,6 +352,7 @@ async function load(view) {
     <div class="stat"><b>${s.places}</b><span>places</span></div>
     <div class="stat"><b>${s.people}</b><span>people</span></div>`;
 
+  LETTERS = data.letters || {};
   main.innerHTML = view === "map"
     ? renderMap(data.map)
     : renderStories(data.stories, view === "timeline");

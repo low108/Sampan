@@ -30,6 +30,22 @@
     box-shadow: 0 1px 4px rgba(0,0,0,.08); white-space: pre-wrap;
   }
   .muted { color: #8a8078; }
+  /* Debug overlay: a demo asset, so it is styled deliberately rather than
+     looking like a console someone forgot to remove. */
+  #overlay {
+    position: fixed; top: 1rem; right: 1rem; width: 15rem;
+    background: #2b2622; color: #f3ece2; border-radius: .6rem;
+    padding: .9rem 1rem; font-size: .85rem; line-height: 1.6;
+    box-shadow: 0 6px 24px rgba(0,0,0,.25); display: none;
+  }
+  #overlay h4 { margin: 0 0 .5rem; font-size: .7rem; letter-spacing: .12em;
+                text-transform: uppercase; color: #a89a89; font-weight: 600; }
+  .pill { display: inline-block; padding: .1rem .5rem; border-radius: 1rem;
+          background: #45403a; margin: 0 .3rem .3rem 0; }
+  .pill.warn { background: #8b4a2f; }
+  .pill.alert { background: #8b2f2f; }
+  #overlay .knob { color: #a89a89; }
+  #overlay .tool { color: #9fc0aa; }
 </style>
 </head>
 <body>
@@ -37,6 +53,13 @@
   <p class="sub">按一下,就可以开始讲</p>
   <button id="talk">讲话</button>
   <div id="log" class="muted">还没开始</div>
+
+  <div id="overlay">
+    <h4>小船 · state</h4>
+    <div id="pills"></div>
+    <div class="knob" id="knobs"></div>
+    <div class="tool" id="tools"></div>
+  </div>
 
 <script>
 const SAMPLE_RATE_IN = 16000;
@@ -68,6 +91,30 @@ function playPcm(bytes, rate) {
   playAt += buf.duration;
 }
 
+const overlay = document.getElementById("overlay");
+const seenTools = [];
+
+function showAffect(a) {
+  overlay.style.display = "block";
+  // Energy is monotonic, so fading and depleted are worth colouring; a care
+  // flag is the only thing that should ever look alarming.
+  const cls = (v) => a.care_flag ? "pill alert"
+    : ["fading", "withdrawing", "sad", "closing"].includes(v) ? "pill warn" : "pill";
+  document.getElementById("pills").innerHTML =
+    [a.energy, a.engagement, a.affect, ...(a.flags || [])]
+      .map((v) => `<span class="${cls(v)}">${v}</span>`).join("");
+  document.getElementById("knobs").innerHTML =
+    `→ ${a.topic_action} · 话${a.turn_length}` +
+    (a.care_flag ? `<br>⚠ ${a.care_flag} — 已通知家人` : "");
+}
+
+function showTools(names) {
+  for (const n of names) if (!seenTools.includes(n)) seenTools.push(n);
+  overlay.style.display = "block";
+  document.getElementById("tools").innerHTML =
+    seenTools.map((n) => `<div>↳ ${n}()</div>`).join("");
+}
+
 async function start() {
   stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
@@ -78,6 +125,8 @@ async function start() {
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
+    if (msg.affect) showAffect(msg.affect);
+    if (msg.tool_calls) showTools(msg.tool_calls);
     if (msg.audio) {
       playPcm(Uint8Array.from(atob(msg.audio), (c) => c.charCodeAt(0)), msg.sample_rate || 24000);
     }

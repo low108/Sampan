@@ -86,6 +86,38 @@ def get_store() -> DocumentStore:
 
 
 _PLACE_CACHE = "_places"
+_LETTER_CACHE = "_letters"
+
+
+def _letters_for(
+    settings: Settings, store: DocumentStore, cards: list[Any]
+) -> dict[str, dict[str, str]]:
+    """Letters for pinned stories, written once and kept.
+
+    Generated lazily rather than at extraction time so a call never waits on
+    them, and cached because a letter about 1958 will not change.
+    """
+    from sampan.letters import GeminiLetterWriter, Letter, worth_writing
+
+    out: dict[str, dict[str, str]] = {}
+    pending = []
+    for card in cards:
+        if not worth_writing(card):
+            continue
+        raw = store.get(_LETTER_CACHE, card.story_id)
+        if raw is None:
+            pending.append(card)
+        else:
+            out[card.story_id] = Letter.model_validate(raw).model_dump(mode="json")
+
+    if pending and settings.configured:
+        writer = GeminiLetterWriter(settings)
+        for card in pending:
+            with contextlib.suppress(Exception):
+                letter = writer.write(card)
+                store.put(_LETTER_CACHE, card.story_id, letter.model_dump(mode="json"))
+                out[card.story_id] = letter.model_dump(mode="json")
+    return out
 
 
 def _resolve_places(
@@ -224,7 +256,9 @@ def create_app() -> FastAPI:
         elif view == "timeline":
             payload["stories"] = [c.model_dump() for c in timeline(cards)]
         else:
-            payload["stories"] = [c.model_dump() for c in feed(cards)]
+            ordered = feed(cards)
+            payload["stories"] = [c.model_dump() for c in ordered]
+            payload["letters"] = _letters_for(settings, store, ordered)
         return payload
 
     @app.post("/api/family/{narrator_id}/ask", dependencies=[Depends(require_api_key)])
@@ -267,8 +301,27 @@ def create_app() -> FastAPI:
     def pending_corrections(
         narrator_id: str, store: Annotated[DocumentStore, Depends(get_store)]
     ) -> dict[str, Any]:
-        """Whom the archive is unsure about, for the family to settle."""
-        entities = Repository(store).load_entities(narrator_id)
+        """What the archive is unsure about, for the family to settle.
+
+        Places are listed with the key stored against them rather than a
+        prettified name, because a correction has to target the key the map
+        actually uses — 双溪镇树胶园, not 双溪镇.
+        """
+        from sampan.places import Place
+
+        repository = Repository(store)
+        entities = repository.load_entities(narrator_id)
+        cards = build_cards(repository.load_stories(narrator_id))
+
+        places: list[dict[str, Any]] = []
+        for name in sorted({c.where_said for c in cards if c.where_said}):
+            raw = store.get(_PLACE_CACHE, name)
+            place = Place.model_validate(raw) if raw else Place(raw_name=name)
+            if place.needs_confirmation or not place.locatable:
+                payload = place.model_dump(mode="json")
+                payload["stories"] = sum(1 for c in cards if c.where_said == name)
+                places.append(payload)
+
         return {
             "unconfirmed": [
                 e.model_dump(mode="json") for e in needs_confirmation(entities)
@@ -277,6 +330,7 @@ def create_app() -> FastAPI:
                 {"a": a.model_dump(mode="json"), "b": b.model_dump(mode="json")}
                 for a, b in duplicate_candidates(entities)
             ],
+            "places": places,
         }
 
     @app.post(

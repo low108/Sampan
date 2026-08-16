@@ -22,9 +22,21 @@ from sampan.store import InMemoryDocumentStore
 NARRATOR = "ah_khim"
 
 
-def person(entity_id: str, name: str, **kwargs: object) -> Entity:
+def person(
+    entity_id: str,
+    name: str,
+    *,
+    role: str | None = None,
+    detail: str = "",
+    provisional: bool = True,
+) -> Entity:
     return Entity(
-        entity_id=entity_id, type=EntityType.PERSON, canonical_name=name, **kwargs
+        entity_id=entity_id,
+        type=EntityType.PERSON,
+        canonical_name=name,
+        role=role,
+        detail=detail,
+        provisional=provisional,
     )
 
 
