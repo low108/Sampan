@@ -25,12 +25,17 @@ from sampan.models import (
     ClosureReason,
     Entity,
     EntityMention,
+    Preference,
+    PreferenceObservation,
     ScoredStory,
+    SensitiveTopic,
     StoryCandidate,
     Thread,
     ThreadUpdate,
+    TopicSignal,
     assess,
 )
+from sampan.preferences import fold_preferences, fold_sensitivities
 from sampan.threads import fold_threads, open_threads
 
 EXTRACTION_PROMPT = """\
@@ -119,11 +124,53 @@ anchors —— 可以定年份的人生大事。老人家很少讲年份,可是�
 story 的 when 栏位:如果她讲的是相对时间(「结婚以前」),
 请填 anchor_ref 指向对应的 anchor_id,年份不知道就留空 —— 我们会自己算。
 
+preferences —— 从这次对话看得出她「喜欢怎样被对待」。只列看得出来的:
+- session_length: 大概讲多久就累(例:讲到十分钟左右开始短句)
+- best_time: 早上还是晚上比较有精神
+- listen_talk_ratio: 她喜欢自己一直讲,还是要人问
+- question_style: 具体的问题比较有用,还是开放的问题
+- hearing: 听力(例:左耳不好)
+- pace: 讲快讲慢
+- silence_tolerance: 她需要多久的停顿
+- topic_favourite: 她讲起来最起劲的题目
+value 要短、要具体。evidence 填对话里的那一句。
+
+topic_signals —— 她对每个话题的反应。**这一项是她无声的反馈**:
+- kind:
+  - refused: 明讲不要(「讲别的」「不要讲这个」)
+  - deflected: 没有明讲,可是转开话题、只回一两个字、答非所问
+  - engaged: 她自己主动讲、讲得很多
+- topic: 短标签(例:姐姐、关店的原因)
+- evidence: 那一句
+
+同一个话题她后来自己愿意讲了,就照实记 engaged。
+
+{known_labels}
 对话记录:
 ---
 {transcript}
 ---
 """
+
+KNOWN_LABELS_BLOCK = """\
+以前几次聊天已经用过的标签。讲的是同一件事,就**用回原本的标签**,
+不要另外取新的名字 —— 换了名字,系统就会当成两件事。
+{labels}
+
+"""
+
+
+def _known_labels_block(topics: list[str]) -> str:
+    """Give the model the vocabulary it has already used.
+
+    Without this it invents a fresh label every call — 咖啡店关店原因 one
+    session, 阿公的店关门 the next — and no amount of string matching
+    afterwards can tell that they are the same subject.
+    """
+    unique = sorted({t.strip() for t in topics if t.strip()})
+    if not unique:
+        return ""
+    return KNOWN_LABELS_BLOCK.format(labels="\n".join(f"- {t}" for t in unique))
 
 
 class ExtractionResponse(BaseModel):
@@ -132,6 +179,8 @@ class ExtractionResponse(BaseModel):
     threads: list[ThreadUpdate] = []
     closure: Closure = Closure(reason=ClosureReason.UNKNOWN)
     anchors: list[AnchorCandidate] = []
+    preferences: list[PreferenceObservation] = []
+    topic_signals: list[TopicSignal] = []
 
 
 class ConversationOutcome(BaseModel):
@@ -147,6 +196,8 @@ class ConversationOutcome(BaseModel):
     threads: list[Thread] = []
     closure: Closure = Closure(reason=ClosureReason.UNKNOWN)
     anchors: list[Anchor] = []
+    preferences: list[Preference] = []
+    sensitivities: list[SensitiveTopic] = []
 
     @property
     def pinned(self) -> list[ScoredStory]:
@@ -166,6 +217,11 @@ class ConversationOutcome(BaseModel):
         return open_threads(self.threads)
 
     @property
+    def do_not_raise(self) -> list[SensitiveTopic]:
+        """Subjects the agent must not open on its own next time."""
+        return [t for t in self.sensitivities if t.do_not_raise]
+
+    @property
     def interrupted_thread(self) -> Thread | None:
         """What she was cut off mid-way through. The next call's opener."""
         return next((t for t in self.threads if t.interrupted), None)
@@ -174,7 +230,9 @@ class ConversationOutcome(BaseModel):
 class StoryExtractor(Protocol):
     """Seam for the model call, so the pipeline can be exercised offline."""
 
-    def extract(self, transcript: str) -> ExtractionResponse: ...
+    def extract(
+        self, transcript: str, known_labels: list[str] | None = None
+    ) -> ExtractionResponse: ...
 
 
 class GeminiStoryExtractor:
@@ -200,12 +258,17 @@ class GeminiStoryExtractor:
             )
         return self._cached_client
 
-    def extract(self, transcript: str) -> ExtractionResponse:
+    def extract(
+        self, transcript: str, known_labels: list[str] | None = None
+    ) -> ExtractionResponse:
         from google.genai import types
 
         response = self._client.models.generate_content(
             model=self._settings.archivist_model,
-            contents=EXTRACTION_PROMPT.format(transcript=transcript),
+            contents=EXTRACTION_PROMPT.format(
+                transcript=transcript,
+                known_labels=_known_labels_block(known_labels or []),
+            ),
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=ExtractionResponse,
@@ -227,6 +290,8 @@ def ingest_conversation(
     known_entities: list[Entity] | None = None,
     known_threads: list[Thread] | None = None,
     known_anchors: list[Anchor] | None = None,
+    known_preferences: list[Preference] | None = None,
+    known_sensitivities: list[SensitiveTopic] | None = None,
     conversation_id: str = "conv_unknown",
     tiebreaker: Tiebreaker | None = None,
 ) -> ConversationOutcome:
@@ -239,7 +304,10 @@ def ingest_conversation(
     child-completed intake. Passing it is what turns 「我姐姐」 into a reference
     rather than a fourth duplicate sister.
     """
-    extracted = extractor.extract(transcript)
+    known_labels = [t.topic for t in (known_threads or [])] + [
+        t.topic for t in (known_sensitivities or [])
+    ]
+    extracted = extractor.extract(transcript, known_labels)
     resolution = resolve_mentions(
         extracted.entity_mentions,
         known_entities or [],
@@ -264,4 +332,14 @@ def ingest_conversation(
         ),
         closure=extracted.closure,
         anchors=anchors,
+        preferences=fold_preferences(
+            known_preferences or [],
+            extracted.preferences,
+            conversation_id=conversation_id,
+        ),
+        sensitivities=fold_sensitivities(
+            known_sensitivities or [],
+            extracted.topic_signals,
+            conversation_id=conversation_id,
+        ),
     )

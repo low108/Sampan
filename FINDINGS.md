@@ -74,6 +74,44 @@ her own 「坐船来的,槟城上岸」, and 一九六九年咖啡店结业 corr
 way. Anchor such fields to the source text, and say plainly that empty is an acceptable answer
 — otherwise "always filled" is indistinguishable from "always fabricated".
 
+## Give the model the vocabulary, or nothing downstream can unify its labels
+
+**2026-08-16, ticket 6.**
+
+Sensitive topics and open threads are both keyed by a short label the model writes. Left to
+itself it invents a fresh one every call: she refused to discuss why the coffee shop closed,
+which came back as 关店的原因 in session 2 and 阿公的店关门 in session 4.
+
+No string matching can reconcile those. They share no substring, and semantically-similar
+matching needs embeddings — expensive, and still guessy. The consequence was concrete and
+bad: she *told* the shop-closing story in session 4 when her son asked, but because the
+engagement landed on a differently-named topic, the subject stayed marked
+`do_not_raise` — and session 5 would have tiptoed around the very thread it was supposed
+to reopen.
+
+The fix was to stop matching after the fact and pass the labels already in use into the
+prompt, with an instruction to reuse them. Topic count fell from 10 to 8, 关店的原因
+correctly accumulated `refusals=1, engagements=1`, and `do_not_raise` flipped back to false.
+
+**Lesson:** when a model generates the keys that later join your data, it is not enough to
+reconcile them downstream — give it the existing key space and tell it to reuse it. The same
+pattern that made entity resolution work (seeding the family intake) applies to every
+model-authored identifier.
+
+## A refusal should not be permanent
+
+**2026-08-16, ticket 6.**
+
+The first cut of sensitivity treated a refusal as an absorbing state: she says 「不要讲这个」
+once and the agent never raises it again. That is right for her sister, and wrong for the
+shop closing — she declined it in session 2 and then told the whole story herself in session
+4 when her son asked.
+
+An agent that keeps avoiding a subject the person has since chosen to talk about is not being
+sensitive; it is being obtuse. `do_not_raise` now clears when she engages, while the topic
+stays marked `sensitive` so it is still approached gently. The gate constrains the agent,
+never her — she may always raise anything.
+
 ## An invented target number nearly caused a real regression
 
 **2026-08-16, ticket 4.**

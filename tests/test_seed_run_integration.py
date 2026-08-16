@@ -21,7 +21,8 @@ from sampan.archivist import (
     ingest_conversation,
 )
 from sampan.config import Settings
-from sampan.models import ClosureReason, Entity, EntityType
+from sampan.models import ClosureReason, Entity, EntityType, PreferenceType
+from sampan.preferences import describe_for_instruction, may_raise
 from sampan.threads import rank_for_opener
 
 pytestmark = pytest.mark.integration
@@ -42,6 +43,8 @@ def run() -> dict[int, ConversationOutcome]:
     entities = [Entity.model_validate(e) for e in intake["entities"]]
     threads = []
     anchors = []
+    preferences = []
+    sensitivities = []
     outcomes: dict[int, ConversationOutcome] = {}
 
     for n in SESSIONS:
@@ -51,6 +54,8 @@ def run() -> dict[int, ConversationOutcome]:
             known_entities=entities,
             known_threads=threads,
             known_anchors=anchors,
+            known_preferences=preferences,
+            known_sensitivities=sensitivities,
             conversation_id=f"conv_{n:03d}",
         )
         entities, threads, anchors = (
@@ -58,6 +63,7 @@ def run() -> dict[int, ConversationOutcome]:
             outcome.threads,
             outcome.anchors,
         )
+        preferences, sensitivities = outcome.preferences, outcome.sensitivities
         outcomes[n] = outcome
 
     return outcomes
@@ -236,6 +242,84 @@ class TestAnchors:
         ]
 
         assert unresolved
+
+
+class TestSensitivity:
+    """Session 6's payoff depends on the agent having *learned* to avoid her
+    sister, so that her raising the subject herself lands."""
+
+    def test_learns_the_sister_is_off_limits(self, final: ConversationOutcome) -> None:
+        """In session 3 the agent starts 「你姐姐——」 and she says 「讲别的」.
+        That is not ambiguous, and once is enough."""
+        avoided = " ".join(t.topic for t in final.do_not_raise)
+        assert "姐姐" in avoided
+
+    def test_the_sister_is_never_raised_again_by_the_agent(
+        self, final: ConversationOutcome
+    ) -> None:
+        assert not may_raise("姐姐", final.sensitivities)
+
+    def test_a_refusal_she_later_reopens_is_not_permanent(
+        self, final: ConversationOutcome
+    ) -> None:
+        """She refuses to discuss why the shop closed in session 2, then tells
+        the whole story in session 4 when her son asks. The subject is hers
+        again — the agent should not keep tiptoeing around it."""
+        closing = [
+            t for t in final.sensitivities if "关店" in t.topic or "关门" in t.topic
+        ]
+        assert closing, "the shop closing was never recorded as a topic"
+        assert any(t.engagements > 0 for t in closing)
+        assert all(not t.do_not_raise for t in closing)
+
+    def test_topics_she_enjoyed_are_not_avoided(
+        self, final: ConversationOutcome
+    ) -> None:
+        assert may_raise("爸爸的咖啡店", final.sensitivities)
+
+    def test_labels_stay_stable_across_sessions(
+        self, final: ConversationOutcome
+    ) -> None:
+        """The model invents a fresh label every call unless given the
+        vocabulary it already used, and no post-hoc string matching can then
+        tell 关店的原因 from 阿公的店关门."""
+        assert len(final.sensitivities) <= 12
+
+
+class TestPreferences:
+    """The layer that makes session 20 speak differently from session 1."""
+
+    def test_learns_how_to_be_heard(self, final: ConversationOutcome) -> None:
+        """She says 你讲大声一点,我左边耳朵不好 once, in session 1."""
+        hearing = [p for p in final.preferences if p.type is PreferenceType.HEARING]
+        assert hearing
+        assert "耳" in hearing[0].value or "大声" in hearing[0].value
+
+    def test_accumulates_several_preferences(self, final: ConversationOutcome) -> None:
+        assert len(final.preferences) >= 3
+
+    def test_holds_one_value_per_kind(self, final: ConversationOutcome) -> None:
+        kinds = [p.type for p in final.preferences]
+        assert len(kinds) == len(set(kinds))
+
+    def test_the_learned_layer_reaches_the_instruction(
+        self, final: ConversationOutcome
+    ) -> None:
+        """This string is the visible proof of memory in the demo: it is empty
+        at session 1 and carries her sister and her deaf ear by session 5."""
+        rendered = describe_for_instruction(final.preferences, final.sensitivities)
+
+        assert "姐姐" in rendered
+        assert rendered != describe_for_instruction([], [])
+
+    def test_the_instruction_quotes_nothing_back_at_her(
+        self, final: ConversationOutcome
+    ) -> None:
+        """Evidence is kept for the family view and for debugging. An agent
+        able to quote 「讲别的」 back at her is a surveillance device."""
+        rendered = describe_for_instruction(final.preferences, final.sensitivities)
+
+        assert "讲别的" not in rendered
 
 
 class TestExtractionHonesty:

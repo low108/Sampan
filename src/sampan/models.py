@@ -210,6 +210,97 @@ def kin_role(surface_form: str) -> str | None:
     return KIN_ROLES.get(normalise(surface_form))
 
 
+class PreferenceType(StrEnum):
+    """How she likes to be talked to.
+
+    This layer is what makes session 20 behave differently from session 1. It
+    is assembled into the Companion's instruction, so a change here is visible
+    in how the agent actually speaks.
+    """
+
+    SESSION_LENGTH = "session_length"
+    BEST_TIME = "best_time"
+    LISTEN_TALK_RATIO = "listen_talk_ratio"
+    QUESTION_STYLE = "question_style"
+    HEARING = "hearing"
+    PACE = "pace"
+    SILENCE_TOLERANCE = "silence_tolerance"
+    TOPIC_FAVOURITE = "topic_favourite"
+
+
+class PreferenceObservation(BaseModel):
+    """One preference noticed in one conversation."""
+
+    type: PreferenceType
+    value: str = Field(description="Short and concrete, e.g. 讲到11分钟就累")
+    evidence: str = Field(default="", description="The line that shows it")
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class Preference(BaseModel):
+    """An accumulated preference, confirmed or revised across sessions."""
+
+    type: PreferenceType
+    value: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    observations: int = 1
+    evidence: str = ""
+    first_seen_in: str | None = None
+    last_seen_in: str | None = None
+
+
+class AvoidanceKind(StrEnum):
+    """How she declined a topic.
+
+    An explicit refusal and a soft change of subject are different signals and
+    deserve different thresholds. 「讲别的」 is not ambiguous; drifting onto the
+    weather might be.
+    """
+
+    REFUSED = "refused"
+    DEFLECTED = "deflected"
+    ENGAGED = "engaged"
+
+
+class TopicSignal(BaseModel):
+    """One observation about her willingness to discuss something."""
+
+    topic: str = Field(description="Short label, e.g. 姐姐")
+    kind: AvoidanceKind
+    evidence: str = ""
+
+
+class SensitiveTopic(BaseModel):
+    """A subject to approach carefully, or not to raise at all.
+
+    Silent feedback capture: she never has to say 「don't ask me that」 twice.
+    """
+
+    topic: str
+    refusals: int = 0
+    deflections: int = 0
+    engagements: int = 0
+    evidence: str = ""
+    first_seen_in: str | None = None
+    last_seen_in: str | None = None
+
+    @property
+    def do_not_raise(self) -> bool:
+        """Whether the agent may bring this up unprompted.
+
+        One flat refusal is enough. Two softer deflections are also enough —
+        she should not have to refuse thrice. But if she has since chosen to
+        talk about it, the subject is hers again and the agent may follow.
+        """
+        declined = self.refusals >= 1 or self.deflections >= 2
+        return declined and self.engagements == 0
+
+    @property
+    def sensitive(self) -> bool:
+        """Still handled gently even once she has opened it herself."""
+        return self.refusals > 0 or self.deflections > 0
+
+
 class AnchorCandidate(BaseModel):
     """A dateable life event, as reported from one conversation."""
 
