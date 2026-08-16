@@ -743,7 +743,12 @@ than transcribed from footage.
    closed — she sees the call screen on opening it), Pub/Sub (the Archivist runs in-process on
    hang-up), the 22:00–08:00 DND queue, and a geographic map (the journey view renders her
    stops as a route instead).
-9. **Affect discrimination is verified on synthesised speech, not elderly speech.** Controlled
+9. **There is no device identity.** Who "you" are is a `?user=` URL parameter, so anyone
+   holding the shared key can act as any family member. This is deliberate for the demo — it
+   lets one browser flip between her phone and her son's — but the elder-never-logs-in design
+   assumed a paired device holding a durable credential, and that is not built. Real pairing
+   is roughly a day's work and appears nowhere in the video.
+10. **Affect discrimination is verified on synthesised speech, not elderly speech.** Controlled
    TTS deliveries were correctly separated, including the sad-engaged versus sad-withdrawing
    pair. Thresholds for real elderly prosody — tremor, genuine fatigue curve, age-related
    pitch change — remain unvalidated.

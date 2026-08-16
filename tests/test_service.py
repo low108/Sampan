@@ -187,5 +187,12 @@ class TestStaticPages:
 
         static = find_static_dir()
         assert static is not None
-        for name in ("index.html", "family.html", "worklet.js", "manifest.json"):
+        for name in (
+            "index.html",
+            "app.js",
+            "app.css",
+            "sampan-map.js",
+            "worklet.js",
+            "manifest.json",
+        ):
             assert (static / name).is_file(), name

@@ -2,237 +2,31 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>小船 Sampan</title>
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#b4552d">
+<meta name="theme-color" content="#9C3B24">
 <link rel="icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
 <style>
-  :root { color-scheme: light; }
-  body {
-    margin: 0; min-height: 100vh;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 2rem; padding: 2rem;
-    font-family: system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif;
-    background: #faf7f2; color: #2b2622;
+  /* The unplaced bar: absence given a permanent, tappable place on the map. */
+  .unplaced-bar {
+    position: absolute; left: .8rem; right: .8rem; bottom: .8rem; z-index: 5;
+    min-height: 3.4rem; border: none; border-radius: .8rem; cursor: pointer;
+    background: rgba(255,252,245,.94); color: var(--ink);
+    font-family: var(--sans); font-size: 1.05rem; text-align: left;
+    padding: .7rem 1rem; box-shadow: 0 3px 14px rgba(36,30,26,.16);
+    backdrop-filter: blur(6px);
   }
-  h1 { font-size: 2rem; font-weight: 500; margin: 0; }
-  p.sub { font-size: 1.25rem; color: #6b625a; margin: 0; text-align: center; }
-  /* Elderly-first: large target, high contrast, no small text anywhere. */
-  button {
-    width: 15rem; height: 15rem; border-radius: 50%; border: none;
-    font-size: 2.25rem; font-family: inherit; color: #fff; background: #b4552d;
-    cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.18);
-  }
-  button:active { transform: scale(.98); }
-  button[data-live="true"] { background: #3f6b52; }
-  button:disabled { background: #b0a89f; cursor: default; }
-  #log {
-    width: min(40rem, 100%); min-height: 6rem; font-size: 1.25rem; line-height: 1.7;
-    background: #fff; border-radius: .75rem; padding: 1.25rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,.08); white-space: pre-wrap;
-  }
-  .muted { color: #8a8078; }
-  /* Debug overlay: a demo asset, so it is styled deliberately rather than
-     looking like a console someone forgot to remove. */
-  #overlay {
-    position: fixed; top: 1rem; right: 1rem; width: 15rem;
-    background: #2b2622; color: #f3ece2; border-radius: .6rem;
-    padding: .9rem 1rem; font-size: .85rem; line-height: 1.6;
-    box-shadow: 0 6px 24px rgba(0,0,0,.25); display: none;
-  }
-  #overlay h4 { margin: 0 0 .5rem; font-size: .7rem; letter-spacing: .12em;
-                text-transform: uppercase; color: #a89a89; font-weight: 600; }
-  .pill { display: inline-block; padding: .1rem .5rem; border-radius: 1rem;
-          background: #45403a; margin: 0 .3rem .3rem 0; }
-  .pill.warn { background: #8b4a2f; }
-  .pill.alert { background: #8b2f2f; }
-  #overlay .knob { color: #a89a89; }
-  #overlay .tool { color: #9fc0aa; }
-  /* An incoming call, as close as a PWA is allowed to get. */
-  #incoming {
-    position: fixed; inset: 0; background: #3f6b52; color: #fff; z-index: 10;
-    display: none; flex-direction: column; align-items: center;
-    justify-content: center; gap: 1.5rem; padding: 2rem; text-align: center;
-  }
-  #incoming.on { display: flex; animation: breathe 2s ease-in-out infinite; }
-  @keyframes breathe { 50% { background: #4a7a5e; } }
-  #incoming .who { font-size: 2.6rem; font-weight: 500; }
-  #incoming .what { font-size: 1.4rem; opacity: .9; }
-  #incoming button {
-    width: 11rem; height: 11rem; font-size: 1.8rem; background: #fff; color: #3f6b52;
-  }
-  #incoming .later {
-    width: auto; height: auto; font-size: 1.15rem; background: none;
-    color: #d8e6dc; box-shadow: none; text-decoration: underline;
-  }
+  .unplaced-bar .en { display: block; }
 </style>
 </head>
 <body>
-  <h1>小船</h1>
-  <p class="sub">按一下,就可以开始讲</p>
-  <button id="talk">讲话</button>
-  <div id="log" class="muted">还没开始</div>
-
-  <div id="incoming">
-    <p class="what">有人找你</p>
-    <p class="who" id="caller">—</p>
-    <button id="answer">接</button>
-    <button class="later" id="later">等一下再说</button>
-  </div>
-
-  <div id="overlay">
-    <h4>小船 · state</h4>
-    <div id="pills"></div>
-    <div class="knob" id="knobs"></div>
-    <div class="tool" id="tools"></div>
-  </div>
-
-<script>
-const SAMPLE_RATE_IN = 16000;
-const talk = document.getElementById("talk");
-const log = document.getElementById("log");
-
-let ws, ctx, node, stream, live = false;
-let playAt = 0, playCtx;
-
-const key = new URLSearchParams(location.search).get("key") || "";
-
-function say(text, muted = false) {
-  log.textContent = text;
-  log.className = muted ? "muted" : "";
-}
-
-// The model returns 24 kHz PCM; queue chunks end to end so speech is smooth.
-function playPcm(bytes, rate) {
-  playCtx ||= new AudioContext();
-  const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
-  const buf = playCtx.createBuffer(1, pcm.length, rate);
-  const channel = buf.getChannelData(0);
-  for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 32768;
-  const src = playCtx.createBufferSource();
-  src.buffer = buf;
-  src.connect(playCtx.destination);
-  playAt = Math.max(playAt, playCtx.currentTime);
-  src.start(playAt);
-  playAt += buf.duration;
-}
-
-const overlay = document.getElementById("overlay");
-const seenTools = [];
-
-function showAffect(a) {
-  overlay.style.display = "block";
-  // Energy is monotonic, so fading and depleted are worth colouring; a care
-  // flag is the only thing that should ever look alarming.
-  const cls = (v) => a.care_flag ? "pill alert"
-    : ["fading", "withdrawing", "sad", "closing"].includes(v) ? "pill warn" : "pill";
-  document.getElementById("pills").innerHTML =
-    [a.energy, a.engagement, a.affect, ...(a.flags || [])]
-      .map((v) => `<span class="${cls(v)}">${v}</span>`).join("");
-  document.getElementById("knobs").innerHTML =
-    `→ ${a.topic_action} · 话${a.turn_length}` +
-    (a.care_flag ? `<br>⚠ ${a.care_flag} — 已通知家人` : "");
-}
-
-function showTools(names) {
-  for (const n of names) if (!seenTools.includes(n)) seenTools.push(n);
-  overlay.style.display = "block";
-  document.getElementById("tools").innerHTML =
-    seenTools.map((n) => `<div>↳ ${n}()</div>`).join("");
-}
-
-async function start() {
-  stream = await navigator.mediaDevices.getUserMedia({
-    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-  });
-
-  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/talk?key=${encodeURIComponent(key)}`);
-  ws.binaryType = "arraybuffer";
-
-  ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.affect) showAffect(msg.affect);
-    if (msg.tool_calls) showTools(msg.tool_calls);
-    if (msg.audio) {
-      playPcm(Uint8Array.from(atob(msg.audio), (c) => c.charCodeAt(0)), msg.sample_rate || 24000);
-    }
-    if (msg.user_transcript) say("你: " + msg.user_transcript);
-    if (msg.agent_transcript) say("小船: " + msg.agent_transcript);
-    if (msg.interrupted) playAt = 0;
-  };
-
-  ws.onclose = () => stop("讲完了");
-  ws.onerror = () => stop("连不上");
-
-  ctx = new AudioContext({ sampleRate: SAMPLE_RATE_IN });
-  await ctx.audioWorklet.addModule("worklet.js");
-  node = new AudioWorkletNode(ctx, "pcm-capture");
-  node.port.onmessage = (e) => {
-    if (ws?.readyState === WebSocket.OPEN) ws.send(e.data);
-  };
-  ctx.createMediaStreamSource(stream).connect(node);
-  node.connect(ctx.destination);
-
-  live = true;
-  talk.dataset.live = "true";
-  talk.textContent = "讲完了";
-  say("我在听……");
-}
-
-function stop(message = "讲完了") {
-  live = false;
-  talk.dataset.live = "false";
-  talk.textContent = "讲话";
-  say(message, true);
-  ws?.close(); ctx?.close(); playCtx?.close();
-  stream?.getTracks().forEach((t) => t.stop());
-  ws = ctx = playCtx = stream = null;
-  playAt = 0;
-}
-
-// A PWA cannot ring. What it can do is notice, the moment she opens it, that
-// her son left something — and lead with his voice rather than the agent's.
-let pendingVoice = null;
-
-async function checkPending() {
-  try {
-    const res = await fetch(`/api/talk/ah_khim/pending`, { headers: { "X-Sampan-Key": key } });
-    if (!res.ok) return;
-    const p = await res.json();
-    if (!p.waiting) return;
-    pendingVoice = p.voice_note || null;
-    document.getElementById("caller").textContent =
-      p.relation ? `${p.from_name}(${p.relation})` : p.from_name;
-    document.getElementById("incoming").classList.add("on");
-    if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
-  } catch { /* offline is not an error worth showing her */ }
-}
-
-document.getElementById("later").onclick = () =>
-  document.getElementById("incoming").classList.remove("on");
-
-document.getElementById("answer").onclick = async () => {
-  document.getElementById("incoming").classList.remove("on");
-  // His voice first. The agent explains itself afterwards.
-  if (pendingVoice) {
-    const a = new Audio(pendingVoice);
-    say("……");
-    await a.play().catch(() => {});
-    await new Promise((r) => { a.onended = r; setTimeout(r, 12000); });
-  }
-  talk.click();
-};
-
-talk.onclick = async () => {
-  if (live) return stop();
-  talk.disabled = true;
-  try { await start(); }
-  catch (err) { say("开不了麦克风:" + err.message, true); }
-  finally { talk.disabled = false; }
-};
-
-checkPending();
-</script>
+<div id="app"></div>
+<script src="sampan-map.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
