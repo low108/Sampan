@@ -210,6 +210,99 @@ def kin_role(surface_form: str) -> str | None:
     return KIN_ROLES.get(normalise(surface_form))
 
 
+class Energy(StrEnum):
+    """Monotonic within a call. People do not get less tired."""
+
+    FRESH = "fresh"
+    FADING = "fading"
+    DEPLETED = "depleted"
+
+
+class Engagement(StrEnum):
+    ENGAGED = "engaged"
+    DRIFTING = "drifting"
+    WITHDRAWING = "withdrawing"
+    CLOSING = "closing"
+
+
+class Affect(StrEnum):
+    WARM = "warm"
+    EXCITED = "excited"
+    NEUTRAL = "neutral"
+    SAD = "sad"
+    ANXIOUS = "anxious"
+    FRUSTRATED = "frustrated"
+    AGITATED = "agitated"
+
+
+class AffectFlag(StrEnum):
+    """Non-exclusive overrides. Any of these outranks the three axes."""
+
+    CONFUSED = "confused"
+    LOOPING = "looping"
+    DISTRESS = "distress"
+
+
+class Assessment(BaseModel):
+    """One reading of the trailing audio window.
+
+    Three orthogonal axes rather than a flat enum, because 'sad and engaged'
+    and 'sad and withdrawing' call for opposite responses and a single label
+    forces a bad choice between them.
+    """
+
+    energy: Energy
+    engagement: Engagement
+    affect: Affect
+    flags: list[AffectFlag] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0, default=0.5)
+    signals: list[str] = Field(
+        default_factory=list, description="What the reading was based on"
+    )
+
+
+class AffectState(BaseModel):
+    """The agent's current read of her, after hysteresis."""
+
+    energy: Energy = Energy.FRESH
+    engagement: Engagement = Engagement.ENGAGED
+    affect: Affect = Affect.NEUTRAL
+    flags: list[AffectFlag] = Field(default_factory=list)
+    # How many consecutive assessments have disagreed with the current state.
+    # Two are required to move, so one odd reading cannot make the agent lurch.
+    pending: Assessment | None = None
+    transitions: list[str] = Field(
+        default_factory=list, description="Audit trail, and the demo overlay"
+    )
+
+
+class QuestionStyle(StrEnum):
+    OPEN = "open"
+    CLOSED = "closed"
+    NONE = "none"
+
+
+class TopicAction(StrEnum):
+    DEEPEN = "deepen"
+    HOLD = "hold"
+    PIVOT = "pivot"
+    CLOSE = "close"
+
+
+class Knobs(BaseModel):
+    """What the agent actually changes in response.
+
+    The agent never names the state out loud; it only turns these.
+    """
+
+    turn_length: str
+    question_type: QuestionStyle
+    silence_tolerance: str
+    topic_action: TopicAction
+    guidance: str = Field(description="The line handed to the agent")
+    care_flag: str | None = None
+
+
 class Ask(BaseModel):
     """A question from a family member, waiting for her next call.
 

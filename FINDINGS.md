@@ -74,6 +74,35 @@ her own 「坐船来的,槟城上岸」, and 一九六九年咖啡店结业 corr
 way. Anchor such fields to the source text, and say plainly that empty is an acceptable answer
 — otherwise "always filled" is indistinguishable from "always fabricated".
 
+## The three-axis affect model earned its keep, then a bug erased the benefit
+
+**2026-08-16, tickets 13-14.**
+
+The design argument for three orthogonal axes rather than one emotion label was that *sad and
+engaged* and *sad and withdrawing* need opposite responses. Controlled TTS samples, same voice,
+different delivery, put that to the test:
+
+| Delivery | energy | engagement | affect |
+|---|---|---|---|
+| loud, fast, laughing | fresh | engaged | excited |
+| slow, trailing off, 「都过去了」 | fading | **withdrawing** | sad |
+| slow, grieving, telling the Milo story | fresh | **engaged** | sad |
+
+The model heard the sigh, the pace, and the lexical closers, and separated the last two
+correctly. The design was right.
+
+Then `policy()` gave both sad states **identical** knobs — because `affect is SAD` was checked
+before `engagement is WITHDRAWING`, so sadness swallowed withdrawal. The three axes were being
+computed accurately and then collapsed one line later.
+
+**Every unit test passed.** Each one exercised a single axis — sadness alone, withdrawal alone
+— and the combination that motivated the entire design had no test at all. It was only visible
+by printing the two policies side by side and seeing the same string twice.
+
+**Lesson:** when a design's justification is *"these two cases differ"*, that pair is the test
+worth writing first. Testing each axis in isolation verifies the axes exist, not that they do
+anything.
+
 ## A persona cannot hold state, and a hardcoded greeting fires forever
 
 **2026-08-16, ticket 12.**
