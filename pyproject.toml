@@ -32,7 +32,10 @@ packages = ["src/sampan"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-q"
+# Integration tests hit the real model: they cost money and vary between runs,
+# so they are opt-in via `pytest -m integration`.
+addopts = "-q -m 'not integration'"
+markers = ["integration: hits the real Gemini API"]
 
 [tool.pyright]
 include = ["src", "tests"]

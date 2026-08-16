@@ -30,6 +30,37 @@ container, not just in tests.
 
 ---
 
+## The model will not choose a pin type unless you tell it how
+
+**2026-08-16, ticket 2.**
+
+First run of extraction against seed session 1 produced both expected stories, correctly
+scored, with genuinely good sensory details — but `pin_type` was wrong on both. A story about
+playing in a river came back as `person`; a story with a named location came back as
+`timeline`. Either would have silently dropped the story off the map.
+
+The schema's enum and field descriptions were not enough. What fixed it was an explicit
+decision procedure in the prompt, in priority order, ending with a hard rule: *if `where` has
+a real location, never choose `timeline`.*
+
+Same run, same fix: asking for "a sensory detail" produced a list of three. Asking for
+**one** produced 「煤油灯下一碗白饭配酱油」 — a bowl of rice and soy sauce under a kerosene
+lamp. The constraint is what makes it a story instead of an inventory.
+
+**Lesson:** structured output guarantees the *shape*, never the *judgement*. Any field whose
+value is a decision rather than a transcription needs the decision procedure written out.
+
+## Date inference across a transcript works better than expected
+
+**2026-08-16, ticket 2.**
+
+She says 「六七岁吧」 in one turn and 「我是一九四六年生的」 several turns later. The model
+resolved the first against the second and returned `start_year: 1952, end_year: 1953` while
+preserving `raw_phrase: '六七岁吧'`.
+
+That is the two-fields-for-time design paying off on the very first run, and it is the
+mechanism the whole "session 20 has a sharper timeline than session 3" claim rests on.
+
 ## `secrets.compare_digest` raises on non-ASCII strings
 
 **2026-08-16, ticket 1 code review.**

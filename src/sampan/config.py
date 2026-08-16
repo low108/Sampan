@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # --- Google Cloud -----------------------------------------------------
     project_id: str = Field(default="", alias="GOOGLE_CLOUD_PROJECT")
     location: str = Field(default="asia-southeast1", alias="GOOGLE_CLOUD_LOCATION")
+    # Model serving region. Separate from the data region: the newest models
+    # are not available in every location, and story data stays in asia-southeast1
+    # regardless of where inference runs.
+    vertex_location: str = Field(default="global", alias="SAMPAN_VERTEX_LOCATION")
     firestore_database: str = Field(default="(default)", alias="FIRESTORE_DATABASE")
 
     # --- Models -----------------------------------------------------------
