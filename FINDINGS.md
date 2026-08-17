@@ -616,3 +616,55 @@ the archive are ones the teller *chose* to tell — she described the shop closi
 when her son asked, and he described regretting the five-minute phone calls.
 Burying those behind an approval workflow that does not exist yet would be a
 worse record of the family than marking them and treading carefully.
+
+## A required field will be filled with something that looks like an answer
+
+Three times now, in three different places, a model asked for a specific kind
+of value supplied something with the right shape and no content:
+
+- `sense_detail` came back as a paraphrase of the story rather than a detail
+  she actually gave.
+- `flag_concern` and `mark_private` returned reassuring confirmations while
+  persisting nothing.
+- `linked_evidence` — the sentence proving that "my father's shop" is the shop
+  on Jalan Bandar — came back as *"Identified as being in the vicinity of
+  Sungai Siput"*. That is not something she said. It is the model narrating its
+  own reasoning into a field that asked for a quotation.
+
+The prompt was not the weak point. It said, in capitals, that every link needs
+evidence, gave a worked GOOD and BAD example, and stated that leaving the field
+blank was fine. It still got reasoning back, because a field that must be
+non-empty will be made non-empty, and a plausible-sounding justification is the
+cheapest way to do that.
+
+The check that mattered was three lines and no cleverness: the evidence must
+appear in the transcript. Case and whitespace are normalised because the model
+re-punctuates freely, and very short fragments are rejected because almost any
+few words can be found somewhere in a long transcript. A claim about the source
+can be tested against the source.
+
+### The worse half: a field the prompt never mentioned
+
+The evidence check was already there, and two forged links reached the map
+anyway — because they never went through the linker.
+
+`Place` carries the geocoding fields *and* `linked_from` / `linked_evidence`.
+The place resolver used `Place` directly as its `response_schema`. The
+resolution prompt never mentions linking; it asks only for coordinates and an
+honest precision. But the schema offered the fields, so the model filled them,
+and those values were written straight to the pin. The verification path
+existed, was tested, worked — and the geocoder simply routed around it.
+
+Both stages returning "a place" made sharing one type feel like good design. It
+meant the stage with no evidence requirement could emit evidence. The fix was
+to give the resolver its own schema containing only what its prompt governs,
+and construct `Place` from it.
+
+Generated structured output is not filled in like a form, where blank fields
+stay blank. Every field offered is a field that will be answered. **The schema
+is part of the prompt** — anything in it that the instructions do not govern is
+an ungoverned instruction.
+
+The visible result: before, nine of nine stories were placed and the tray was
+empty, which read as a system doing well. Two of those pins rested on sentences
+she never said.

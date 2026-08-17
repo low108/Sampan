@@ -5,7 +5,8 @@ exists — a question waiting, a story that arrived, a concern raised — so
 computing it on read means it can never disagree with the thing it describes.
 Only "seen" is written down.
 
-The one that matters is 「伟伦问你一句话」. Tapping it starts a recording with
+The one that matters is "Wei Lun asked you something". Tapping it starts a
+recording with
 his question already loaded, so the distance between *someone was thinking of
 you* and *she starts talking* is a single tap.
 """
@@ -70,7 +71,7 @@ def notifications_for(
 ) -> list[Notification]:
     """What this person should see when they open the bell.
 
-    Two audiences, one bell. She gets 「有人问你」; her family get her new
+    Two audiences, one bell. She gets "someone asked you"; her family get her new
     stories. Nobody gets told about their own recordings.
     """
     seen = _seen_ids(repository, viewer_id)
@@ -84,7 +85,7 @@ def notifications_for(
             Notification(
                 id=f"ask:{ask.ask_id}",
                 kind=NotificationKind.ASKED_YOU,
-                title=f"{ask.from_name}问你一句话",
+                title=f"{ask.from_name} asked you something",
                 subtitle=f"{ask.from_name} left you a question",
                 from_name=ask.from_name,
                 at=ask.created_at or "",
@@ -114,15 +115,15 @@ def notifications_for(
         given = member.display_name.split()[0]
         newest = max(stories, key=lambda s: s.get("occurred_at", "") or s["story_id"])
         if len(fresh) > 1:
-            title = f"{given}讲了 {len(fresh)} 个新故事"
+            title = f"{given} told {len(fresh)} new stories"
             subtitle = f"{len(fresh)} new stories from {member.display_name}"
         elif len(fresh) == 1:
             told = (fresh[0].get("candidate") or {}).get("title", "")
-            title = f"{given}讲了「{told}」"
+            title = f"{given} told: {told}"
             subtitle = f"a new story from {member.display_name}"
         else:
             told = (newest.get("candidate") or {}).get("title", "")
-            title = f"{given}讲了「{told}」"
+            title = f"{given} told: {told}"
             subtitle = f"from {member.display_name}"
 
         out.append(
@@ -151,7 +152,10 @@ def notifications_for(
                 Notification(
                     id=f"care:{raw['concern_id']}",
                     kind=NotificationKind.CONCERN,
-                    title=f"{by_id[member.narrator_id].display_name.split()[0]}讲到{raw['kind']}",
+                    title=(
+                        f"{by_id[member.narrator_id].display_name.split()[0]} "
+                        f"mentioned {raw['kind']}"
+                    ),
                     subtitle=raw.get("detail", ""),
                     at=raw.get("raised_at", ""),
                     opens="member",

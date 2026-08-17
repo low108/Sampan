@@ -52,23 +52,23 @@ class StubExtractor:
         return self.response
 
 
-def story(title: str = "板底街的咖啡店") -> StoryCandidate:
+def story(title: str = "the coffee shop on Jalan Bandar") -> StoryCandidate:
     return StoryCandidate(
         title=title,
         domain=Domain.WORK,
-        narrative="我爸爸一九五八年在板底街开了一间咖啡店……",
+        narrative="My father opened the coffee shop on Jalan Bandar in 1958……",
         when=When(
-            raw_phrase="一九五八年",
+            raw_phrase="in 1958",
             start_year=1958,
             end_year=1958,
             precision=Precision.YEAR,
             confidence=0.95,
         ),
-        where=Where(raw_name="板底街", confidence=0.9),
-        who=[PersonMention(surface_form="我爸爸", role="father", confidence=0.9)],
-        what="爸爸开了咖啡店",
-        sense_detail="炭火烤面包涂牛油的味道",
-        why_it_matters="那是家里最好的日子",
+        where=Where(raw_name="Jalan Bandar", confidence=0.9),
+        who=[PersonMention(surface_form="my father", role="father", confidence=0.9)],
+        what="my father opened the coffee shop",
+        sense_detail="the smell of bread toasted over charcoal",
+        why_it_matters="those were the best years for the family",
         emotion=Emotion(valence=0.4, labels=["pride"]),
         pin_type=PinType.PLACE,
     )
@@ -77,23 +77,27 @@ def story(title: str = "板底街的咖啡店") -> StoryCandidate:
 FULL = ExtractionResponse(
     stories=[story()],
     entity_mentions=[
-        EntityMention(surface_form="我爸爸", type=EntityType.PERSON, role="father"),
-        EntityMention(surface_form="板底街", type=EntityType.PLACE),
+        EntityMention(surface_form="my father", type=EntityType.PERSON, role="father"),
+        EntityMention(surface_form="Jalan Bandar", type=EntityType.PLACE),
     ],
     threads=[
         ThreadUpdate(
-            topic="爸爸的咖啡店",
+            topic="father's coffee shop",
             action=ThreadAction.OPENED,
-            left_off_at="店后来怎么关的",
+            left_off_at="how the shop came to close",
         )
     ],
-    closure=Closure(reason=ClosureReason.FATIGUE, evidence="有一点点累"),
+    closure=Closure(reason=ClosureReason.FATIGUE, evidence="a little bit tired"),
     preferences=[
         PreferenceObservation(
-            type=PreferenceType.HEARING, value="左耳不好", confidence=0.9
+            type=PreferenceType.HEARING, value="left ear is weak", confidence=0.9
         )
     ],
-    topic_signals=[TopicSignal(topic="姐姐", kind=Avoid.REFUSED, evidence="讲别的")],
+    topic_signals=[
+        TopicSignal(
+            topic="sister", kind=Avoid.REFUSED, evidence="talk about something else"
+        )
+    ],
 )
 
 
@@ -110,7 +114,7 @@ def settings() -> Settings:
 def conversation(turns: int = 6) -> Transcript:
     transcript = Transcript()
     for i in range(turns):
-        transcript.add("user" if i % 2 == 0 else "agent", f"第{i}句")
+        transcript.add("user" if i % 2 == 0 else "agent", f"line {i}")
     return transcript
 
 
@@ -118,26 +122,26 @@ class TestTranscript:
     def test_incremental_transcription_is_one_turn_not_many(self) -> None:
         """The Live API streams revisions of the same turn."""
         transcript = Transcript()
-        transcript.add("user", "我小时候")
-        transcript.add("user", "我小时候在树胶园长大")
+        transcript.add("user", "When I was small we lived on the estate")
+        transcript.add("user", "I grew up on the rubber estate")
 
         assert len(transcript) == 1
-        assert "树胶园" in transcript.render()
+        assert "rubber estate" in transcript.render()
 
     def test_speakers_alternate_into_separate_turns(self) -> None:
         transcript = Transcript()
-        transcript.add("user", "喂")
-        transcript.add("agent", "阿嬷早")
-        transcript.add("user", "早")
+        transcript.add("user", "Hello?")
+        transcript.add("agent", "Morning, Ah Ma")
+        transcript.add("user", "Morning")
 
         assert len(transcript) == 3
 
     def test_renders_in_the_shape_the_archivist_reads(self) -> None:
         transcript = Transcript()
-        transcript.add("agent", "阿嬷早")
-        transcript.add("user", "早")
+        transcript.add("agent", "Morning, Ah Ma")
+        transcript.add("user", "Morning")
 
-        assert transcript.render() == "A: 阿嬷早\nK: 早"
+        assert transcript.render() == "A: Morning, Ah Ma\nK: Morning"
 
     def test_blank_transcription_is_ignored(self) -> None:
         transcript = Transcript()
@@ -160,7 +164,7 @@ class TestFirstCall:
     ) -> None:
         prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
 
-        assert "我是小船" in prepared.agent.instruction  # type: ignore[attr-defined]
+        assert "I am Xiao Chuan" in prepared.agent.instruction  # type: ignore[attr-defined]
 
 
 class TestMemorySurvives:
@@ -196,8 +200,8 @@ class TestMemorySurvives:
         second = prepare_call(repository, settings, narrator_id=NARRATOR)
 
         assert second.stored.session_count == 1
-        assert any("咖啡店" in t.topic for t in second.memory.threads)
-        assert any(p.value == "左耳不好" for p in second.memory.preferences)
+        assert any("coffee shop" in t.topic for t in second.memory.threads)
+        assert any(p.value == "left ear is weak" for p in second.memory.preferences)
 
     def test_the_second_call_does_not_reintroduce_itself(
         self, repository: Repository, settings: Settings
@@ -213,7 +217,7 @@ class TestMemorySurvives:
 
         second = prepare_call(repository, settings, narrator_id=NARRATOR)
 
-        assert "我是小船" not in second.agent.instruction  # type: ignore[attr-defined]
+        assert "I am Xiao Chuan" not in second.agent.instruction  # type: ignore[attr-defined]
 
     def test_a_refused_subject_is_still_refused_next_time(
         self, repository: Repository, settings: Settings
@@ -229,7 +233,7 @@ class TestMemorySurvives:
 
         second = prepare_call(repository, settings, narrator_id=NARRATOR)
 
-        assert "姐姐" in second.agent.instruction  # type: ignore[attr-defined]
+        assert "sister" in second.agent.instruction  # type: ignore[attr-defined]
         assert any(t.do_not_raise for t in second.memory.sensitivities)
 
     def test_entities_are_carried_forward(
@@ -327,19 +331,24 @@ class TestFamilyAsks:
     ) -> None:
         repository.queue_ask(
             NARRATOR,
-            Ask(ask_id="a1", from_name="伟伦", relation="儿子", question="阿公的店?"),
+            Ask(
+                ask_id="a1",
+                from_name="Wei Lun",
+                relation="son",
+                question="Ah Gong's shop?",
+            ),
         )
 
         prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
 
         assert prepared.memory.ask is not None
-        assert prepared.memory.ask.from_name == "伟伦"
+        assert prepared.memory.ask.from_name == "Wei Lun"
 
     def test_a_delivered_ask_is_not_asked_again(
         self, repository: Repository, settings: Settings
     ) -> None:
         repository.queue_ask(
-            NARRATOR, Ask(ask_id="a1", from_name="伟伦", question="阿公的店?")
+            NARRATOR, Ask(ask_id="a1", from_name="Wei Lun", question="Ah Gong's shop?")
         )
         prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
         prepared.memory.ask_delivered = True
@@ -359,7 +368,7 @@ class TestFamilyAsks:
     ) -> None:
         """She hung up before hearing it. It should still be there."""
         repository.queue_ask(
-            NARRATOR, Ask(ask_id="a1", from_name="伟伦", question="阿公的店?")
+            NARRATOR, Ask(ask_id="a1", from_name="Wei Lun", question="Ah Gong's shop?")
         )
         prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
 
@@ -382,8 +391,8 @@ class TestFamilyAsks:
                 NARRATOR,
                 Ask(
                     ask_id=f"a{i}",
-                    from_name="伟伦",
-                    question=f"问题{i}",
+                    from_name="Wei Lun",
+                    question=f"question {i}",
                     created_at=f"2026-08-0{i + 1}T00:00:00Z",
                 ),
             )

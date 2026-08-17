@@ -117,14 +117,16 @@ def describe_for_instruction(
     lines: list[str] = []
 
     if preferences:
-        lines.append("你已经知道的事(不要讲出来,做到就好):")
+        lines.append("Things you already know (do not say them, just act on them):")
         for preference in sorted(preferences, key=lambda p: p.type.value):
             lines.append(f"- {preference.type.value}: {preference.value}")
 
     avoid = do_not_raise(topics)
     if avoid:
         lines.append("")
-        lines.append("这些话题不要主动提起。她自己讲就顺着她讲:")
+        lines.append(
+            "Do not raise these subjects yourself. If she raises one, follow her:"
+        )
         for topic in avoid:
             lines.append(f"- {topic.topic}")
 

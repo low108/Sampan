@@ -165,7 +165,7 @@ class Repository:
     def mark_private(self, narrator_id: str, subject: str) -> None:
         """Record that she asked for something to stay off the family's view.
 
-        The agent tells her 「好,这个我不写进去」 when she asks. That sentence
+        The agent tells her "I won't write that down" when she asks. That sentence
         has to be true, which means it has to survive the call.
         """
         key = subject.strip()

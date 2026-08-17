@@ -1,102 +1,136 @@
 {
-  "_comment": "The child-completed family intake, filled in once at setup. It bootstraps entity resolution and stops the agent asking painful questions about people who have died. Persona per docs/persona-bible.md.",
-  "narrator": "林秀琴",
+  "_comment": "The child-completed family intake, filled in once at setup. It bootstraps entity resolution and stops the agent asking painful questions about people who have died.",
+  "narrator": "Lim Siew Khim",
   "entities": [
     {
       "entity_id": "ent_father",
       "type": "person",
-      "canonical_name": "林亚福",
-      "aliases": ["我爸爸", "爸爸", "阿爸"],
+      "canonical_name": "Lim Ah Hock",
+      "aliases": [
+        "my father",
+        "father",
+        "Ah Pa"
+      ],
       "role": "father",
-      "detail": "割胶,后来在怡保板底街开咖啡店。1918-1981。已过世。",
+      "detail": "Tapped rubber, later opened the coffee shop on Jalan Bandar, Ipoh. 1918-1981. Passed away.",
       "provisional": false,
       "confirmed_by_family": true
     },
     {
       "entity_id": "ent_mother",
       "type": "person",
-      "canonical_name": "陈亚娣",
-      "aliases": ["我妈妈", "妈妈", "阿妈"],
+      "canonical_name": "Tan Ah Tai",
+      "aliases": [
+        "my mother",
+        "mother"
+      ],
       "role": "mother",
-      "detail": "在店后面煮饭。1922-1998。已过世。",
+      "detail": "Cooked at the back of the shop. 1922-1998. Passed away.",
       "provisional": false,
       "confirmed_by_family": true
     },
     {
       "entity_id": "ent_sister",
       "type": "person",
-      "canonical_name": "林秀珠",
-      "aliases": ["我姐姐", "姐姐", "阿珠"],
-      "role": "elder_sister",
-      "detail": "1941-2019。已过世。2017年吵架,到她走都没有再讲话。敏感话题。",
+      "canonical_name": "Lim Siew Choo",
+      "aliases": [
+        "my sister",
+        "sister",
+        "Ah Choo"
+      ],
+      "role": "sister",
+      "detail": "1941-2019. Passed away. They quarrelled in 2017 and never spoke again. Sensitive subject.",
       "provisional": false,
       "confirmed_by_family": true
     },
     {
       "entity_id": "ent_husband",
       "type": "person",
-      "canonical_name": "陈永发",
-      "aliases": ["我先生", "阿发", "先生"],
+      "canonical_name": "Tan Eng Huat",
+      "aliases": [
+        "my husband",
+        "Ah Fatt",
+        "husband"
+      ],
       "role": "husband",
-      "detail": "罗厘司机。1942-2015。已过世。",
+      "detail": "Lorry driver. 1942-2015. Passed away.",
       "provisional": false,
       "confirmed_by_family": true
     },
     {
       "entity_id": "ent_son",
       "type": "person",
-      "canonical_name": "陈伟伦",
-      "aliases": ["伟伦", "我儿子", "儿子"],
+      "canonical_name": "Tan Wei Lun",
+      "aliases": [
+        "Wei Lun",
+        "my son",
+        "son"
+      ],
       "role": "son",
-      "detail": "1970年生。在吉隆坡工作。",
+      "detail": "Born 1970. Works in Kuala Lumpur.",
       "provisional": false,
       "confirmed_by_family": true
     },
     {
       "entity_id": "ent_daughter",
       "type": "person",
-      "canonical_name": "陈美玲",
-      "aliases": ["美玲", "我女儿", "女儿"],
+      "canonical_name": "Tan Mei Ling",
+      "aliases": [
+        "Mei Ling",
+        "my daughter",
+        "daughter"
+      ],
       "role": "daughter",
-      "detail": "1973年生。2001年移民澳洲珀斯。",
+      "detail": "Born 1973. Emigrated to Perth in 2001.",
       "provisional": false,
       "confirmed_by_family": true
     },
     {
       "entity_id": "ent_granddaughter",
       "type": "person",
-      "canonical_name": "陈欣宜",
-      "aliases": ["欣宜", "我孙女", "孙女"],
+      "canonical_name": "Tan Xin Yi",
+      "aliases": [
+        "Xin Yi",
+        "my granddaughter",
+        "granddaughter"
+      ],
       "role": "granddaughter",
-      "detail": "2007年生。伟伦的女儿。看不懂中文。",
+      "detail": "Born 2007. Wei Lun's daughter.",
       "provisional": false,
       "confirmed_by_family": true
     },
     {
       "entity_id": "ent_grandfather",
       "type": "person",
-      "canonical_name": "林长兴",
-      "aliases": ["我阿公", "阿公"],
+      "canonical_name": "Lim Cheong Hin",
+      "aliases": [
+        "my grandfather",
+        "Ah Gong"
+      ],
       "role": "grandfather",
-      "detail": "福建永春人,1928年到槟城。她没见过他。",
+      "detail": "From Yongchun, Fujian. Landed at Penang in 1928. She never met him.",
       "provisional": false,
       "confirmed_by_family": true
     },
     {
       "entity_id": "ent_ipoh",
       "type": "place",
-      "canonical_name": "怡保",
-      "aliases": ["Ipoh"],
-      "detail": "她现在住的地方。",
+      "canonical_name": "Ipoh",
+      "aliases": [
+        "Ipoh town"
+      ],
+      "detail": "Where she lives now.",
       "provisional": false,
       "confirmed_by_family": true
     },
     {
       "entity_id": "ent_sungai_siput",
       "type": "place",
-      "canonical_name": "双溪镇",
-      "aliases": ["Sungai Siput"],
-      "detail": "她出生长大的树胶园所在。园区已经不在了。",
+      "canonical_name": "Sungai Siput",
+      "aliases": [
+        "Sungai Siput, Perak"
+      ],
+      "detail": "Where the rubber estate she grew up on was. The estate no longer exists.",
       "provisional": false,
       "confirmed_by_family": true
     }

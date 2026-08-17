@@ -7,9 +7,11 @@ import pytest
 from sampan.anchors import apply_anchors, direction, fold_anchors
 from sampan.models import Anchor, AnchorCandidate, Precision, When
 
-MARRIAGE = Anchor(anchor_id="anchor_marriage", label="结婚", year=1968, confidence=0.9)
+MARRIAGE = Anchor(
+    anchor_id="anchor_marriage", label="married", year=1968, confidence=0.9
+)
 SHOP_CLOSE = Anchor(
-    anchor_id="anchor_shop_close", label="关店", year=1969, confidence=0.8
+    anchor_id="anchor_shop_close", label="the shop closing", year=1969, confidence=0.8
 )
 
 
@@ -32,55 +34,70 @@ def when(
 
 
 class TestDirection:
-    @pytest.mark.parametrize("phrase", ["结婚以前", "结婚之前", "还没结婚的时候"])
+    @pytest.mark.parametrize(
+        "phrase", ["before I married", "prior to the wedding", "not yet married"]
+    )
     def test_reads_before(self, phrase: str) -> None:
         assert direction(phrase) == "before"
 
-    @pytest.mark.parametrize("phrase", ["店关了以后", "结婚之后", "关店过后"])
+    @pytest.mark.parametrize(
+        "phrase", ["after the shop closed", "since then", "following the wedding"]
+    )
     def test_reads_after(self, phrase: str) -> None:
         assert direction(phrase) == "after"
 
-    @pytest.mark.parametrize("phrase", ["结婚那年", "那时候", "大水那一年"])
+    @pytest.mark.parametrize("phrase", ["the year I married", "back then", "that year"])
     def test_reads_same_year(self, phrase: str) -> None:
         assert direction(phrase) == "same"
 
+    def test_before_wins_over_a_same_year_marker_inside_it(self) -> None:
+        """ "the year before the shop closed" contains "the year". Checking
+        same-year first would swallow it."""
+        assert direction("the year before the shop closed") == "before"
+
+    def test_it_is_not_case_sensitive(self) -> None:
+        assert direction("Before I Married") == "before"
+
     def test_a_phrase_with_no_marker_gives_no_direction(self) -> None:
-        assert direction("小时候") is None
+        assert direction("in the old days") is None
 
 
 class TestApplyingAnchors:
     def test_before_sets_only_an_upper_bound(self) -> None:
         """How long before is unknown. Inventing a start year would put a
         false date on the timeline."""
-        resolved = apply_anchors(when("结婚以前"), [MARRIAGE])
+        resolved = apply_anchors(when("before I married"), [MARRIAGE])
 
         assert resolved.end_year == 1968
         assert resolved.start_year is None
 
     def test_after_sets_only_a_lower_bound(self) -> None:
         resolved = apply_anchors(
-            when("店关了以后", anchor_ref="anchor_shop_close"), [SHOP_CLOSE]
+            when("after the shop closed", anchor_ref="anchor_shop_close"), [SHOP_CLOSE]
         )
 
         assert resolved.start_year == 1969
         assert resolved.end_year is None
 
     def test_that_year_pins_both_ends(self) -> None:
-        resolved = apply_anchors(when("结婚那年"), [MARRIAGE])
+        resolved = apply_anchors(when("the year I married"), [MARRIAGE])
 
         assert (resolved.start_year, resolved.end_year) == (1968, 1968)
 
     def test_keeps_her_own_words(self) -> None:
-        resolved = apply_anchors(when("结婚以前"), [MARRIAGE])
+        resolved = apply_anchors(when("before I married"), [MARRIAGE])
 
-        assert resolved.raw_phrase == "结婚以前"
+        assert resolved.raw_phrase == "before I married"
 
     def test_never_claims_more_confidence_than_the_anchor(self) -> None:
         resolved = apply_anchors(
-            when("结婚以前", confidence=0.95),
+            when("before I married", confidence=0.95),
             [
                 Anchor(
-                    anchor_id="anchor_marriage", label="结婚", year=1968, confidence=0.5
+                    anchor_id="anchor_marriage",
+                    label="married",
+                    year=1968,
+                    confidence=0.5,
                 )
             ],
         )
@@ -90,27 +107,29 @@ class TestApplyingAnchors:
     def test_leaves_an_already_dated_story_alone(self) -> None:
         """The model often infers a year straight from the transcript, and
         that is better evidence than an anchor offset."""
-        resolved = apply_anchors(when("一九五八年", start=1958, end=1958), [MARRIAGE])
+        resolved = apply_anchors(when("in 1958", start=1958, end=1958), [MARRIAGE])
 
         assert (resolved.start_year, resolved.end_year) == (1958, 1958)
 
     def test_an_unknown_anchor_leaves_the_time_untouched(self) -> None:
-        resolved = apply_anchors(when("搬家以前", anchor_ref="anchor_move"), [MARRIAGE])
+        resolved = apply_anchors(
+            when("before I married", anchor_ref="anchor_move"), [MARRIAGE]
+        )
 
         assert resolved.start_year is None and resolved.end_year is None
 
     def test_no_anchor_reference_leaves_the_time_untouched(self) -> None:
-        resolved = apply_anchors(when("以前", anchor_ref=None), [MARRIAGE])
+        resolved = apply_anchors(when("in the old days", anchor_ref=None), [MARRIAGE])
 
         assert resolved.end_year is None
 
     def test_a_directionless_phrase_is_not_guessed_at(self) -> None:
-        resolved = apply_anchors(when("小时候"), [MARRIAGE])
+        resolved = apply_anchors(when("in the old days"), [MARRIAGE])
 
         assert resolved.start_year is None and resolved.end_year is None
 
     def test_does_not_mutate_the_time_it_was_given(self) -> None:
-        original = when("结婚以前")
+        original = when("before I married")
 
         apply_anchors(original, [MARRIAGE])
 
@@ -123,7 +142,10 @@ class TestFoldingAnchors:
             [],
             [
                 AnchorCandidate(
-                    anchor_id="anchor_marriage", label="结婚", year=1968, confidence=0.9
+                    anchor_id="anchor_marriage",
+                    label="married",
+                    year=1968,
+                    confidence=0.9,
                 )
             ],
             conversation_id="conv_002",
@@ -137,7 +159,10 @@ class TestFoldingAnchors:
             [MARRIAGE],
             [
                 AnchorCandidate(
-                    anchor_id="anchor_marriage", label="结婚", year=1968, confidence=0.6
+                    anchor_id="anchor_marriage",
+                    label="married",
+                    year=1968,
+                    confidence=0.6,
                 )
             ],
             conversation_id="conv_005",
@@ -153,7 +178,10 @@ class TestFoldingAnchors:
             [MARRIAGE],
             [
                 AnchorCandidate(
-                    anchor_id="anchor_marriage", label="结婚", year=1965, confidence=0.3
+                    anchor_id="anchor_marriage",
+                    label="married",
+                    year=1965,
+                    confidence=0.3,
                 )
             ],
             conversation_id="conv_006",
@@ -165,13 +193,16 @@ class TestFoldingAnchors:
         anchors = fold_anchors(
             [
                 Anchor(
-                    anchor_id="anchor_marriage", label="结婚", year=1965, confidence=0.4
+                    anchor_id="anchor_marriage",
+                    label="married",
+                    year=1965,
+                    confidence=0.4,
                 )
             ],
             [
                 AnchorCandidate(
                     anchor_id="anchor_marriage",
-                    label="结婚",
+                    label="married",
                     year=1968,
                     confidence=0.95,
                 )
@@ -186,7 +217,10 @@ class TestFoldingAnchors:
             [MARRIAGE],
             [
                 AnchorCandidate(
-                    anchor_id="anchor_marriage", label="结婚", year=1968, confidence=0.6
+                    anchor_id="anchor_marriage",
+                    label="married",
+                    year=1968,
+                    confidence=0.6,
                 )
             ],
             conversation_id="conv_005",

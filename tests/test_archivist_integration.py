@@ -76,7 +76,7 @@ class TestSessionOne:
                 assert story.candidate.pin_type is not PinType.TIMELINE
 
     def test_infers_her_age_into_years(self, outcome) -> None:
-        """She says 六七岁吧 and, separately, that she was born in 1946.
+        """She says "six, seven maybe" and, separately, that she was born in 1946.
         Resolving one against the other is the whole point of storing time
         twice."""
         dated = [s for s in outcome.stories if s.candidate.when.start_year is not None]
@@ -96,38 +96,38 @@ class TestSessionOne:
 
 
 class TestEntitiesInSessionOne:
-    """Expectations from docs/seed-sessions.md: 父, 母, 姐姐, 阿水,
-    双溪镇树胶园, plus foods."""
+    """Expectations from docs/seed-sessions.md: father, mother, sister, Ah Chwee,
+    the estate at Sungai Siput, plus foods."""
 
     def test_uses_her_own_words_for_people(self, outcome) -> None:
-        """「我姐姐」 must stay 「我姐姐」 in the mention, not be helpfully
+        """ "my sister" must stay "my sister" in the mention, not be helpfully
         rewritten to a name she never said."""
         surfaces = {r.mention.surface_form for r in outcome.resolutions}
-        assert any("姐姐" in s for s in surfaces)
+        assert any("sister" in s for s in surfaces)
 
     def test_resolves_kin_terms_to_the_family_intake(self, outcome) -> None:
-        """The point of the child-completed intake: she says 我妈妈 and it
+        """The point of the child-completed intake: she says my mother and it
         lands on the mother the family already described."""
         resolved = {r.entity_id for r in outcome.resolutions if not r.created}
         assert {"ent_mother", "ent_father", "ent_sister"} <= resolved
 
     def test_does_not_duplicate_anyone_from_the_intake(self, outcome) -> None:
-        """A second 姐姐 in the graph means a duplicate pin on the family map
+        """A second sister in the graph means a duplicate pin on the family map
         and an agent that asks about someone already known to have died."""
         sisters = [
             e
             for e in outcome.entities
-            if e.type is EntityType.PERSON and e.role == "elder_sister"
+            if e.type is EntityType.PERSON and e.role == "sister"
         ]
 
         assert len(sisters) == 1
         assert sisters[0].entity_id == "ent_sister"
 
     def test_creates_the_neighbour_she_mentions(self, outcome) -> None:
-        """阿水 is not in the intake — he should arrive as a new provisional
+        """Ah Chwee is not in the intake — he should arrive as a new provisional
         person for the family to confirm."""
         names = {e.canonical_name for e in outcome.new_entities}
-        assert "阿水" in names
+        assert "Ah Chwee" in names
 
     def test_new_entities_are_provisional(self, outcome) -> None:
         for entity in outcome.new_entities:

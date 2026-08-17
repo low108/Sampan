@@ -93,14 +93,14 @@ class TestSmokeRoundTrip:
     def test_writes_a_document_and_reads_it_back(self, client: TestClient) -> None:
         response = client.post(
             "/debug/smoke",
-            json={"note": "板底街的咖啡店"},
+            json={"note": "the coffee shop on Jalan Bandar"},
             headers={API_KEY_HEADER: GOOD_KEY},
         )
 
         assert response.status_code == 200
         body = response.json()
         assert body["round_trip_ok"] is True
-        assert body["read_back"]["note"] == "板底街的咖啡店"
+        assert body["read_back"]["note"] == "the coffee shop on Jalan Bandar"
 
     def test_the_document_persists_beyond_the_request(
         self, client: TestClient, store: InMemoryDocumentStore

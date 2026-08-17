@@ -52,7 +52,9 @@
   function compass(from, to) {
     const dy = to[0] - from[0], dx = to[1] - from[1];
     const ang = (Math.atan2(dx, dy) * 180) / Math.PI;
-    const dirs = [['北', 'N'], ['东北', 'NE'], ['东', 'E'], ['东南', 'SE'], ['南', 'S'], ['西南', 'SW'], ['西', 'W'], ['西北', 'NW']];
+    const dirs = [['north', 'N'], ['north-east', 'NE'], ['east', 'E'],
+                  ['south-east', 'SE'], ['south', 'S'], ['south-west', 'SW'],
+                  ['west', 'W'], ['north-west', 'NW']];
     return dirs[Math.round(((ang + 360) % 360) / 45) % 8];
   }
 
@@ -232,7 +234,7 @@
             box-shadow:0 4px 12px rgba(0,0,0,.34);display:flex;flex-direction:column;align-items:center;justify-content:center;
             color:${SAND};font-family:'Noto Serif SC',serif;box-sizing:border-box;">
             <span style="font-size:24px;font-weight:700;line-height:1">${n}</span>
-            <span style="font-size:11px;opacity:.85;line-height:1.1">个故事</span></div>`;
+            <span style="font-size:11px;opacity:.85;line-height:1.1">stories</span></div>`;
           this._marker(center, html, [58, 58], () => {
             this._expanded = ids; this._draw();
             this.dispatchEvent(new CustomEvent('sampan-cluster', { detail: { ids: g.items.map((i) => i.id) }, bubbles: true, composed: true }));

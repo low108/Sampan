@@ -75,9 +75,9 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
     """Bind the Companion's tools to one call."""
 
     def get_pending_ask() -> dict[str, Any]:
-        """看看有没有家人留话给阿嬷。开场的时候用。
+        """Check whether family left a question for her. Use at the start.
 
-        一定要讲出是谁问的。功劳是家人的,不是你的。
+        Always say who asked. The credit is theirs, not yours.
         """
         if memory.ask is None:
             return _with_guidance(memory, {"has_ask": False})
@@ -89,12 +89,12 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
                 "from_name": memory.ask.from_name,
                 "relation": memory.ask.relation,
                 "question": memory.ask.question,
-                "say_it_like": f"{memory.ask.from_name}问:{memory.ask.question}",
+                "say_it_like": f"{memory.ask.from_name} asked: {memory.ask.question}",
             },
         )
 
     def get_open_threads() -> dict[str, Any]:
-        """上次讲到一半、还没讲完的事,按该先讲哪个排好。"""
+        """Subjects left unfinished last time, ordered by what to raise first."""
         ranked = [
             {
                 "topic": t.topic,
@@ -107,10 +107,10 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
         return _with_guidance(memory, {"threads": ranked[:5]})
 
     def recall(query: str) -> dict[str, Any]:
-        """查一查阿嬷以前讲过的人、地方、东西。
+        """Look up a person, place or thing she has mentioned before.
 
         Args:
-            query: 要找的人名、地名或东西,例如「阿水」「板底街」。
+            query: the name to look for, e.g. "Ah Chwee", "Jalan Bandar".
         """
         needle = query.strip()
         hits = [
@@ -133,13 +133,13 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
         return _with_guidance(memory, {"found": hits[:5], "she_said": said})
 
     def note_preference(kind: str, value: str) -> dict[str, Any]:
-        """记下阿嬷喜欢怎样被对待。**不要讲出来**,记下就好。
+        """Note how she likes to be treated. **Never say it out loud.**
 
         Args:
-            kind: hearing / pace / session_length / best_time /
+            kind: one of hearing / pace / session_length / best_time /
                 question_style / silence_tolerance / topic_favourite /
-                listen_talk_ratio 其中一个。
-            value: 短短一句,例如「左耳不好」。
+                listen_talk_ratio.
+            value: one short phrase, e.g. "left ear is weak".
         """
         try:
             preference_type = PreferenceType(kind)
@@ -151,35 +151,37 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
         return _with_guidance(memory, {"recorded": True})
 
     def save_fragment(topic: str, detail: str) -> dict[str, Any]:
-        """把她刚讲的一小段先记下来,免得漏掉。
+        """Keep a piece of what she just said, so it is not lost.
 
         Args:
-            topic: 短短一个标题。
-            detail: 她讲了什么,用她的话。
+            topic: a short label.
+            detail: what she said, in her words.
         """
         memory.fragments.append({"topic": topic, "detail": detail})
         return _with_guidance(memory, {"saved": True})
 
     def mark_private(topic: str) -> dict[str, Any]:
-        """阿嬷说这件事不要给家里人看的时候用。
+        """Use when she says something should not be shown to the family.
 
-        她讲了就照做,不要问为什么,也不要劝她。
+        Do it. Do not ask why, and do not talk her out of it.
 
         Args:
-            topic: 她指的是哪一件事。
+            topic: which thing she means.
         """
         memory.private_marks.append(topic)
         return _with_guidance(
-            memory, {"private": True, "tell_her": "好,这个我不写进去。"}
+            memory, {"private": True, "tell_her": "Alright, I won't write that down."}
         )
 
     def what_do_you_remember(about: str = "") -> dict[str, Any]:
-        """阿嬷问「你记得我什么?」的时候用。老实讲,不要多讲也不要少讲。
+        """Use when she asks "what do you remember about me?" Answer honestly.
 
-        她有权知道你记住了她什么。讲的时候用平常话,不要念清单。
+        She has a right to know what is held about her. Say it in ordinary
+        words; do not read out a list.
 
         Args:
-            about: 她specifically问哪一方面,例如「我姐姐」。整体就留空。
+            about: a particular subject she asked about, e.g. "my sister".
+                Leave empty for everything.
         """
         needle = about.strip()
         people = [
@@ -202,17 +204,20 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
                 "places": places[:8],
                 "unfinished": unfinished[:5],
                 "how_you_talk_to_her": [p.value for p in memory.preferences],
-                "tell_her": ("照实讲。她想删掉哪一样,就用 forget_this,不要劝她留着。"),
+                "tell_her": (
+                    "Answer plainly. If she wants any of it gone, use "
+                    "forget_this — do not talk her out of it."
+                ),
             },
         )
 
     def forget_this(subject: str) -> dict[str, Any]:
-        """阿嬷说「这个不要记」「把它忘掉」的时候用。
+        """Use when she says "don't keep that" or "forget it".
 
-        她讲了就照做。不要问为什么,不要劝她,也不要解释你为什么留着。
+        Do it. Do not ask why, do not argue, do not explain why you kept it.
 
         Args:
-            subject: 她要你忘掉的那件事、那个人,用她的话。
+            subject: what she wants forgotten, in her words.
         """
         memory.forget_requests.append(subject)
         done = False
@@ -226,18 +231,24 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
             memory,
             {
                 "forgotten": done,
-                "tell_her": ("好,我把它拿掉了。" if done else "好,我记住不要再提。"),
+                "tell_her": (
+                    "Alright, I have taken it out."
+                    if done
+                    else "Alright, I won't bring it up again."
+                ),
             },
         )
 
     def flag_concern(kind: str, detail: str) -> dict[str, Any]:
-        """阿嬷讲到跌倒、胸口痛、喘不过气、或者活着没意思的时候用。
+        """Use when she mentions a fall, chest pain, breathlessness, or that life
+        is not worth living.
 
-        用了之后要老实告诉她你会让家人知道 —— 不要瞒着她。
+        Afterwards tell her honestly that you are letting her family know.
+        Never do it behind her back.
 
         Args:
             kind: fall / pain / breathing / hopelessness / confusion / other
-            detail: 她讲了什么。
+            detail: what she said.
         """
         memory.concerns.append({"kind": kind, "detail": detail})
         delivered = False
@@ -254,9 +265,9 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
             {
                 "family_notified": delivered,
                 "tell_her": (
-                    "阿嬷,这个我记下来了,让伟伦看到。"
+                    "Ah Ma, I have noted this down so Wei Lun will see it."
                     if delivered
-                    else "阿嬷,这个我记下来了。"
+                    else "Ah Ma, I have noted this down."
                 ),
                 "stay_on_the_line": True,
             },

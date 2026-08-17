@@ -24,34 +24,38 @@ def memory() -> CallMemory:
         threads=[
             Thread(
                 thread_id="t1",
-                topic="关店的原因",
+                topic="why the shop closed",
                 interrupted=True,
-                left_off_at="关店以后的日子",
+                left_off_at="the years after the shop closed",
             ),
-            Thread(thread_id="t2", topic="姐姐", left_off_at="她们后来怎样"),
-            Thread(thread_id="t3", topic="结婚照", left_off_at="拍照那天"),
+            Thread(thread_id="t2", topic="sister", left_off_at="what became of her"),
+            Thread(
+                thread_id="t3",
+                topic="the wedding photograph",
+                left_off_at="the day it was taken",
+            ),
         ],
         entities=[
             Entity(
                 entity_id="e1",
                 type=EntityType.PERSON,
-                canonical_name="阿水",
-                aliases=["王亚水"],
-                detail="童年邻居,现在走路要拿拐杖",
+                canonical_name="Ah Chwee",
+                aliases=["Ong Ah Chwee"],
+                detail=",walking stick",
             ),
             Entity(
                 entity_id="e2",
                 type=EntityType.PLACE,
-                canonical_name="板底街",
-                detail="爸爸的咖啡店在这里",
+                canonical_name="Jalan Bandar",
+                detail="father's coffee shop",
             ),
         ],
-        sensitivities=[SensitiveTopic(topic="姐姐", refusals=1)],
+        sensitivities=[SensitiveTopic(topic="sister", refusals=1)],
         ask=Ask(
             ask_id="a1",
-            from_name="伟伦",
-            relation="儿子",
-            question="阿公有没有留下什么东西?",
+            from_name="Wei Lun",
+            relation="son",
+            question="Did Ah Gong leave anything behind?",
         ),
     )
 
@@ -64,8 +68,8 @@ class TestPendingAsk:
     def test_hands_back_the_asker_by_name(self, memory: CallMemory) -> None:
         result = tool(memory, "get_pending_ask")()
 
-        assert result["from_name"] == "伟伦"
-        assert "伟伦问" in result["say_it_like"]
+        assert result["from_name"] == "Wei Lun"
+        assert "Wei Lun asked" in result["say_it_like"]
 
     def test_records_that_it_was_delivered(self, memory: CallMemory) -> None:
         tool(memory, "get_pending_ask")()
@@ -82,15 +86,16 @@ class TestOpenThreads:
     def test_the_interrupted_thread_comes_first(self, memory: CallMemory) -> None:
         threads = tool(memory, "get_open_threads")()["threads"]
 
-        assert threads[0]["topic"] == "关店的原因"
+        assert threads[0]["topic"] == "why the shop closed"
         assert threads[0]["was_interrupted"] is True
 
     def test_a_forbidden_thread_is_withheld(self, memory: CallMemory) -> None:
-        """She said 讲别的 about her sister. The tool must not hand the agent
+        """She said talk about something else about her sister. The tool must not hand
+        the agent
         a thread it is not allowed to open."""
         topics = [t["topic"] for t in tool(memory, "get_open_threads")()["threads"]]
 
-        assert "姐姐" not in topics
+        assert "sister" not in topics
 
     def test_each_thread_says_where_she_stopped(self, memory: CallMemory) -> None:
         threads = tool(memory, "get_open_threads")()["threads"]
@@ -100,18 +105,18 @@ class TestOpenThreads:
 
 class TestRecall:
     def test_finds_a_person_by_name(self, memory: CallMemory) -> None:
-        found = tool(memory, "recall")("阿水")["found"]
+        found = tool(memory, "recall")("Ah Chwee")["found"]
 
-        assert found[0]["name"] == "阿水"
-        assert "拐杖" in found[0]["detail"]
+        assert found[0]["name"] == "Ah Chwee"
+        assert "walking stick" in found[0]["detail"]
 
     def test_finds_by_an_alias(self, memory: CallMemory) -> None:
-        assert tool(memory, "recall")("王亚水")["found"]
+        assert tool(memory, "recall")("Ong Ah Chwee")["found"]
 
     def test_an_unknown_name_returns_nothing_rather_than_guessing(
         self, memory: CallMemory
     ) -> None:
-        assert tool(memory, "recall")("陈大文")["found"] == []
+        assert tool(memory, "recall")("")["found"] == []
 
     def test_an_empty_query_matches_nothing(self, memory: CallMemory) -> None:
         assert tool(memory, "recall")("")["found"] == []
@@ -119,13 +124,13 @@ class TestRecall:
 
 class TestNotePreference:
     def test_records_a_valid_preference(self, memory: CallMemory) -> None:
-        result = tool(memory, "note_preference")("hearing", "左耳不好")
+        result = tool(memory, "note_preference")("hearing", "left ear is weak")
 
         assert result["recorded"] is True
         assert memory.noted_preferences[0].type is PreferenceType.HEARING
 
     def test_rejects_a_kind_it_does_not_know(self, memory: CallMemory) -> None:
-        result = tool(memory, "note_preference")("favourite_colour", "蓝色")
+        result = tool(memory, "note_preference")("favourite_colour", "")
 
         assert result["recorded"] is False
         assert memory.noted_preferences == []
@@ -135,10 +140,10 @@ class TestPrivacy:
     def test_marking_private_is_obeyed_without_argument(
         self, memory: CallMemory
     ) -> None:
-        result = tool(memory, "mark_private")("跟姐姐吵架的事")
+        result = tool(memory, "mark_private")("the quarrel with my sister")
 
-        assert memory.private_marks == ["跟姐姐吵架的事"]
-        assert "不写进去" in result["tell_her"]
+        assert memory.private_marks == ["the quarrel with my sister"]
+        assert "won't write that down" in result["tell_her"]
 
 
 class TestCare:
@@ -147,9 +152,11 @@ class TestCare:
         delivered: list[tuple[str, str]] = []
         memory.on_concern = lambda kind, detail: delivered.append((kind, detail))
 
-        result = tool(memory, "flag_concern")("fall", "早上在浴室滑倒")
+        result = tool(memory, "flag_concern")(
+            "fall", "slipped in the bathroom this morning"
+        )
 
-        assert delivered == [("fall", "早上在浴室滑倒")]
+        assert delivered == [("fall", "slipped in the bathroom this morning")]
         assert result["family_notified"] is True
 
     def test_she_is_told_it_was_passed_on(self, memory: CallMemory) -> None:
@@ -157,9 +164,9 @@ class TestCare:
         behind her back."""
         memory.on_concern = lambda kind, detail: None
 
-        result = tool(memory, "flag_concern")("fall", "滑倒")
+        result = tool(memory, "flag_concern")("fall", "a fall")
 
-        assert "伟伦" in result["tell_her"]
+        assert "Wei Lun" in result["tell_her"]
 
     def test_it_does_not_claim_delivery_that_did_not_happen(
         self, memory: CallMemory
@@ -171,24 +178,26 @@ class TestCare:
             raise ConnectionError("firestore down")
 
         memory.on_concern = explode
-        result = tool(memory, "flag_concern")("pain", "胸口闷")
+        result = tool(memory, "flag_concern")("pain", "chest feels tight")
 
         assert result["family_notified"] is False
-        assert "伟伦" not in result["tell_her"]
+        assert "Wei Lun" not in result["tell_her"]
 
     def test_nor_when_nothing_is_wired_up_at_all(self, memory: CallMemory) -> None:
-        result = tool(memory, "flag_concern")("pain", "胸口闷")
+        result = tool(memory, "flag_concern")("pain", "chest feels tight")
 
         assert result["family_notified"] is False
-        assert "伟伦" not in result["tell_her"]
+        assert "Wei Lun" not in result["tell_her"]
 
     def test_the_concern_is_still_recorded_locally(self, memory: CallMemory) -> None:
-        tool(memory, "flag_concern")("fall", "滑倒")
+        tool(memory, "flag_concern")("fall", "a fall")
 
         assert memory.concerns[0]["kind"] == "fall"
 
     def test_it_keeps_her_on_the_line(self, memory: CallMemory) -> None:
-        assert tool(memory, "flag_concern")("pain", "胸口闷")["stay_on_the_line"]
+        assert tool(memory, "flag_concern")("pain", "chest feels tight")[
+            "stay_on_the_line"
+        ]
 
 
 class TestGuidanceRidesAlong:
@@ -201,10 +210,12 @@ class TestGuidanceRidesAlong:
         for name in ("get_pending_ask", "get_open_threads", "note_preference"):
             call = tool(memory, name)
             result = (
-                call("hearing", "左耳不好") if name == "note_preference" else call()
+                call("hearing", "left ear is weak")
+                if name == "note_preference"
+                else call()
             )
 
-            assert "提早结束是好事" in result["_guidance"]
+            assert "Ending early is a success" in result["_guidance"]
 
     def test_the_guidance_changes_with_her_state(self, memory: CallMemory) -> None:
         memory.affect = AffectState(affect=Affect.EXCITED)
@@ -214,7 +225,7 @@ class TestGuidanceRidesAlong:
         depleted = tool(memory, "get_open_threads")()["_guidance"]
 
         assert excited != depleted
-        assert "不要打断" in excited
+        assert "Do not interrupt" in excited
 
     def test_guidance_never_names_the_state(self, memory: CallMemory) -> None:
         memory.affect = AffectState(energy=Energy.DEPLETED)

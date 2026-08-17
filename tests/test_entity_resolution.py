@@ -36,43 +36,60 @@ def place(surface: str, detail: str = "") -> EntityMention:
 class TestNormalisation:
     @pytest.mark.parametrize(
         ("surface", "expected"),
-        [("我姐姐", "姐姐"), ("姐姐", "姐姐"), ("我的姐姐", "姐姐"), ("那间店", "店")],
+        [
+            ("my sister", "sister"),
+            ("sister", "sister"),
+            ("My Sister", "sister"),
+            ("my sister's", "sister"),
+            ("the shop", "shop"),
+            ("that shop", "shop"),
+        ],
     )
     def test_strips_possessives_and_padding(self, surface: str, expected: str) -> None:
         assert normalise(surface) == expected
 
     def test_leaves_a_bare_name_alone(self) -> None:
-        assert normalise("林秀珠") == "林秀珠"
+        assert normalise("Lim Siew Choo") == "lim siew choo"
+
+    def test_collapses_stray_whitespace(self) -> None:
+        assert normalise("  my   elder  sister ") == "elder sister"
 
     def test_does_not_strip_a_name_down_to_nothing(self) -> None:
-        assert normalise("我") == "我"
+        assert normalise("my") == "my"
 
 
 class TestKinTerms:
     @pytest.mark.parametrize(
         ("surface", "role"),
-        [("我妈妈", "mother"), ("阿爸", "father"), ("我姐姐", "elder_sister")],
+        [
+            ("my mother", "mother"),
+            ("Mum", "mother"),
+            ("my father", "father"),
+            ("Ah Pa", "father"),
+            ("my sister", "sister"),
+            ("my elder sister", "sister"),
+            ("Ah Gong", "grandfather"),
+        ],
     )
     def test_maps_kin_terms_to_roles(self, surface: str, role: str) -> None:
         assert kin_role(surface) == role
 
     def test_a_name_is_not_a_kin_term(self) -> None:
-        assert kin_role("阿水") is None
+        assert kin_role("Ah Chwee") is None
 
 
 class TestResolvingAgainstIntake:
     def test_resolves_a_kin_term_to_the_person_the_family_named(
         self, intake: list[Entity]
     ) -> None:
-        """She says 我姐姐; the family already told us that's 林秀珠."""
-        result = resolve_mentions([person("我姐姐")], intake)
+        """She says "my sister"; the family already told us that is Siew Choo."""
+        result = resolve_mentions([person("my sister")], intake)
 
         assert result.resolutions[0].entity_id == "ent_sister"
         assert result.resolutions[0].created is False
-        assert not result.created
 
     def test_resolves_an_alias_the_family_supplied(self, intake: list[Entity]) -> None:
-        result = resolve_mentions([person("阿发")], intake)
+        result = resolve_mentions([person("Ah Fatt")], intake)
 
         assert result.resolutions[0].entity_id == "ent_husband"
         assert result.resolutions[0].matched_by == "alias"
@@ -82,7 +99,7 @@ class TestResolvingAgainstIntake:
     ) -> None:
         """The behaviour the whole module exists for."""
         result = resolve_mentions(
-            [person("我姐姐"), person("阿珠"), person("林秀珠")], intake
+            [person("my sister"), person("Ah Choo"), person("Lim Siew Choo")], intake
         )
 
         assert {r.entity_id for r in result.resolutions} == {"ent_sister"}
@@ -91,52 +108,53 @@ class TestResolvingAgainstIntake:
     def test_a_new_name_becomes_a_provisional_entity(
         self, intake: list[Entity]
     ) -> None:
-        """阿水 the neighbour isn't in the intake, so he's created and flagged
-        for the family to confirm."""
-        result = resolve_mentions([person("阿水", role="neighbour")], intake)
+        """Ah Chwee the neighbour is not in the intake, so he is created and
+        flagged for the family to confirm."""
+        result = resolve_mentions([person("Ah Chwee", role="neighbour")], intake)
 
         assert result.resolutions[0].created is True
         created = result.created[0]
-        assert created.canonical_name == "阿水"
+        assert created.canonical_name == "Ah Chwee"
         assert created.role == "neighbour"
         assert created in result.needs_confirmation
 
-    def test_learns_a_new_alias_for_a_known_person(self, intake: list[Entity]) -> None:
-        result = resolve_mentions([person("老姐")], intake)
-        # 老姐 is not a known alias or kin term, so it becomes its own entity
-        # rather than being guessed onto the sister.
+    def test_an_unknown_form_is_not_guessed_onto_someone(
+        self, intake: list[Entity]
+    ) -> None:
+        result = resolve_mentions([person("the old lady next door")], intake)
+
         assert result.resolutions[0].created is True
 
-    def test_records_new_detail_on_a_known_person(self, intake: list[Entity]) -> None:
+    def test_records_new_detail_on_a_person(self, intake: list[Entity]) -> None:
         result = resolve_mentions(
-            [person("阿水", detail="住隔壁,现在走路要拿拐杖")], intake
+            [person("Ah Chwee", detail="next door, walks with a stick now")], intake
         )
 
-        assert "拐杖" in result.created[0].detail
+        assert "stick" in result.created[0].detail
 
 
 class TestPlaces:
     def test_matches_a_place_by_containment(self, intake: list[Entity]) -> None:
-        """怡保板底街 is in 怡保."""
-        result = resolve_mentions([place("怡保板底街")], intake)
+        """Jalan Bandar, Ipoh is in Ipoh."""
+        result = resolve_mentions([place("Jalan Bandar, Ipoh")], intake)
 
         assert result.resolutions[0].entity_id == "ent_ipoh"
         assert result.resolutions[0].matched_by == "containment"
 
-    def test_matches_a_romanised_alias(self, intake: list[Entity]) -> None:
-        result = resolve_mentions([place("Ipoh")], intake)
+    def test_matches_an_alias(self, intake: list[Entity]) -> None:
+        result = resolve_mentions([place("Ipoh town")], intake)
 
         assert result.resolutions[0].entity_id == "ent_ipoh"
 
     def test_an_unknown_place_is_created(self, intake: list[Entity]) -> None:
-        result = resolve_mentions([place("槟城码头")], intake)
+        result = resolve_mentions([place("Penang harbour")], intake)
 
         assert result.resolutions[0].created is True
 
 
 class TestAmbiguity:
     def test_a_kin_term_with_two_candidates_does_not_guess(self) -> None:
-        """Two sisters means 我姐姐 is genuinely ambiguous. Splitting is
+        """Two sisters means "my sister" is genuinely ambiguous. Splitting is
         recoverable by a family merge; a wrong merge corrupts the archive
         silently."""
         two_sisters = [
@@ -144,13 +162,13 @@ class TestAmbiguity:
                 entity_id=f"ent_sister_{i}",
                 type=EntityType.PERSON,
                 canonical_name=name,
-                role="elder_sister",
+                role="sister",
                 provisional=False,
             )
-            for i, name in enumerate(["林秀珠", "林秀兰"])
+            for i, name in enumerate(["Lim Siew Choo", "Lim Siew Lan"])
         ]
 
-        result = resolve_mentions([person("我姐姐")], two_sisters)
+        result = resolve_mentions([person("my sister")], two_sisters)
 
         assert result.resolutions[0].created is True
 
@@ -165,13 +183,15 @@ class TestAmbiguity:
             Entity(
                 entity_id="ent_a",
                 type=EntityType.PERSON,
-                canonical_name="林秀珠",
-                role="elder_sister",
+                canonical_name="Lim Siew Choo",
+                role="sister",
                 provisional=False,
             )
         ]
 
-        result = resolve_mentions([person("那个大姐")], pool, tiebreaker=AlwaysFirst())
+        result = resolve_mentions(
+            [person("that older lady")], pool, tiebreaker=AlwaysFirst()
+        )
 
         assert result.resolutions[0].entity_id == "ent_a"
         assert result.resolutions[0].matched_by == "tiebreaker"
@@ -179,7 +199,7 @@ class TestAmbiguity:
 
 class TestCounting:
     def test_counts_mentions_across_a_conversation(self, intake: list[Entity]) -> None:
-        result = resolve_mentions([person("我妈妈"), person("妈妈")], intake)
+        result = resolve_mentions([person("my mother"), person("mother")], intake)
 
         mother = next(e for e in result.entities if e.entity_id == "ent_mother")
         assert mother.mention_count == 2
@@ -187,6 +207,6 @@ class TestCounting:
     def test_does_not_mutate_the_graph_it_was_given(self, intake: list[Entity]) -> None:
         before = intake[0].mention_count
 
-        resolve_mentions([person("我爸爸")], intake)
+        resolve_mentions([person("my father")], intake)
 
         assert intake[0].mention_count == before

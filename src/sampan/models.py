@@ -64,7 +64,7 @@ class StoryStatus(StrEnum):
 class When(BaseModel):
     """A time, stored twice: as she said it, and as we resolved it."""
 
-    raw_phrase: str = Field(description="Her own words, e.g. 结婚以前")
+    raw_phrase: str = Field(description='Her own words, e.g. "before I married"')
     start_year: int | None = None
     end_year: int | None = None
     precision: Precision
@@ -91,7 +91,7 @@ class Where(BaseModel):
 
 
 class PersonMention(BaseModel):
-    surface_form: str = Field(description="As she referred to them, e.g. 我姐姐")
+    surface_form: str = Field(description='As she referred to them, e.g. "my sister"')
     role: str | None = Field(default=None, description="father, sister, neighbour…")
     confidence: float = Field(ge=0.0, le=1.0)
 
@@ -111,7 +111,7 @@ class EntityType(StrEnum):
 
     Entities are first-class documents rather than name-keyed maps on stories,
     because the map, the family tree and the filters all need to query them and
-    dedupe 怡保 / Ipoh / Ipoh town.
+    dedupe Ipoh / Ipoh town / Jalan Bandar, Ipoh.
     """
 
     PERSON = "person"
@@ -123,7 +123,7 @@ class EntityType(StrEnum):
 class EntityMention(BaseModel):
     """Someone or something referred to in a conversation, before resolution."""
 
-    surface_form: str = Field(description="Exactly as she said it, e.g. 我姐姐")
+    surface_form: str = Field(description='Exactly as she said it, e.g. "my sister"')
     type: EntityType
     role: str | None = Field(
         default=None, description="For people: father, sister, neighbour, husband…"
@@ -158,18 +158,18 @@ class Entity(BaseModel):
         }
 
 
-# Possessives and honorific padding carry no identity information.
-_STRIP_PREFIXES = ("我的", "我", "他的", "她的", "那个", "那间", "那条")
-_STRIP_SUFFIXES = ("的",)
+# Possessives and padding carry no identity information.
+_STRIP_PREFIXES = ("my ", "our ", "his ", "her ", "the ", "that ", "this ")
+_STRIP_SUFFIXES = ("'s",)
 
 
 def normalise(surface_form: str) -> str:
     """Reduce a surface form to something comparable.
 
-    她说「我姐姐」, 「姐姐」 and 「阿姐」 across three sessions and means one
-    person; the first two differ only by a possessive.
+    She says "my sister", "my elder sister" and "Ah Chee" across three sessions
+    and means one person; the first two differ only by a possessive.
     """
-    text = surface_form.strip().replace(" ", "")
+    text = " ".join(surface_form.strip().lower().split())
     changed = True
     while changed:
         changed = False
@@ -179,32 +179,46 @@ def normalise(surface_form: str) -> str:
         for suffix in _STRIP_SUFFIXES:
             if text.endswith(suffix) and len(text) > len(suffix):
                 text, changed = text[: -len(suffix)], True
-    return text.lower()
+    return text.strip()
 
 
-# Kin terms are near-unambiguous in Chinese and are the highest-confidence
-# resolution signal available, especially against a family intake.
+# Kin terms are the highest-confidence resolution signal available, especially
+# against a family intake. English distinguishes fewer relations than Chinese
+# does — "sister" carries no seniority — so the roles here are deliberately
+# coarse, and seniority is left to the family intake to state.
 KIN_ROLES: dict[str, str] = {
-    "妈妈": "mother",
-    "母亲": "mother",
-    "阿妈": "mother",
-    "爸爸": "father",
-    "父亲": "father",
-    "阿爸": "father",
-    "姐姐": "elder_sister",
-    "阿姐": "elder_sister",
-    "妹妹": "younger_sister",
-    "哥哥": "elder_brother",
-    "弟弟": "younger_brother",
-    "先生": "husband",
-    "老公": "husband",
-    "太太": "wife",
-    "儿子": "son",
-    "女儿": "daughter",
-    "孙女": "granddaughter",
-    "孙子": "grandson",
-    "阿公": "grandfather",
-    "阿嬷": "grandmother",
+    "mother": "mother",
+    "mom": "mother",
+    "mum": "mother",
+    "mummy": "mother",
+    "ma": "mother",
+    "father": "father",
+    "dad": "father",
+    "daddy": "father",
+    "pa": "father",
+    "sister": "sister",
+    "elder sister": "sister",
+    "big sister": "sister",
+    "younger sister": "younger_sister",
+    "little sister": "younger_sister",
+    "brother": "brother",
+    "elder brother": "brother",
+    "big brother": "brother",
+    "younger brother": "younger_brother",
+    "husband": "husband",
+    "wife": "wife",
+    "son": "son",
+    "daughter": "daughter",
+    "granddaughter": "granddaughter",
+    "grandson": "grandson",
+    "grandfather": "grandfather",
+    "grandmother": "grandmother",
+    # Malaysian English keeps these, and she will use them far more often than
+    # the English words.
+    "ah gong": "grandfather",
+    "ah ma": "grandmother",
+    "ah pa": "father",
+    "ah mah": "grandmother",
 }
 
 
@@ -316,7 +330,7 @@ class Ask(BaseModel):
 
     ask_id: str
     from_name: str
-    relation: str = Field(default="", description="儿子, 孙女, 女儿…")
+    relation: str = Field(default="", description="son, granddaughter, daughter…")
     question: str
     voice_note_url: str | None = None
     created_at: str | None = None
@@ -382,7 +396,9 @@ class PreferenceObservation(BaseModel):
     """One preference noticed in one conversation."""
 
     type: PreferenceType
-    value: str = Field(description="Short and concrete, e.g. 讲到11分钟就累")
+    value: str = Field(
+        description='Short and concrete, e.g. "tires after about 11 minutes"'
+    )
     evidence: str = Field(default="", description="The line that shows it")
     confidence: float = Field(ge=0.0, le=1.0)
 
@@ -403,7 +419,8 @@ class AvoidanceKind(StrEnum):
     """How she declined a topic.
 
     An explicit refusal and a soft change of subject are different signals and
-    deserve different thresholds. 「讲别的」 is not ambiguous; drifting onto the
+    deserve different thresholds. "Talk about something else" is not ambiguous;
+    drifting onto the
     weather might be.
     """
 
@@ -415,7 +432,7 @@ class AvoidanceKind(StrEnum):
 class TopicSignal(BaseModel):
     """One observation about her willingness to discuss something."""
 
-    topic: str = Field(description="Short label, e.g. 姐姐")
+    topic: str = Field(description='Short label, e.g. "her sister"')
     kind: AvoidanceKind
     evidence: str = ""
 
@@ -457,7 +474,7 @@ class AnchorCandidate(BaseModel):
     anchor_id: str = Field(
         description="Stable slug, e.g. anchor_marriage, anchor_shop_open"
     )
-    label: str = Field(description="Her event in a few words, e.g. 结婚")
+    label: str = Field(description='Her event in a few words, e.g. "married"')
     year: int
     confidence: float = Field(ge=0.0, le=1.0)
 
@@ -465,8 +482,9 @@ class AnchorCandidate(BaseModel):
 class Anchor(BaseModel):
     """An accumulated anchor event.
 
-    Anchors are what make relative time resolvable. She says 结婚以前 far more
-    often than she says a year, and once 结婚 is known to be 1968 every such
+    Anchors are what make relative time resolvable. She says "before I married"
+    far more often than she says a year, and once the marriage is known to be
+    1968, every such
     phrase acquires a range.
     """
 
@@ -519,7 +537,7 @@ class Closure(BaseModel):
 class ThreadUpdate(BaseModel):
     """One thread's movement in a single conversation."""
 
-    topic: str = Field(description="Short label, e.g. 爸爸的咖啡店")
+    topic: str = Field(description='Short label, e.g. "father\'s coffee shop"')
     action: ThreadAction
     left_off_at: str = Field(
         default="",
@@ -531,7 +549,7 @@ class Thread(BaseModel):
     """An unfinished story, carried between sessions.
 
     The highest-value thing the agent can open a call with, and the cheapest
-    memory feature to build: 「上次讲到一半,隔壁的来按门铃」.
+    memory feature to build: "last time the neighbour came to the door".
     """
 
     thread_id: str
@@ -563,7 +581,8 @@ class Completeness(BaseModel):
     @property
     def missing_fields(self) -> list[str]:
         """Drives a later session's clarifying question. A fragment missing
-        `when` becomes 那间咖啡店 — 是你结婚以前还是以后?"""
+        `when` becomes "that coffee shop — was that before or after you married?"
+        """
         return [
             name
             for name, present in (
@@ -593,7 +612,8 @@ class StoryCandidate(BaseModel):
         default="",
         description=(
             "One concrete sensory detail. The difference between a fact and a "
-            "story: not 我们很穷 but 我们吃白饭配酱油,妈妈说她已经吃过了"
+            'story: not "we were poor" but "we ate white rice with soy sauce, '
+            'and my mother said she had already eaten"'
         ),
     )
     why_it_matters: str = ""

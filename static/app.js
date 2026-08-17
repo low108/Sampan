@@ -91,16 +91,16 @@ const topBar = () => {
     ${person
       ? `<button class="bell" data-back>‹</button>
          <h1>${esc(given(person.display_name))}<small>${esc(person.relation)}</small></h1>`
-      : `<h1>小船<small>Sampan</small></h1>`}
+      : `<h1>Sampan<small>Xiao Chuan</small></h1>`}
     <button class="bell" data-bell>🔔${
       S.bell?.unseen ? `<b>${S.bell.unseen}</b>` : ''}</button>
   </header>`;
 };
 
 const tabs = () => `<nav class="tabs">
-  ${[['map', '🗺', '地图', 'Map'], ['record', '🎙', '讲故事', 'Record'],
-     ['family', '👵', '家人', 'Family']].map(([id, icon, zh]) =>
-    `<button data-tab="${id}" aria-current="${S.tab === id}"><i>${icon}</i>${zh}</button>`
+  ${[['map', '🗺', 'Map'], ['record', '🎙', 'Tell a story'],
+     ['family', '👵', 'Family']].map(([id, icon, label]) =>
+    `<button data-tab="${id}" aria-current="${S.tab === id}"><i>${icon}</i>${label}</button>`
   ).join('')}
 </nav>`;
 
@@ -117,8 +117,8 @@ function mapPage() {
   const unplaced = S.data?.unplaced || [];
   return `<div class="maprap" id="maphost"></div>
     ${unplaced.length ? `<button class="unplaced-bar" data-unplaced>
-        ${unplaced.length} 个故事没有地方
-        <span class="en">— only say「家里」, not placed</span>
+        ${unplaced.length} ${unplaced.length === 1 ? 'story has' : 'stories have'} no place
+        <span class="en">— they only say "home"</span>
       </button>` : ''}`;
 }
 
@@ -126,17 +126,17 @@ function mapPage() {
 const unplacedSheet = () => {
   const list = S.data?.unplaced || [];
   return sheet(`
-    <h2>没有地方的故事</h2>
+    <h2>Stories with no place</h2>
     <p class="en">Stories with nowhere to sit — not lost, just not placed.</p>
     ${list.map((c) => `<article class="card">
       <h3>${esc(c.title)}</h3>
       <div class="meta"><span>${esc(c.narrator_name)}</span>
-        <span>只说了「${esc(c.where_said)}」</span></div>
+        <span>only says "${esc(c.where_said)}"</span></div>
       ${c.sense_detail ? `<p class="said">${esc(c.sense_detail)}</p>` : ''}
-      <p class="gap">四通电话里她都没讲是哪一间屋。小船不猜。
-        <span class="en">She never said which house. 小船 doesn't guess.</span></p>
+      <p class="gap">Across four calls she never said which house.
+        <span class="en">Xiao Chuan does not guess.</span></p>
       <div class="row"><button class="btn ghost small" data-know="${esc(c.where_said)}">
-        我知道是哪间屋</button></div>
+        I know which one</button></div>
     </article>`).join('')}`);
 };
 
@@ -149,20 +149,20 @@ function storySheet() {
   return sheet(`
     <h2>${esc(pin.title)}</h2>
     <div class="meta">
-      <span>${pin.year || '年份还没讲'}</span>
+      <span>${pin.year || 'year not yet told'}</span>
       <span>${esc(pin.narrator_name)}</span>
       <span class="certainty ${guess ? 'guess' : ''}"><s></s>${
-        guess ? '这个地点是小船猜的' : '她说的地方'}</span>
+        guess ? 'Xiao Chuan guessed this place' : 'the place she named'}</span>
     </div>
     ${pin.linked ? `<details class="more">
-      <summary>为什么在这里 · why this pin is here</summary>
+      <summary>Why this pin is here</summary>
       <p class="narr" id="why-${esc(pin.id)}">…</p>
     </details>` : ''}
     ${guess ? `<div class="row">
-      <button class="btn ghost small" data-right="${esc(pin.id)}">对的</button>
-      <button class="btn ghost small" data-wrong="${esc(pin.id)}">不对，我改</button>
+      <button class="btn ghost small" data-right="${esc(pin.id)}">That's right</button>
+      <button class="btn ghost small" data-wrong="${esc(pin.id)}">No — let me fix it</button>
     </div>` : ''}
-    <details class="more"><summary>她说了什么 · her words</summary>
+    <details class="more"><summary>Her words</summary>
       <p class="narr" id="full-${esc(pin.id)}">…</p></details>`);
 }
 
@@ -173,12 +173,11 @@ function recordPage() {
   const q = S.recQuestion;
   return `<div class="rec">
     ${q ? `<div class="asked">
-        <div class="who">${esc(q.from_name)}问你</div>
+        <div class="who">${esc(q.from_name)} asked you</div>
         <p>${esc(q.question)}</p>
-      </div>` : `<p>想到什么就讲，随时都可以。<br>
-        <span class="en">Say anything, any time.</span></p>`}
-    <button class="bigbtn" data-rec data-on="${on}">${on ? '讲完了' : '讲故事'}</button>
-    <p id="recsay" class="en">${on ? '小船在听' : ''}</p>
+      </div>` : `<p>Say whatever comes to mind, any time.</p>`}
+    <button class="bigbtn" data-rec data-on="${on}">${on ? "That's enough" : 'Tell a story'}</button>
+    <p id="recsay" class="en">${on ? 'Xiao Chuan is listening' : ''}</p>
   </div>`;
 }
 
@@ -190,7 +189,7 @@ const familyPage = () => `<div class="pad">
     <div>
       <div class="who">${esc(m.display_name)}</div>
       <div class="meta"><span>${esc(m.relation)}</span>
-        <span>${m.story_count ? `${m.story_count} 个故事` : '还没讲过'}</span></div>
+        <span>${m.story_count ? `${m.story_count} ${m.story_count === 1 ? 'story' : 'stories'}` : 'nothing told yet'}</span></div>
     </div>
   </div>`).join('')}
 </div>`;
@@ -198,51 +197,51 @@ const familyPage = () => `<div class="pad">
 function memberPage() {
   const person = memberOf(S.member);
   const tabsHtml = `<div class="subtabs">
-    ${[['chat', '问问她'], ['map', '她的地图'], ['ask', '问她一句']].map(([id, zh]) =>
+    ${[['chat', 'Ask about her'], ['map', 'Her map'], ['ask', 'Leave a question']].map(([id, zh]) =>
       `<button data-mtab="${id}" aria-current="${S.memberTab === id}">${zh}</button>`).join('')}
   </div>`;
 
   if (S.memberTab === 'map') {
-    return `${tabsHtml}<div class="maprap" id="maphost" style="height:calc(100% - 4rem)"></div>`;
+    return `${tabsHtml}<div class="maprap" id="maphost" style="top:4rem"></div>`;
   }
   if (S.memberTab === 'ask') {
     return `<div class="pad">${tabsHtml}
-      <p>留一句话给${esc(given(person.display_name))}。小船下次打给她的时候会替你问，讲你的名字。</p>
-      <p class="en">Leave a question. 小船 raises it on the next call — and says who asked.</p>
-      <label>你是谁</label><input id="askfrom" placeholder="伟伦">
-      <label>想问什么</label><textarea id="askq" placeholder="阿公有没有留下什么东西?"></textarea>
-      <div class="row"><button class="btn" data-send>送出</button></div>
+      <p>Leave a question for ${esc(given(person.display_name))}. Xiao Chuan will
+      ask it on the next call — and say that it came from you.</p>
+      <label>Who are you</label><input id="askfrom" placeholder="Wei Lun">
+      <label>What would you like to ask</label><textarea id="askq"
+        placeholder="Did Ah Gong leave anything behind?"></textarea>
+      <div class="row"><button class="btn" data-send>Send</button></div>
       <p class="en" id="asksent"></p></div>`;
   }
   return `<div class="pad">${tabsHtml}
     ${S.chat.length ? S.chat.map((m) => `<div class="bubble ${m.mine ? 'mine' : ''}">
         ${esc(m.text)}
         ${m.en ? `<p class="en">${esc(m.en)}</p>` : ''}
-        ${m.follow ? `<p class="gap"><b>下次替我问她</b> · ${esc(m.follow)}</p>
+        ${m.follow ? `<p class="gap"><b>Worth asking her</b> · ${esc(m.follow)}</p>
           <button class="btn ghost small" data-queue="${esc(m.follow)}">
-            下次替我问她 ›</button>` : ''}
+            Ask her this next call ›</button>` : ''}
       </div>`).join('')
-      : `<p class="empty">想知道${esc(given(person.display_name))}什么?<br>
-         <span class="en">Ask anything about her.</span></p>`}
-    <label>问问她</label>
-    <input id="q" placeholder="她爸爸做什么工的？">
+      : `<p class="empty">Ask anything about ${esc(given(person.display_name))}.</p>`}
+    <label>Ask about her</label>
+    <input id="q" placeholder="What did her father do for a living?">
     <div class="row">
-      <button class="btn" data-askabout>问</button>
-      <button class="btn ghost" data-timeline>做一张她的时间线</button>
+      <button class="btn" data-askabout>Ask</button>
+      <button class="btn ghost" data-timeline>Make her timeline</button>
     </div>`;
 }
 
 /* ── bell ──────────────────────────────────────────────────────── */
 
 const bellSheet = () => sheet(`
-  <h2>信 · Messages</h2>
+  <h2>Messages</h2>
   ${(S.bell?.notifications || []).map((n) => `<article class="card"
       data-notif="${esc(n.id)}" data-opens="${esc(n.opens)}" data-target="${esc(n.target)}">
     <h3>${esc(n.title)}</h3>
     <div class="meta"><span class="en">${esc(n.subtitle)}</span></div>
     ${n.opens === 'record'
-      ? `<p class="gap"><b>按一下就可以开始讲</b> · tap to answer her</p>` : ''}
-  </article>`).join('') || `<p class="empty">没有新的。</p>`}`);
+      ? `<p class="gap"><b>Tap to answer</b></p>` : ''}
+  </article>`).join('') || `<p class="empty">Nothing new.</p>`}`);
 
 const sheet = (inner) => `<div class="scrim" data-close></div>
   <div class="sheet"><div class="grab"></div>${inner}</div>`;
@@ -286,7 +285,7 @@ function wire() {
   on('[data-send]', () => sendAsk());
   on('[data-queue]', (el) => queueFollowUp(el.dataset.queue));
   on('[data-wrong]', (el) => correctPlace(el.dataset.wrong));
-  on('[data-right]', (el) => { el.textContent = '谢谢'; el.disabled = true; });
+  on('[data-right]', (el) => { el.textContent = 'Thank you'; el.disabled = true; });
   on('[data-know]', (el) => correctPlaceByName(el.dataset.know));
 
   fillStoryDetail();
@@ -312,7 +311,8 @@ async function fillStoryDetail() {
     const place = map?.map?.pins
       ?.map((p) => p.place)?.find((p) => p.linked_evidence);
     why.textContent = place?.linked_evidence
-      ? `她讲过:「${place.linked_evidence}」` : '她在另一次聊天里讲过这个地方。';
+      ? `She said: "${place.linked_evidence}"`
+      : 'She named this place in another conversation.';
   }
 }
 
@@ -328,25 +328,25 @@ async function askAbout() {
       { method: 'POST', body: JSON.stringify({ question }) });
     S.chat.push({ text: d.answer, en: d.answer_en, follow: d.follow_up });
   } catch {
-    S.chat.push({ text: '一时问不到，等一下再试。' });
+    S.chat.push({ text: "Couldn't reach that just now. Try again in a moment." });
   }
   render();
 }
 
 /* Timeline on demand: it is a request, and it should feel like one. */
 async function makeTimeline() {
-  S.chat.push({ text: '做一张她的时间线', mine: true });
-  S.chat.push({ text: '小船在排…' });
+  S.chat.push({ text: 'Make her timeline', mine: true });
+  S.chat.push({ text: 'Xiao Chuan is putting it in order…' });
   render();
   try {
     const d = await api(`/api/family/${encodeURIComponent(S.member)}?view=timeline`);
     const lines = d.stories.map((s) => {
       const y = s.year_from || s.year_to;
-      return `${y || '年份还没讲'} · ${s.title}`;
+      return `${y || 'year not yet told'} · ${s.title}`;
     });
-    S.chat[S.chat.length - 1] = { text: `${given(memberOf(S.member).display_name)}的时间线\n\n${lines.join('\n')}` };
+    S.chat[S.chat.length - 1] = { text: `${given(memberOf(S.member).display_name)}'s life\n\n${lines.join('\n')}` };
   } catch {
-    S.chat[S.chat.length - 1] = { text: '排不出来，等一下再试。' };
+    S.chat[S.chat.length - 1] = { text: "Couldn't put it in order. Try again in a moment." };
   }
   render();
 }
@@ -354,9 +354,9 @@ async function makeTimeline() {
 async function queueFollowUp(question) {
   await api(`/api/family/${encodeURIComponent(S.member)}/ask`, {
     method: 'POST',
-    body: JSON.stringify({ from_name: given(memberOf(ME)?.display_name || '家人'), question }),
+    body: JSON.stringify({ from_name: given(memberOf(ME)?.display_name || 'family'), question }),
   }).catch(() => {});
-  S.chat.push({ text: '好，小船下次会替你问她。' });
+  S.chat.push({ text: 'Alright — Xiao Chuan will ask her next call.' });
   render();
 }
 
@@ -364,12 +364,12 @@ async function sendAsk() {
   const from = document.getElementById('askfrom').value.trim();
   const question = document.getElementById('askq').value.trim();
   const out = document.getElementById('asksent');
-  if (!from || !question) { out.textContent = '名字和问题都要填'; return; }
+  if (!from || !question) { out.textContent = 'Both your name and a question are needed'; return; }
   try {
     await api(`/api/family/${encodeURIComponent(S.member)}/ask`,
       { method: 'POST', body: JSON.stringify({ from_name: from, question }) });
-    out.textContent = '送出了。她下次接电话就会听到。';
-  } catch { out.textContent = '送不出，等一下再试。'; }
+    out.textContent = 'Sent. She will hear it when she next picks up.';
+  } catch { out.textContent = "Couldn't send. Try again in a moment."; }
 }
 
 /* Correction lives inside the thing: no admin screen, ever. */
@@ -384,7 +384,7 @@ async function correctPlace(storyId) {
 }
 
 async function correctPlaceByName(rawName, narratorId) {
-  const value = prompt(`「${rawName}」是哪里?`, '');
+  const value = prompt(`Where is "${rawName}"?`, '');
   if (!value) return;
   await api(`/api/family/${encodeURIComponent(narratorId || S.member || ME)}/corrections`, {
     method: 'POST',
@@ -403,7 +403,7 @@ async function toggleRecord() {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
     });
-  } catch (err) { say('开不了麦克风:' + err.message); return; }
+  } catch (err) { say('Cannot open the microphone: ' + err.message); return; }
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws/talk?key=${
@@ -411,7 +411,7 @@ async function toggleRecord() {
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.audio) play(Uint8Array.from(atob(m.audio), (c) => c.charCodeAt(0)), m.sample_rate || 24000);
-    if (m.agent_transcript) say('小船:' + m.agent_transcript);
+    if (m.agent_transcript) say('Xiao Chuan: ' + m.agent_transcript);
     if (m.user_transcript) say(m.user_transcript);
     if (m.interrupted) playAt = 0;
   };
@@ -435,7 +435,7 @@ function stopRecord() {
   ws = ctx = playCtx = stream = null; playAt = 0;
   render();
   const el = document.getElementById('recsay');
-  if (el) el.textContent = '收好了。小船晚点会再听一遍。';
+  if (el) el.textContent = "Saved. Xiao Chuan will listen again later.";
   load();
 }
 

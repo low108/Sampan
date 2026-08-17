@@ -198,7 +198,7 @@ def _link_relational_places(
 ) -> list[Any]:
     """Place stories she located by relationship rather than address.
 
-    Her best stories name a place as 「爸爸的咖啡店」 or 「家里」, which no
+    Her best stories name a place as "my father's coffee shop" or "home", which no
     geocoder can touch — but she often gave the address in another session, so
     the answer is already in the archive and only needs joining. Every link
     carries the sentence that justifies it; links without one are dropped.
@@ -323,7 +323,7 @@ def create_app() -> FastAPI:
 
         When the archive does not contain the answer, the reply says so and
         offers the question back — which is the useful half: a gap becomes the
-        next thing 小船 asks her.
+        next thing Xiao Chuan asks her.
         """
         from sampan.ask_about import GeminiAboutHer
 
@@ -367,7 +367,7 @@ def create_app() -> FastAPI:
         store: Annotated[DocumentStore, Depends(get_store)],
     ) -> dict[str, Any]:
         repository = Repository(store)
-        # Expand groups: dismissing 「讲了 11 个新故事」 must settle all eleven.
+        # Expand groups: dismissing "told 11 new stories" must settle all eleven.
         items = notifications_for(repository, viewer_id, list_members(repository))
         expanded = list(body.ids)
         for item in items:
@@ -513,7 +513,7 @@ def create_app() -> FastAPI:
 
         Places are listed with the key stored against them rather than a
         prettified name, because a correction has to target the key the map
-        actually uses — 双溪镇树胶园, not 双溪镇.
+        actually uses — "the estate at Sungai Siput", not "Sungai Siput".
         """
         from sampan.places import Place
 

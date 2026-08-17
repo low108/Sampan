@@ -112,15 +112,15 @@ class TestEncodingEvents:
     def test_transcripts_are_labelled_by_speaker(self) -> None:
         event = SimpleNamespace(
             content=None,
-            input_transcription=SimpleNamespace(text="我小时候在树胶园"),
-            output_transcription=SimpleNamespace(text="然后呢?"),
+            input_transcription=SimpleNamespace(text="I grew up on the rubber estate"),
+            output_transcription=SimpleNamespace(text="and then?"),
         )
 
         message = encode_event(event)
 
         assert message == {
-            "user_transcript": "我小时候在树胶园",
-            "agent_transcript": "然后呢?",
+            "user_transcript": "I grew up on the rubber estate",
+            "agent_transcript": "and then?",
         }
 
     def test_barge_in_is_forwarded_so_the_client_can_stop_playing(self) -> None:
@@ -211,17 +211,20 @@ class TestPump:
 
 class TestInstruction:
     def test_names_itself_honestly_and_credits_the_family(self) -> None:
+        """The persona no longer names a specific relative — who asked comes
+        from the session plan, so a family with no Wei Lun still works."""
         instruction = build_instruction()
 
-        assert "小船" in instruction
-        assert "不是人" in instruction
-        assert "伟伦" in instruction
+        assert "Xiao Chuan" in instruction
+        assert "not a person" in instruction
+        assert "say who asked" in instruction
+        assert "The credit is theirs" in instruction
 
     def test_forbids_telling_her_she_has_repeated_herself(self) -> None:
-        assert "你讲过了" in build_instruction()
+        assert "already told you" in build_instruction()
 
     def test_caps_clarifying_questions(self) -> None:
-        assert "最多问两个" in build_instruction()
+        assert "At most two such questions" in build_instruction()
 
     def test_an_unseeded_agent_carries_no_learned_layer(self) -> None:
         assert "---" not in build_instruction()
@@ -233,25 +236,27 @@ class TestInstruction:
         later = build_instruction(
             preferences=[
                 Preference(
-                    type=PreferenceType.HEARING, value="左耳不好", confidence=0.9
+                    type=PreferenceType.HEARING,
+                    value="left ear is weak",
+                    confidence=0.9,
                 )
             ],
             sensitivities=fold_sensitivities(
                 [],
-                [TopicSignal(topic="姐姐", kind=AvoidanceKind.REFUSED)],
+                [TopicSignal(topic="sister", kind=AvoidanceKind.REFUSED)],
                 conversation_id="conv_003",
             ),
         )
 
         assert later != first
-        assert "左耳不好" in later
-        assert "姐姐" in later
+        assert "left ear is weak" in later
+        assert "sister" in later
 
     def test_a_subject_she_reopened_is_not_carried_as_forbidden(self) -> None:
         instruction = build_instruction(
             sensitivities=[
-                SensitiveTopic(topic="关店的原因", refusals=1, engagements=1)
+                SensitiveTopic(topic="why the shop closed", refusals=1, engagements=1)
             ]
         )
 
-        assert "关店的原因" not in instruction
+        assert "why the shop closed" not in instruction

@@ -33,37 +33,40 @@ from sampan.models import (
 )
 
 ASSESSMENT_PROMPT = """\
-下面是一位八十岁老人家在通话中说话的一段录音(最近一分半钟)。
+Below is a recording of an eighty-year-old woman speaking during a call (the
+last ninety seconds or so).
 
-请判断她现在的状态。你听的是**她怎么讲**,不只是讲什么:
-- 讲话速度有没有变慢、声音有没有变小、语气有没有变平
-- 停顿变长了没有、答话前要想多久
-- 句子是不是越来越短
-- 有没有叹气、有没有颤抖
-- 有没有「好啦」「没有什么啦」这种想收尾的话
+Judge how she is right now. Listen to **how** she is speaking, not only what
+she says:
+- has her pace slowed, has her voice got quieter, has her tone flattened
+- are the pauses getting longer, how long before she answers
+- are her sentences getting shorter
+- any sighing, any tremor
+- any closing phrases — "alright then", "nothing much to tell"
 
-energy —— 她还有多少精神:
-- fresh: 讲得动,句子完整
-- fading: 句子变短、答得慢、速度比刚才慢
-- depleted: 只剩一两个字,长时间沉默
+energy — how much she has left:
+- fresh: still going, complete sentences
+- fading: shorter sentences, slower answers, slower than she was earlier
+- depleted: one or two words at a time, long silences
 
-engagement —— 她还想不想讲:
-- engaged: 自己主动讲、越讲越多
-- drifting: 有一句没一句
-- withdrawing: 转开话题、答非所问、只应一声
-- closing: 明显要结束了
+engagement — does she still want to talk:
+- engaged: volunteering, saying more and more
+- drifting: in and out
+- withdrawing: changing the subject, non-answers, one-word acknowledgements
+- closing: clearly winding up
 
-affect —— 她的情绪:
+affect — how she sounds:
 warm / excited / neutral / sad / anxious / frustrated / agitated
 
-flags —— 有就填,没有就空着:
-- confused: 搞不清楚时间、人、地方
-- looping: 同一件事这通电话里讲了第三次
-- distress: 讲到跌倒、胸口痛、喘不过气、活着没意思
+flags — only if present, otherwise leave empty:
+- confused: lost about the time, a person, or a place
+- looping: the same thing for the third time this call
+- distress: a fall, chest pain, breathlessness, or that life is not worth living
 
-signals: 你根据哪几点判断的,一两句就好。
+signals: the one or two things you based this on.
 
-**宁可保守。** 拿不准就照上一次的状态,confidence 填低一点。
+**Be conservative.** If unsure, keep the previous state and give a low
+confidence.
 """
 
 
@@ -208,66 +211,79 @@ def policy(state: AffectState) -> Knobs:
     """
     if AffectFlag.DISTRESS in state.flags:
         return Knobs(
-            turn_length="很短",
+            turn_length="very short",
             question_type=QuestionStyle.CLOSED,
-            silence_tolerance="不要留白,一直陪着她讲",
+            silence_tolerance="do not leave gaps, stay with her",
             topic_action=TopicAction.HOLD,
-            guidance="留在线上陪她,不要挂断。已经通知她家人了。",
+            guidance=(
+                "Stay on the line with her. Do not hang up. Her family has been told."
+            ),
             care_flag="distress",
         )
 
     if AffectFlag.CONFUSED in state.flags:
         return Knobs(
-            turn_length="很短,一句就好",
+            turn_length="very short, one sentence",
             question_type=QuestionStyle.CLOSED,
-            silence_tolerance="多等一下",
+            silence_tolerance="wait a little longer",
             topic_action=TopicAction.HOLD,
             guidance=(
-                "不要纠正她的年份、人名,也不要告诉她谁已经走了。"
-                "顺着她的话讲,讲具体的、眼前的事。"
+                "Do not correct her year or her names, and do not tell her "
+                "someone has died. Follow where she is. Keep to concrete, "
+                "present things."
             ),
             care_flag="confused",
         )
 
     if AffectFlag.LOOPING in state.flags:
         return Knobs(
-            turn_length="短",
+            turn_length="short",
             question_type=QuestionStyle.CLOSED,
-            silence_tolerance="正常",
+            silence_tolerance="normal",
             topic_action=TopicAction.HOLD,
-            guidance="她讲过的事又讲一次,当作第一次听。绝对不要说「你讲过了」。",
+            guidance=(
+                "She is telling something she has told before. Receive it as if "
+                "it were the first time. Never say she already told you."
+            ),
             care_flag="looping",
         )
 
     if state.affect is Affect.AGITATED:
         return Knobs(
-            turn_length="很短",
+            turn_length="very short",
             question_type=QuestionStyle.NONE,
-            silence_tolerance="多留白",
+            silence_tolerance="leave more space",
             topic_action=TopicAction.HOLD,
             guidance=(
-                "不要打断,不要争,也不要纠正她讲的内容。"
-                "认同她的感受,不是认同她讲的事实。她要停就让她停。"
+                "Do not interrupt, do not argue, do not correct what she says. "
+                "Agree with the feeling, not the facts. If she wants to stop, "
+                "let her stop."
             ),
             care_flag="agitated",
         )
 
     if state.energy is Energy.DEPLETED:
         return Knobs(
-            turn_length="一句话",
+            turn_length="one sentence",
             question_type=QuestionStyle.NONE,
-            silence_tolerance="不用填",
+            silence_tolerance="no need to fill it",
             topic_action=TopicAction.CLOSE,
-            guidance="三十秒内温温地收尾。不要再问,不要再挖。提早结束是好事。",
+            guidance=(
+                "Close warmly within thirty seconds. Ask nothing more, dig no "
+                "further. Ending early is a success."
+            ),
         )
 
     if state.affect is Affect.FRUSTRATED:
         return Knobs(
-            turn_length="很短",
+            turn_length="very short",
             question_type=QuestionStyle.NONE,
-            silence_tolerance="多留白",
+            silence_tolerance="leave more space",
             topic_action=TopicAction.HOLD,
-            guidance="不要再问了。认了这个错,不要辩。「你讲,我听就好。」",
+            guidance=(
+                "Stop asking. Own the mistake, do not defend it. "
+                '"You talk, I will just listen."'
+            ),
         )
 
     # Sadness and withdrawal together are not the same as either alone, and
@@ -279,70 +295,74 @@ def policy(state: AffectState) -> Knobs:
         Engagement.CLOSING,
     ):
         return Knobs(
-            turn_length="很短",
+            turn_length="very short",
             question_type=QuestionStyle.NONE,
-            silence_tolerance="多留白",
+            silence_tolerance="leave more space",
             topic_action=TopicAction.PIVOT,
             guidance=(
-                "这个话题她讲不下去了。不要追问,也不要安慰。"
-                "轻轻放下,换一件轻松的小事,或者干脆安静陪她一下。"
+                "She cannot carry this subject any further. Do not press and do "
+                "not console. Set it down gently, move to something lighter, or "
+                "simply sit quietly with her."
             ),
         )
 
     if state.affect is Affect.SAD:
         return Knobs(
-            turn_length="很短",
+            turn_length="very short",
             question_type=QuestionStyle.NONE,
-            silence_tolerance="留很久的白,不要急着填",
+            silence_tolerance="leave long silences, do not rush to fill them",
             topic_action=TopicAction.HOLD,
             guidance=(
-                "不要安慰她「不要想太多」,也不要转开话题。"
-                "慢下来,把她讲的话轻轻讲回去。她愿意讲的难过,不是要你解决的。"
+                "Do not tell her not to dwell on it, and do not change the "
+                "subject. Slow down and give her words back to her gently. "
+                "Sadness she is willing to speak is not yours to fix."
             ),
         )
 
     if state.engagement is Engagement.WITHDRAWING:
         return Knobs(
-            turn_length="短",
+            turn_length="short",
             question_type=QuestionStyle.CLOSED,
-            silence_tolerance="多留白",
+            silence_tolerance="leave more space",
             topic_action=TopicAction.PIVOT,
             guidance=(
-                "她是在躲这个话题,不一定是想收线。轻轻换一个轻松的题目。"
-                "再躲一次就收尾,不要追。"
+                "She is avoiding this subject, which is not the same as wanting "
+                "to hang up. Move gently to something lighter. If she avoids "
+                "again, close — do not chase."
             ),
         )
 
     if state.engagement is Engagement.CLOSING or state.energy is Energy.FADING:
         return Knobs(
-            turn_length="比刚才短",
+            turn_length="shorter than before",
             question_type=QuestionStyle.CLOSED,
-            silence_tolerance="多留白",
+            silence_tolerance="leave more space",
             topic_action=TopicAction.CLOSE,
             guidance=(
-                "先把你自己的话变短,不要等她开口讲累。不要再开新话题。"
-                "两三句内收尾,收尾时讲出还没讲完的那件事,当作下次的邀请。"
+                "Shorten your own turns first; do not wait for her to say she "
+                "is tired. Open no new subjects. Close within two or three "
+                "turns, and name what is unfinished as an invitation to return."
             ),
         )
 
     if state.affect is Affect.EXCITED:
         return Knobs(
-            turn_length="只应一声",
+            turn_length="a sound of agreement, no more",
             question_type=QuestionStyle.NONE,
-            silence_tolerance="少",
+            silence_tolerance="little",
             topic_action=TopicAction.DEEPEN,
             guidance=(
-                "她讲得正起劲。**不要打断**,「嗯」「然后呢?」就够了。"
-                "这是最好收故事的时候,让她一直讲。"
+                'She is in full flow. **Do not interrupt.** "Mm" and "and '
+                'then?" are enough. This is when stories come; let her run.'
             ),
         )
 
     return Knobs(
-        turn_length="短",
+        turn_length="short",
         question_type=QuestionStyle.OPEN,
-        silence_tolerance="正常",
+        silence_tolerance="normal",
         topic_action=TopicAction.DEEPEN,
-        guidance="她状态还好。可以往深一点问,但一次只问一个。",
+        guidance="She is doing well. You can go deeper, but one question at a time.",
     )
 
 
@@ -385,15 +405,15 @@ async def watch(
 def describe_for_instruction(state: AffectState) -> str:
     """The live block appended to the agent's instruction mid-call.
 
-    Carries the guidance, never the label: an agent told 「她累了」 will say so
+    Carries the guidance, never the label: an agent told "she is tired" will say so
     out loud, and being told you sound tired by a machine is not company.
     """
     knobs = policy(state)
     return "\n".join(
         [
-            "现在这个时候:",
+            "Right now:",
             f"- {knobs.guidance}",
-            f"- 你的话:{knobs.turn_length}",
-            f"- 停顿:{knobs.silence_tolerance}",
+            f"- Your turns: {knobs.turn_length}",
+            f"- Silence: {knobs.silence_tolerance}",
         ]
     )

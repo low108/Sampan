@@ -1,8 +1,9 @@
 """Open threads — the unfinished stories the agent comes back to.
 
 The single most valuable memory feature and among the cheapest: opening a call
-with 「上次讲到一半,隔壁的来按门铃,你说改天再讲」 proves more about memory in
-one sentence than any amount of retrieval.
+with "last time the neighbour came to the door and you said you would tell me
+the rest another day" proves more about memory in one sentence than any
+amount of retrieval.
 
 The distinction this module exists to preserve is *why* a thread was left open.
 A doorbell means she was mid-story and wants to return. Tiredness means the
@@ -25,8 +26,8 @@ from sampan.models import (
 
 
 def _matches(topic: str, thread: Thread) -> bool:
-    """Topic labels drift between sessions — 爸爸的咖啡店 one week, 咖啡店 the
-    next. Match on containment rather than equality."""
+    """Topic labels drift between sessions — "father's coffee shop" one week,
+    "the coffee shop" the next. Match on containment, not equality."""
     a, b = normalise(topic), normalise(thread.topic)
     if not a or not b:
         return False

@@ -135,7 +135,7 @@ class LiveSession:
     # direction mid-call was tried and fails:
     #   role="user"   — the agent reads the stage direction out loud, fence and
     #                   all, to an eighty-year-old
-    #   role="system" — the agent acknowledges it aloud (「好的,明白了」)
+    #   role="system" — the agent acknowledges it aloud ("alright, understood")
     #   role="model"  — turn-taking breaks; it stops answering her
     #
     # So affect steers three other ways instead: it shapes the *next* call's

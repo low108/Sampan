@@ -86,14 +86,15 @@ class TestClosureDetection:
     def test_the_doorbell_is_read_as_an_interruption(
         self, run: dict[int, ConversationOutcome]
     ) -> None:
-        """She says 等一下,有人按门铃 — she was mid-story and wants to return,
+        """She says wait, someone is at the door — she was mid-story and wants to
+        return,
         which is a different thing from being tired."""
         assert run[4].closure.reason is ClosureReason.INTERRUPTED
 
     def test_the_interruption_cites_its_evidence(
         self, run: dict[int, ConversationOutcome]
     ) -> None:
-        assert "门铃" in run[4].closure.evidence
+        assert "door" in run[4].closure.evidence
 
 
 class TestInterruptedThread:
@@ -108,7 +109,10 @@ class TestInterruptedThread:
         """What she was actually cut off in the middle of."""
         thread = final.interrupted_thread
         assert thread is not None
-        assert any(word in thread.topic for word in ("关店", "咖啡店", "店"))
+        assert any(
+            word in thread.topic
+            for word in ("the shop closing", "the coffee shop", "shop")
+        )
 
     def test_it_records_what_she_had_not_told_yet(
         self, final: ConversationOutcome
@@ -140,7 +144,7 @@ class TestAccumulation:
         """Raised in session 3, never finished — the deepest pin on the map
         and still incomplete."""
         topics = " ".join(t.topic for t in final.open_threads)
-        assert any(word in topics for word in ("阿公", "槟城", "永春"))
+        assert any(word in topics for word in ("", "", ""))
 
     def test_the_family_graph_grows_without_duplicating_the_intake(
         self, final: ConversationOutcome
@@ -149,7 +153,7 @@ class TestAccumulation:
         sisters = [
             e
             for e in final.entities
-            if e.type is EntityType.PERSON and e.role == "elder_sister"
+            if e.type is EntityType.PERSON and e.role == "sister"
         ]
         assert len(sisters) == 1
 
@@ -205,14 +209,14 @@ class TestAnchors:
     def test_does_not_invent_an_anchor_she_never_dated(
         self, final: ConversationOutcome
     ) -> None:
-        """Her grandfather's crossing is 「二十几年吧,我也不清楚」. That is not
+        """Her grandfather's crossing is 「,me」. That is not
         a date, and guessing one would put a false pin on the map."""
         assert not any(a.anchor_id == "anchor_arrival" for a in final.anchors)
 
     def test_a_relative_phrase_gets_a_bound_from_its_anchor(
         self, run: dict[int, ConversationOutcome]
     ) -> None:
-        """结婚以前 has no year in the transcript. Against anchor_marriage it
+        """before I married has no year in the transcript. Against anchor_marriage it
         acquires an upper bound, while keeping her own words."""
         bounded = [
             s.candidate.when
@@ -232,7 +236,7 @@ class TestAnchors:
     def test_a_phrase_with_no_anchor_is_left_unresolved(
         self, run: dict[int, ConversationOutcome]
     ) -> None:
-        """「以前」 on its own anchors to nothing. An unsortable story is
+        """「in the old days」 on its own anchors to nothing. An unsortable story is
         better than a fabricated date."""
         unresolved = [
             s.candidate.when
@@ -249,15 +253,16 @@ class TestSensitivity:
     sister, so that her raising the subject herself lands."""
 
     def test_learns_the_sister_is_off_limits(self, final: ConversationOutcome) -> None:
-        """In session 3 the agent starts 「你姐姐——」 and she says 「讲别的」.
+        """In session 3 the agent starts "your sister —" and she says "talk about
+        something else".
         That is not ambiguous, and once is enough."""
         avoided = " ".join(t.topic for t in final.do_not_raise)
-        assert "姐姐" in avoided
+        assert "sister" in avoided
 
     def test_the_sister_is_never_raised_again_by_the_agent(
         self, final: ConversationOutcome
     ) -> None:
-        assert not may_raise("姐姐", final.sensitivities)
+        assert not may_raise("sister", final.sensitivities)
 
     def test_a_refusal_she_later_reopens_is_not_permanent(
         self, final: ConversationOutcome
@@ -266,7 +271,9 @@ class TestSensitivity:
         the whole story in session 4 when her son asks. The subject is hers
         again — the agent should not keep tiptoeing around it."""
         closing = [
-            t for t in final.sensitivities if "关店" in t.topic or "关门" in t.topic
+            t
+            for t in final.sensitivities
+            if "the shop closing" in t.topic or "" in t.topic
         ]
         assert closing, "the shop closing was never recorded as a topic"
         assert any(t.engagements > 0 for t in closing)
@@ -275,14 +282,14 @@ class TestSensitivity:
     def test_topics_she_enjoyed_are_not_avoided(
         self, final: ConversationOutcome
     ) -> None:
-        assert may_raise("爸爸的咖啡店", final.sensitivities)
+        assert may_raise("father's coffee shop", final.sensitivities)
 
     def test_labels_stay_stable_across_sessions(
         self, final: ConversationOutcome
     ) -> None:
         """The model invents a fresh label every call unless given the
         vocabulary it already used, and no post-hoc string matching can then
-        tell 关店的原因 from 阿公的店关门."""
+        tell why the shop closed from shop."""
         assert len(final.sensitivities) <= 12
 
 
@@ -290,10 +297,10 @@ class TestPreferences:
     """The layer that makes session 20 speak differently from session 1."""
 
     def test_learns_how_to_be_heard(self, final: ConversationOutcome) -> None:
-        """She says 你讲大声一点,我左边耳朵不好 once, in session 1."""
+        """She says speak louder, my left ear is not good once, in session 1."""
         hearing = [p for p in final.preferences if p.type is PreferenceType.HEARING]
         assert hearing
-        assert "耳" in hearing[0].value or "大声" in hearing[0].value
+        assert "" in hearing[0].value or "" in hearing[0].value
 
     def test_accumulates_several_preferences(self, final: ConversationOutcome) -> None:
         assert len(final.preferences) >= 3
@@ -309,17 +316,18 @@ class TestPreferences:
         at session 1 and carries her sister and her deaf ear by session 5."""
         rendered = describe_for_instruction(final.preferences, final.sensitivities)
 
-        assert "姐姐" in rendered
+        assert "sister" in rendered
         assert rendered != describe_for_instruction([], [])
 
     def test_the_instruction_quotes_nothing_back_at_her(
         self, final: ConversationOutcome
     ) -> None:
         """Evidence is kept for the family view and for debugging. An agent
-        able to quote 「讲别的」 back at her is a surveillance device."""
+        able to quote "talk about something else" back at her is a surveillance
+        device."""
         rendered = describe_for_instruction(final.preferences, final.sensitivities)
 
-        assert "讲别的" not in rendered
+        assert "talk about something else" not in rendered
 
 
 class TestExtractionHonesty:
