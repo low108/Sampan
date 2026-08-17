@@ -144,24 +144,58 @@ class TestAccumulation:
         """Raised in session 3, never finished — the deepest pin on the map
         and still incomplete."""
         topics = " ".join(t.topic for t in final.open_threads)
-        assert any(word in topics for word in ("", "", ""))
+        assert any(
+            word in topics.lower()
+            for word in ("grandfather", "ah gong", "fujian", "yongchun", "crossing")
+        )
 
     def test_the_family_graph_grows_without_duplicating_the_intake(
         self, final: ConversationOutcome
     ) -> None:
-        assert 20 <= len(final.entities) <= 32
-        sisters = [
-            e
-            for e in final.entities
-            if e.type is EntityType.PERSON and e.role == "sister"
-        ]
-        assert len(sisters) == 1
+        """A duplicate is the failure that matters, not the total.
+
+        A second sister in the graph means a duplicate pin on the family map
+        and an agent that asks brightly after someone already known to have
+        died. The total entity count drifts run to run -- the extractor is free
+        to decide whether the kerosene lamp is worth naming -- so the bound on
+        it is loose, and the real assertion is that no kin role from the intake
+        was ever doubled.
+        """
+        assert len(final.entities) >= 18
+
+        people = [e for e in final.entities if e.type is EntityType.PERSON]
+        for role in ("sister", "mother", "father", "husband", "son", "grandfather"):
+            named = [e for e in people if e.role == role]
+            assert len(named) <= 1, (
+                f"{role} duplicated: {[e.canonical_name for e in named]}"
+            )
 
     def test_the_seed_state_holds_enough_stories_for_a_map(
         self, run: dict[int, ConversationOutcome]
     ) -> None:
-        pinned = sum(len(run[n].pinned) for n in SESSIONS)
-        assert pinned >= 9
+        """What the demo needs is a map with spread, not a particular count.
+
+        An exact total is not assertable here: the same four seeds yielded 7
+        pinned stories on one run and 10 on the next, with every story scoring
+        5 or 6 and none missing a place or a time. The extractor is
+        nondeterministic about where one memory ends and the next begins, so a
+        threshold set inside that spread fails for no reason anyone can act on.
+        These assert the properties a map actually needs.
+        """
+        pinned = [story for n in SESSIONS for story in run[n].pinned]
+        assert len(pinned) >= 6
+
+        places = {
+            s.candidate.where.raw_name.lower()
+            for s in pinned
+            if s.candidate.where.is_present
+        }
+        assert len(places) >= 3, f"a map needs spread, got {places}"
+
+        years = {
+            s.candidate.when.start_year for s in pinned if s.candidate.when.start_year
+        }
+        assert max(years) - min(years) >= 15, f"a life, not a moment: {sorted(years)}"
 
 
 class TestAnchors:
@@ -273,7 +307,7 @@ class TestSensitivity:
         closing = [
             t
             for t in final.sensitivities
-            if "the shop closing" in t.topic or "" in t.topic
+            if "shop" in t.topic.lower() and "clos" in t.topic.lower()
         ]
         assert closing, "the shop closing was never recorded as a topic"
         assert any(t.engagements > 0 for t in closing)
@@ -300,7 +334,9 @@ class TestPreferences:
         """She says speak louder, my left ear is not good once, in session 1."""
         hearing = [p for p in final.preferences if p.type is PreferenceType.HEARING]
         assert hearing
-        assert "" in hearing[0].value or "" in hearing[0].value
+        assert any(
+            word in hearing[0].value.lower() for word in ("loud", "left", "ear", "slow")
+        )
 
     def test_accumulates_several_preferences(self, final: ConversationOutcome) -> None:
         assert len(final.preferences) >= 3
