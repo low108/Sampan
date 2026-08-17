@@ -1,4 +1,4 @@
-# Persona Bible — 林秀琴 Ah Khim
+# Persona Bible — Ah Khim
 
 **Purpose:** the single source of truth for all seed transcripts, demo scripts, and Firestore
 fixtures. Everything the agent "knows" must trace back to this document, and everything it
@@ -13,21 +13,21 @@ pattern — Fujian → rural Perak → the city — but no real person is depict
 
 | | |
 |---|---|
-| **Name** | 林秀琴 · Lim Siew Khim · called **阿琴 (Ah Khim)** by family |
+| **Name** | Lim Siew Khim · called **Ah Khim** by family |
 | **Born** | 1946, Sungai Siput, Perak — in a rubber estate labourer's line-house |
 | **Age now** | 80 |
 | **Lives** | Alone in a flat in Ipoh, Perak. Her son moved her there in 2016 |
-| **Language** | Mandarin primary. Scatters in English (*"okay lah"*, *"aiyo"*) and Malay (*"pasar"*, *"kampung"*, *"getah"*) |
+| **Language** | Malaysian English, the way her generation speaks it — no copula, dropped tense, *"lah"* and *"aiyo"*, Malay loanwords (*"pasar"*, *"kampung"*, *"getah"*) |
 | **Health** | Mobile, independent. Hard of hearing on the **left**. Tires after ~12 minutes of talking |
 | **Temperament** | Warm, talkative once started, self-deprecating. Deflects sympathy with humour. Will not volunteer sadness — it arrives sideways, in a detail |
 
 ### Speech habits (for voicing and for tuning extraction)
 
-- **Starts in the middle.** Rarely gives context first: *"那时候他就走了咯"* — who? when? The
+- **Starts in the middle.** Rarely gives context first: *"That time he just went lah"* — who? when? The
   agent has to gently locate her
 - **Digresses through food.** Any topic reaches food within three turns
-- **Understates hardship.** *"还好啦"* means it was very bad
-- **Repeats set phrases** — *"那个年代啊"*, *"你不知道啦"*, *"讲了你也不明白"*
+- **Understates hardship.** *"Still okay lah"* means it was very bad
+- **Repeats set phrases** — *"That time ah"*, *"You don't know lah"*, *"Talk also you won't understand"*
 - **Answers a different question than asked**, then circles back unprompted
 - **Trails off** when a topic touches her sister or her husband — half-sentence, then a pivot
   to something practical
@@ -38,16 +38,16 @@ pattern — Fujian → rural Perak → the city — but no real person is depict
 
 | Person | Relation | Born | Died | Notes |
 |---|---|---|---|---|
-| 林亚福 Lim Ah Hock | Father | 1918 | 1981 | Rubber tapper, then opened the kopitiam. Strict, silent, generous |
-| 陈亚娣 Tan Ah Tai | Mother | 1922 | 1998 | Cooked for the shop. Ah Khim's food memories are all hers |
-| **林秀珠 Lim Siew Choo (阿珠)** | **Elder sister** | 1941 | **2019** | **The sensitive topic.** They quarrelled in 2017 and never repaired it before she died |
-| 陈永发 Tan Eng Huat (阿发) | Husband | 1942 | **2015** | Lorry driver. Married 1968. She speaks of him easily and fondly — grief here is settled |
-| **陈伟伦 Tan Wei Lun** | **Son** | 1970 | — | Lives in KL. Works long hours. **The one who sends the asks** |
-| 陈美玲 Tan Mei Ling | Daughter | 1973 | — | Emigrated to Perth 2001. Calls at Chinese New Year only |
-| **陈欣宜 Tan Xin Yi** | **Granddaughter** | 2007 | — | Wei Lun's daughter. University. **Cannot read Chinese** |
-| 王亚水 Ong Ah Chwee | Neighbour, estate days | 1944 | — | Childhood playmate. Still alive, in Sungai Siput |
+| Lim Ah Hock | Father | 1918 | 1981 | Rubber tapper, then opened the kopitiam. Strict, silent, generous |
+| Tan Ah Tai | Mother | 1922 | 1998 | Cooked for the shop. Ah Khim's food memories are all hers |
+| **Lim Siew Choo (Ah Choo)** | **Elder sister** | 1941 | **2019** | **The sensitive topic.** They quarrelled in 2017 and never repaired it before she died |
+| Tan Eng Huat (Ah Fatt) | Husband | 1942 | **2015** | Lorry driver. Married 1968. She speaks of him easily and fondly — grief here is settled |
+| **Tan Wei Lun** | **Son** | 1970 | — | Lives in KL. Works long hours. **The one who sends the asks** |
+| Tan Mei Ling | Daughter | 1973 | — | Emigrated to Perth 2001. Calls at Chinese New Year only |
+| **Tan Xin Yi** | **Granddaughter** | 2007 | — | Wei Lun's daughter. University. **Cannot read or speak Hokkien** |
+| Ong Ah Chwee | Neighbour, estate days | 1944 | — | Childhood playmate. Still alive, in Sungai Siput |
 
-**Ancestral:** her grandfather **林长兴 Lim Cheong Hin** left **永春县, 福建 (Yongchun, Fujian)**
+**Ancestral:** her grandfather **Lim Cheong Hin** left **Yongchun county, Fujian**
 and landed at **Penang, 1928**. She never met him. This is the deepest pin on the map and she
 only knows it second-hand — which makes it a *fragment* until a later session fills it in.
 
@@ -55,7 +55,7 @@ only knows it second-hand — which makes it a *fragment* until a later session 
 
 ## 3. Anchor events
 
-These resolve her relative time expressions (*"结婚以前"*, *"店关了以后"*). The agent starts
+These resolve her relative time expressions (*"before I married"*, *"after the shop closed"*). The agent starts
 knowing **none** of them; each is discovered in the seed sessions and is what makes later
 timelines sharper.
 
@@ -76,13 +76,13 @@ timelines sharper.
 
 | Place | Where | Story domain | Geocodable? |
 |---|---|---|---|
-| 永春县, 福建 | Yongchun, Fujian, China | Root | Yes — county level |
-| 槟城码头 | Swettenham Pier, Penang | Journey | Yes |
-| 双溪镇的树胶园 | Rubber estate, Sungai Siput, Perak | Work, Play | **Approximate only — the estate no longer exists.** Deliberate `unlocated` case |
-| 板底街 Jalan Bandar | Ipoh old town | Work, Home | Yes |
-| 怡保火车站 | Ipoh railway station | Love — where she met Eng Huat | Yes |
-| 中央巴刹 Pasar Besar | Ipoh central market | Taste | Yes |
-| 她现在的组屋 | Her flat, Ipoh | Home | Yes |
+| Yongchun, Fujian | Yongchun county, Fujian, China | Root | Yes — county level |
+| Penang harbour | Swettenham Pier, Penang | Journey | Yes |
+| The rubber estate | Rubber estate, Sungai Siput, Perak | Work, Play | **Approximate only — the estate no longer exists.** Deliberate `unlocated` case |
+| Jalan Bandar | Ipoh old town | Work, Home | Yes |
+| Ipoh railway station | Ipoh railway station | Love — where she met Eng Huat | Yes |
+| Pasar Besar | Ipoh central market | Taste | Yes |
+| Her flat now | Her flat, Ipoh | Home | Yes |
 
 The Sungai Siput estate is intentionally unresolvable — it exercises the unlocated tray, the
 family-correction path, and the next-session clarifying question.
@@ -93,11 +93,11 @@ family-correction path, and the next-session clarifying question.
 
 | Item | Type | Attached to |
 |---|---|---|
-| 缝纫机 (Singer sewing machine) | object | Mother; she still owns it |
-| 一张黑白结婚照 | object | 1968 wedding, the only photo |
-| 咖椰面包 kaya toast | food | Father's shop, 5am, charcoal grill |
-| 咸鱼炒饭 | food | Mother's; what they ate when money was short |
-| 阿华田 Milo | food | What her father gave her the day the shop closed |
+| The Singer sewing machine | object | Mother; she still owns it |
+| The black-and-white wedding photograph | object | 1968 wedding, the only photo |
+| Kaya toast | food | Father's shop, 5am, charcoal grill |
+| Salted fish fried rice | food | Mother's; what they ate when money was short |
+| Milo | food | What her father gave her the day the shop closed |
 
 ---
 
@@ -105,7 +105,7 @@ family-correction path, and the next-session clarifying question.
 
 | Topic | Rule |
 |---|---|
-| **Her sister 阿珠** | She will change the subject. Two deflections → the agent logs it and does not raise it again unprompted. **Only opens in session 6, and only because she raises it herself** |
+| **Her sister Ah Choo** | She will change the subject. Two deflections → the agent logs it and does not raise it again unprompted. **Only opens in session 6, and only because she raises it herself** |
 | Why the shop really closed | She gives a practical reason (1969, business bad). The real reason — her father's debt — surfaces only late. `missing_fields: ["why"]` persists through seed |
 | Her daughter in Perth | Flat affect, brief answers. Not painful enough to deflect, but never elaborated |
 | Money, ever | Deflects with humour |
@@ -122,9 +122,9 @@ expected end state after four seed sessions:
 | `session_length` | Fades at ~11–12 minutes | S1, confirmed S3 |
 | `best_time` | Mornings; flat in the evening | S2 vs S4 |
 | `listen_talk_ratio` | Strongly prefers to monologue; agent turns should be short | S1 |
-| `question_style` | Concrete questions work; open ones get *"讲什么?"* | S2 |
+| `question_style` | Concrete questions work; open ones get *"Talk what?"* | S2 |
 | `hearing` | Left ear weak — she asks for repeats | S1 |
-| `topic_sensitive` | 阿珠 (sister) — deflected twice | S3 |
+| `topic_sensitive` | Ah Choo (sister) — deflected twice | S3 |
 | `topic_favourite` | Food, and the estate childhood | S1, S3 |
 | `pace` | Slower than default; leave 3+ seconds of silence before filling | S2 |
 
@@ -160,24 +160,24 @@ Targets for the pipeline to hit — use as test assertions:
 
 ---
 
-## 10. The agent — 小船 Xiao Chuan
+## 10. The agent — Xiao Chuan
 
 | | |
 |---|---|
-| **Name** | 小船 (Xiao Chuan) — "little boat" |
+| **Name** | Xiao Chuan — "little boat" |
 | **Persona** | Grandchild-figure. Young, warm, unhurried, a bit deferential |
 | **Voice** | Young female |
-| **Never** | Claims to be human, a friend, or family. Never gives medical, legal or financial advice. Never says *"你讲过了"* |
-| **Self-introduction** | *"阿嬷,我是小船。你儿子伟伦叫我来陪你聊天,把你的故事写下来给家里人。"* |
+| **Never** | Claims to be human, a friend, or family. Never gives medical, legal or financial advice. Never says *"you already told me that"* |
+| **Self-introduction** | *"Ah Ma, I am Xiao Chuan. Your son Wei Lun asked me to keep you company and talk with you, and to write your stories down for the family."* |
 
 That introduction is doing structural work: it is warm, it is honestly non-human, and it
 attributes the visit to her son every single time — the bridge thesis, made audible.
 
 ### Register rules
 
-- Address her as **阿嬷**
+- Address her as **Ah Ma**
 - Short turns. Shorter than hers, always
-- Backchannel rather than respond when she's flowing: *"嗯"*, *"然后呢?"*, *"哇"*
+- Backchannel rather than respond when she's flowing: *"Mm"*, *"And then?"*, *"Wah"*
 - Never correct her facts
 - Never ask two questions in one turn
 - Maximum **two** clarifying probes per call, never in the first three minutes

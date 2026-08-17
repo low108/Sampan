@@ -24,6 +24,24 @@ from sampan.repository import Repository
 SEEN = "seen"
 
 
+def given_name(display_name: str) -> str:
+    """The name the family would actually use.
+
+    Chinese names put the surname first, so the first token of "Lim Siew Khim"
+    is the family name shared by half the household -- a bell reading "Lim told
+    9 new stories" names nobody. The given name is what follows it.
+
+    A single token is returned as-is. A name in Western order would come out
+    wrong by this rule, and that is not handled: this household is Malaysian
+    Chinese, and inferring name order from the string is not a guess worth
+    making silently inside a notification.
+    """
+    parts = display_name.split()
+    if len(parts) < 2:
+        return display_name.strip()
+    return " ".join(parts[1:])
+
+
 class NotificationKind(StrEnum):
     ASKED_YOU = "asked_you"
     NEW_STORY = "new_story"
@@ -33,8 +51,8 @@ class NotificationKind(StrEnum):
 class Notification(BaseModel):
     id: str
     kind: NotificationKind
-    title: str = Field(description="Chinese, leading")
-    subtitle: str = Field(default="", description="English, carrying")
+    title: str = Field(description="The line she reads first")
+    subtitle: str = Field(default="", description="The detail under it")
     from_name: str = ""
     at: str = ""
     seen: bool = False
@@ -112,7 +130,7 @@ def notifications_for(
         if not stories:
             continue
 
-        given = member.display_name.split()[0]
+        given = given_name(member.display_name)
         newest = max(stories, key=lambda s: s.get("occurred_at", "") or s["story_id"])
         if len(fresh) > 1:
             title = f"{given} told {len(fresh)} new stories"
@@ -153,7 +171,7 @@ def notifications_for(
                     id=f"care:{raw['concern_id']}",
                     kind=NotificationKind.CONCERN,
                     title=(
-                        f"{by_id[member.narrator_id].display_name.split()[0]} "
+                        f"{given_name(by_id[member.narrator_id].display_name)} "
                         f"mentioned {raw['kind']}"
                     ),
                     subtitle=raw.get("detail", ""),

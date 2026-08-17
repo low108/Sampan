@@ -145,7 +145,7 @@ contradictions overwrite silently, and Firestore's 1MB document limit is reached
 
 **Entities are first-class documents with stable IDs**, in a single collection discriminated by
 `type` (person, place, object, food). Storing them as name-keyed maps on stories is rejected —
-unqueryable, ungeocodable, and unable to dedupe *Ipoh* / *怡保* / *Ipoh town*.
+unqueryable, ungeocodable, and unable to dedupe *Ipoh* / *Ipoh town* / *town*.
 
 **Entity resolution in P0 is alias matching plus one LLM tiebreak call**, seeded by the
 child-completed family intake. Below threshold, create a provisional entity flagged for family

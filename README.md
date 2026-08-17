@@ -12,15 +12,23 @@ Built for the **All Things Agentic Hackathon** — Collaborative Partner track.
 
 ## Status
 
-The data spine is complete and the voice loop works end to end.
+All 20 tickets are done. The system runs end to end on Cloud Run against Firestore, seeded
+with four conversations for one narrator and two for another.
 
-- **Archivist** (tickets 2-6): transcript → scored stories, entity graph, threads with the
-  interrupted/tired distinction, anchors resolving relative time, and the learned preference
-  layer. Gate 1 passes: 36 integration tests over four chained sessions against the real model.
-- **Companion** (ticket 10): browser mic → Cloud Run WebSocket → ADK → Live API → native audio
-  back, with the affect-monitor audio fork in place.
+- **Archivist** — transcript to scored stories, entity graph, threads carrying the
+  interrupted/tired distinction, anchors resolving her relative time expressions, and the
+  learned preference layer.
+- **Companion** — browser mic to Cloud Run WebSocket to ADK to the Live API and native audio
+  back, with the affect monitor forked off the same audio.
+- **Family archive** — map, timeline, letters, asks, corrections, and a bell that opens a
+  recording with the asker's question already loaded.
+- **Places** — relational names ("my father's shop") joined to places she named in other
+  sessions, each link carrying the sentence that justifies it.
 
-Next: Companion tools, the session opener, and the affect monitor.
+**Gate 1: 51 integration tests** over four chained sessions against the real model, plus 292
+unit tests. Everything is in English, including the seeds and the UI.
+
+Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
 
 ## Documents
 
@@ -60,7 +68,7 @@ curl -s localhost:8080/health
 
 curl -s -X POST localhost:8080/debug/smoke \
   -H "X-Sampan-Key: $SAMPAN_API_KEY" -H 'Content-Type: application/json' \
-  -d '{"note":"板底街的咖啡店"}'
+  -d '{"note":"the coffee shop on Jalan Bandar"}'
 ```
 
 ### Tests, lint, types

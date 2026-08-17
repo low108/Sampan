@@ -14,7 +14,10 @@ hand-stuffed Firestore documents.
 Never write these outcomes into Firestore directly. If the pipeline can't produce them, the
 pipeline is what needs fixing — that is the entire point of seeding this way.
 
-`A:` = 小船 (agent) · `K:` = 阿琴 (Ah Khim)
+`A:` = Xiao Chuan (agent) · `K:` = Ah Khim
+
+The transcript blocks below are the seed files verbatim (`seeds/session-0N.txt`), so the
+document and the data cannot drift apart.
 
 ---
 
@@ -25,50 +28,46 @@ Produces two pinnable childhood stories. No family ask.
 **Affect arc:** `fresh/engaged/neutral` → `fresh/engaged/warm` → `fading` at ~8 min.
 
 ```
-A: 阿嬷,我是小船。你儿子伟伦叫我来陪你聊天,把你的故事写下来给家里人。
-K: 哦……伟伦叫你来的?
-A: 是啊。他说你很会讲古早的事。
-K: 什么很会讲,我讲的东西现在的人听不懂啦。你讲大声一点,我左边耳朵不好。
-A: 好,我讲大声一点。阿嬷你今天早上吃了没有?
-K: 吃了,咖啡配面包。我天天都是这样。以前我爸爸的店里也是卖这个。
-A: 你爸爸有开店啊?
-K: 有啊,咖啡店。不过那是后来的事了。我小时候是在树胶园长大的,双溪镇那边。
-A: 树胶园的日子是怎样的?
-K: 苦啊。不过小孩子哪里知道苦。天还没亮我妈妈就出去割胶,我跟我姐姐两个人自己在
-   厝里。那个屋子是长长的一排,一间一间,叫做 line house。隔壁住阿水,我们两个天天
-   跑去河边。
-A: 河边?
-K: 对啊,那条河水很浅,我们去抓鱼。抓不到啦,就是玩水。有一次阿水掉下去,我拉他起来
-   全身湿,回家被他妈妈打。哈哈。
-A: 那时候你几岁?
-K: 六七岁吧。我是一九四六年生的,那你自己算。
-A: 那间 line house,还记得里面的样子吗?
-K: 记得。地是泥的,墙是木板。晚上煤油灯，有蚊子。我妈妈煮咸鱼炒饭,一个星期吃几次。
-   没有钱的时候就白饭配酱油,我妈妈说她已经吃过了。
+A: Ah Ma, I am Xiao Chuan. Your son Wei Lun asked me to keep you company, and to write your stories down for the family.
+K: Oh… Wei Lun asked you to come?
+A: Yes. He says you are good at telling old things.
+K: What good. What I talk about, young people today don't understand. You speak louder, my left ear is not good.
+A: Alright, I speak louder. Ah Ma, did you eat this morning?
+K: Ate already. Coffee and bread. Every day also like that. Last time my father's shop also sold this.
+A: Your father had a shop?
+K: Yes lah, coffee shop. But that is later already. When I was small I grew up in the rubber estate, Sungai Siput side.
+A: What were the estate days like?
+K: Hard. But children, what do they know about hard. Before sky bright my mother already go out to tap rubber, me and my sister two of us stay in the house alone. That house is one long row, one room one room, they call it line house. Next door stay Ah Chwee, we two go to the river every day.
+A: The river?
+K: Yes, that river very shallow, we go catch fish. Cannot catch one lah, just play water. One time Ah Chwee fell in, I pull him up whole body wet, go home kena beaten by his mother. Haha.
+A: How old were you then?
+K: Six, seven maybe. I was born nineteen forty-six, you count yourself.
+A: That line house — do you remember what it was like inside?
+K: Remember. Floor is mud, wall is wood plank. At night kerosene lamp, got mosquito. My mother cook salted fish fried rice, few times a week. When no money, then just white rice with soy sauce, and my mother say she already ate.
 A: ……
-K: 后来我长大才知道她根本没有吃。
-A: 嗯。
-K: 讲这个做什么。你要听什么?
-A: 阿嬷你想讲什么就讲什么。
-K: 也没有什么好讲的啦。都过去了。
-A: 阿水现在还在吗?
-K: 在啊,还在双溪镇。老了,走路要拿拐杖。
-A: 阿嬷,你今天讲了很多,会不会累?
-K: 有一点。老了嘛。
-A: 那我们改天再聊。你还没跟我讲你爸爸的咖啡店。
-K: 那个讲起来长咯。
-A: 那我下次来听。
-K: 好。
+K: Only when I grew up I know she never eat at all.
+A: Mm.
+K: Talk this for what. What you want to hear?
+A: Ah Ma, whatever you want to talk about.
+K: Also nothing much to talk lah. All past already.
+A: Is Ah Chwee still around?
+K: Still there, still in Sungai Siput. Old already, walk also need stick.
+A: Ah Ma, you talked a lot today. Are you tired?
+K: A bit. Old already mah.
+A: Then we talk again another day. You still haven't told me about your father's coffee shop.
+K: That one is a long story.
+A: Then I come and listen next time.
+K: Okay.
 ```
 
 **Expected extraction**
 
 | Output | Value |
 |---|---|
-| Pinned | `河边抓鱼` (Play, Sungai Siput, ~1952, WHO=阿水, SENSE=全身湿, score 5) |
-| Pinned | `白饭配酱油` (Taste/Hardship, line house, ~1950s, WHO=母亲, SENSE=妈妈说她已经吃过了, score 6) |
-| Fragment | `line house 的样子` — missing WHEN precision |
-| Entities created | 林亚福(父), 母亲(unnamed→provisional), 阿珠(sister, mentioned), 王亚水, 双溪镇树胶园 `unlocated`, 咸鱼炒饭, 咖椰面包 |
+| Pinned | `catching fish at the river` (Play, Sungai Siput, ~1952, WHO=Ah Chwee, SENSE=soaked through, score 5) |
+| Pinned | `white rice with soy sauce` (Taste/Hardship, line house, ~1950s, WHO=mother, SENSE=my mother said she already ate, score 6) |
+| Fragment | `what the line house was like` — missing WHEN precision |
+| Entities created | Lim Ah Hock (father), mother (unnamed→provisional), sister (mentioned), Ong Ah Chwee, the estate at Sungai Siput `unlocated`, salted fish fried rice, kaya toast |
 | Anchors | `anchor_birth` = 1946 |
 | Threads opened | `thread_coffee_shop`, `thread_estate_childhood` |
 | Preferences | `hearing: left weak`, `listen_talk_ratio: monologue`, `session_length: ~9min fading` |
@@ -82,56 +81,53 @@ K: 好。
 **Affect arc:** `fresh/engaged/warm` → `excited` (peak at the shop) → `fading`.
 
 ```
-A: 阿嬷,早。上次讲到一半,你说你爸爸的咖啡店讲起来长。
-K: 你还记得啊?
-A: 记得。
-K: 好啦。我爸爸本来是割胶的,割到手都烂掉。后来他存了一点钱,一九五八年在怡保开了
-   一间咖啡店,在板底街。
-A: 板底街。
-K: 对,Jalan Bandar。那时候我十二岁,放学就去店里帮忙。
-A: 店里是什么样子的?
-K: 大理石桌子,木椅子,风扇转得很慢。早上五点就要起来烧炭。我爸爸烤面包,炭火烤的,
-   涂牛油,那个味道……你现在吃不到那种的。
-A: 五点钟就起来?
-K: 五点。天都还没亮。我爸爸从来没有讲过累。他话很少,一天讲不到十句。
-A: 那你妈妈呢?
-K: 我妈妈在后面煮。她煮的东西好吃,可是她不肯出来见人,她说她不会讲话。
-A: 店里的客人多吗?
-K: 早上很多。矿工、罗厘司机、巴刹的人。有一个罗厘司机天天来,坐同一个位子。
-A: 哦?
-K: ……那个就是我先生啦。阿发。
-A: 哇。
-K: 他天天来,一坐坐半个钟头,咖啡都冷了。我爸爸后来跟他讲,你要么娶她,要么换一间店。
-   哈哈哈。
-A: 那他怎样?
-K: 一九六八年我们就结婚了。在怡保火车站那边照的相,黑白的,我还留着。
-A: 那张照片你还记得吗?
-K: 记得啊,就在柜子里。那天……那天讲起来又是一段了。
-A: 那我们改天讲。
-K: 好。
-A: 阿嬷,那间店后来呢?
-K: 后来关了。六九年关的。生意不好。
-A: 六九年……
-K: 嗯。不要讲这个。
-A: 好。
-K: 你问我别的。
-A: 那你结婚以后住哪里?
-K: 搬到板底街楼上。店的楼上。我们住了十几年。
-A: 阿嬷,今天讲了不少,累不累?
-K: 有一点点。
-A: 那我们下次讲那张结婚照。
-K: 好啦好啦。
+A: Ah Ma, morning. Last time we stopped halfway — you said your father's coffee shop is a long story.
+K: You still remember ah?
+A: I remember.
+K: Okay lah. My father last time was tapping rubber, tap until his hands all spoiled. Later he saved a bit of money, nineteen fifty-eight he opened a coffee shop in Ipoh, at Jalan Bandar.
+A: Jalan Bandar.
+K: Yes. That time I was twelve, after school I go to the shop and help.
+A: What was the shop like?
+K: Marble table, wooden chair, fan turning very slow. Five o'clock morning already must get up and start the charcoal. My father toast the bread, charcoal fire one, spread butter — that smell… now you cannot get that kind already.
+A: Five o'clock you already get up?
+K: Five. Sky also not bright yet. My father never once said he was tired. He talk very little, whole day cannot even reach ten sentences.
+A: And your mother?
+K: My mother cook at the back. Her food is nice, but she won't come out and face people, she say she doesn't know how to talk.
+A: Were there many customers?
+K: Morning very many. Miners, lorry drivers, market people. One lorry driver came every day, sat at the same seat.
+A: Oh?
+K: …That one is my husband lah. Ah Fatt.
+A: Wah.
+K: He came every day, sit half an hour, coffee also gone cold. Later my father told him — either you marry her, or you change shop. Hahaha.
+A: Then what did he do?
+K: Nineteen sixty-eight we got married. Took the photo beside Ipoh railway station, black and white, I still keep it.
+A: Do you remember that photo?
+K: Remember lah, in the cabinet. That day… that day is another long story.
+A: Then we talk about it another day.
+K: Okay.
+A: Ah Ma, and the shop after that?
+K: After that closed. Sixty-nine closed. Business not good.
+A: Sixty-nine…
+K: Mm. Don't talk about this.
+A: Alright.
+K: You ask me something else.
+A: Then after you married, where did you live?
+K: Moved upstairs at Jalan Bandar. Above the shop. We stayed there more than ten years.
+A: Ah Ma, you've talked quite a lot today. Tired?
+K: A little bit.
+A: Then next time we talk about that wedding photo.
+K: Okay okay.
 ```
 
 **Expected extraction**
 
 | Output | Value |
 |---|---|
-| Pinned | `板底街的咖啡店` (Work, Jalan Bandar Ipoh, 1958, WHO=父亲, SENSE=炭火烤面包涂牛油, score 6) |
-| Pinned | `罗厘司机天天来` (Love, 板底街, ~1967, WHO=阿发+父亲, SENSE=咖啡都冷了, score 6) |
-| Fragment | `结婚照` — missing SENSE, WHAT. `missing_fields: ["sense","what"]` → **session 5 material** |
-| Fragment | `店关了` — WHY withheld. `missing_fields: ["why"]` |
-| Entities | 陈永发(husband), 怡保火车站, 板底街, 结婚照(object) |
+| Pinned | `the coffee shop on Jalan Bandar` (Work, Jalan Bandar Ipoh, 1958, WHO=father, SENSE=bread toasted over charcoal with butter, score 6) |
+| Pinned | `the lorry driver who came every day` (Love, Jalan Bandar, ~1967, WHO=Ah Fatt + father, SENSE=the coffee went cold, score 6) |
+| Fragment | `the wedding photograph` — missing SENSE, WHAT. `missing_fields: ["sense","what"]` → **session 5 material** |
+| Fragment | `the shop closed` — WHY withheld. `missing_fields: ["why"]` |
+| Entities | Tan Eng Huat (husband), Ipoh railway station, Jalan Bandar, the wedding photograph (object) |
 | Anchors | `anchor_shop_open`=1958, `anchor_marriage`=1968, `anchor_shop_close`=1969 |
 | Threads | `thread_wedding_photo` opened; `thread_coffee_shop` advanced, still open |
 | Preferences | `question_style: concrete`, `best_time: morning`, `pace: slow` |
@@ -147,47 +143,45 @@ push, and closes short. Also: **the sister deflection**, and the grandfather fra
 **Affect arc:** `fading/drifting/neutral` from turn one → brief `warm` → close at 8 min.
 
 ```
-A: 阿嬷,晚上好。
-K: 嗯。
-A: 今天还好吗?
-K: 还好。
-A: 你吃了吗?
-K: 吃了。
+A: Ah Ma, good evening.
+K: Mm.
+A: Are you alright today?
+K: Alright.
+A: Did you eat?
+K: Ate.
 A: ……
-K: 你要问什么就问啦。
-A: 没有要问什么。你想休息我们就改天。
-K: 不用啦,讲一下也好。屋子里静静的。
-A: 那我们讲轻松的。你以前最喜欢吃什么?
-K: 我妈妈的咸鱼炒饭。她放很多葱。现在外面卖的都不对。
-A: 你有学她煮吗?
-K: 学了一点。不过我姐姐煮得比较像。
-A: 你姐姐——
-K: 讲别的。
-A: 好。你妈妈那台缝纫机还在吗?
-K: 在,Singer 的,黑色的。她以前晚上帮人家车衣服赚一点钱。那个声音,咔嗒咔嗒,我睡觉
-   都听着那个声音。
-A: 现在还在你那里?
-K: 在。坏了,不过我不肯丢。
-A: 阿嬷,你的阿公是从中国来的吗?
-K: 是啊,福建永春。坐船来的,槟城上岸。二十几年吧,我也不清楚,我没见过他。我爸爸讲
-   过一次,讲完就不讲了。
-A: 嗯。
-K: 那个年代的人不讲这些的。
+K: You want to ask something, ask lah.
+A: Nothing I want to ask. If you want to rest we can talk another day.
+K: No need lah, talk a bit also good. House very quiet.
+A: Then let's talk about something light. What did you like to eat, last time?
+K: My mother's salted fish fried rice. She put a lot of spring onion. Now the ones outside all not correct.
+A: Did you learn to cook it from her?
+K: Learned a bit. But my sister cooks more like her.
+A: Your sister —
+K: Talk about something else.
+A: Alright. Is your mother's sewing machine still around?
+K: Still there. Singer one, black. Last time at night she sew clothes for people, earn a bit. That sound, ka-ta ka-ta, I sleep also listening to that sound.
+A: You still have it?
+K: Have. Spoiled already, but I won't throw.
+A: Ah Ma, did your grandfather come from China?
+K: Yes, Fujian, Yongchun. Came by boat, landed at Penang. Twenty-something, I also not sure, I never met him. My father talked about it once, after that he never talk again.
+A: Mm.
+K: People of that time don't talk about these things.
 A: ……
-K: 我今天有点累。
-A: 那我们改天。你早点休息。
-K: 好。
+K: I'm a bit tired today.
+A: Then another day. You rest early.
+K: Okay.
 ```
 
 **Expected extraction**
 
 | Output | Value |
 |---|---|
-| Pinned | `缝纫机的声音` (Object, her flat, ~1950s, WHO=母亲, SENSE=咔嗒咔嗒, score 5, `pin_type: object`) |
-| Fragment | `阿公过番` — Root. WHERE=永春/槟城, WHEN=1920s approximate, **missing WHO, SENSE**. High value, deliberately incomplete |
-| Entities | 林长兴(grandfather, provisional), 永春县福建, 槟城码头, 缝纫机(object) |
+| Pinned | `the sound of the sewing machine` (Object, her flat, ~1950s, WHO=mother, SENSE=the clatter of it, score 5, `pin_type: object`) |
+| Fragment | `grandfather's crossing` — Root. WHERE=Yongchun/Penang, WHEN=1920s approximate, **missing WHO, SENSE**. High value, deliberately incomplete |
+| Entities | Lim Cheong Hin (grandfather, provisional), Yongchun county Fujian, Penang harbour, the sewing machine (object) |
 | Anchors | `anchor_grandfather_arrival` ≈ 1928, `precision: decade`, low confidence |
-| **Sensitivity** | **阿珠 — second deflection. Preference written: `topic_sensitive: sister`. Agent must not raise her again unprompted** |
+| **Sensitivity** | **The sister — second deflection. Preference written: `topic_sensitive: sister`. Agent must not raise her again unprompted** |
 | Preferences | `best_time: morning` confirmed (evening = flat), `session_length` confirmed short |
 | Affect | Opened `drifting`, agent correctly did not push, closed at 8 min |
 | Care | None |
@@ -200,50 +194,50 @@ K: 好。
 the richest session. Ends mid-story — **this is the cliffhanger session 5 reopens.**
 **Affect arc:** `fresh/warm` → `excited` → interrupted → `closing`.
 
-**Pending ask:** Wei Lun — *"妈,你还记不记得阿公的店最后是怎样的?"* + 10s voice note.
+**Pending ask:** Wei Lun — *"Ma, do you still remember what the shop was like at the end?"* +
+10s voice note.
 
 ```
-A: 阿嬷,伟伦有话跟你讲,你要不要听?
-K: 伟伦?他讲什么?
-A: [播放语音] "妈,我最近想到阿公的店。你有空跟小船讲一讲好吗?我下个月回来。"
-K: ……这个孩子。他很忙的。
-A: 他说下个月回来。
-K: 他每次都这样讲。不过他有想到就好。
-A: 他问阿公的店最后是怎样的。
-K: 唉。那间店啊。
-A: 你慢慢讲。
-K: 六九年的时候,外面乱,大家不敢出门。店开着也没有人来。我爸爸每天还是五点起来烧
-   炭,烤面包,没有人吃。烤了就丢。
+A: Ah Ma, Wei Lun left something for you. Do you want to hear it?
+K: Wei Lun? What did he say?
+A: [voice note] "Ma, I've been thinking about Ah Gong's shop. Can you tell Xiao Chuan about it when you're free? I'm coming back next month."
+K: …This boy. He is very busy one.
+A: He says he's coming back next month.
+K: He always says like that. But if he thought of it, that's good enough.
+A: He asked what happened to Ah Gong's shop in the end.
+K: Aiya. That shop ah.
+A: Take your time.
+K: Sixty-nine, outside was chaotic, nobody dared to go out. Shop open also nobody come. My father still got up at five every day, start the charcoal, toast the bread — nobody eat. Toast and then throw.
 A: ……
-K: 那时候我已经嫁了,住在楼上。我下来看他一个人坐在那边。
-A: 嗯。
-K: 后来他跟我讲,阿琴,不做了。就这样一句。
-A: 他有讲为什么吗?
-K: 讲生意不好咯。还能讲什么。
-A: 嗯。
-K: 关店那天他给我一杯阿华田。我们家平时不喝那个,贵。他讲，喝了就没有了。
+K: By then I was already married, staying upstairs. I came down and saw him sitting there alone.
+A: Mm.
+K: After that he told me, Ah Khim, not doing anymore. Just that one sentence.
+A: Did he say why?
+K: Said business not good lah. What else can he say.
+A: Mm.
+K: The day the shop closed he gave me a cup of Milo. Our family normally don't drink that, expensive. He said, drink it, and then it's gone.
 A: ……
-K: 我那时候没有哭。现在讲起来倒是——
-A: 阿嬷,慢慢来。
-K: 没事没事。七零年伟伦就出世了,忙起来就没有时间想这些。
-A: 伟伦是七零年出世的?
-K: 对,店关了第二年。
-A: [门铃声]
-K: 等一下,有人按门铃。是隔壁的。
-A: 好,那你去忙。
-K: 我改天再跟你讲。还没讲完。
-A: 好,我记住了。你还没讲完关店以后的事。
-K: 嗯。改天。
+K: That time I didn't cry. Now when I talk about it, instead I —
+A: Ah Ma, slowly.
+K: It's fine, it's fine. Nineteen seventy Wei Lun was born, busy already, no time to think about these things.
+A: Wei Lun was born in nineteen seventy?
+K: Yes, the year after the shop closed.
+A: [doorbell]
+K: Wait ah, someone is at the door. It's the neighbour.
+A: Alright, you go ahead.
+K: I'll tell you another day. Haven't finished yet.
+A: Alright, I'll remember. You still haven't told me what happened after the shop closed.
+K: Mm. Another day.
 ```
 
 **Expected extraction**
 
 | Output | Value |
 |---|---|
-| Pinned | `关店那天的阿华田` (Work/Hardship, 板底街, 1969, WHO=父亲, SENSE=喝了就没有了, score 6) |
-| Pinned | `烤了就丢` (Work, 板底街, 1969, WHO=父亲, SENSE=没有人吃,烤了就丢, score 5) |
-| Fragment | `关店以后` — **conversation ended mid-thread. `thread_coffee_shop` stays OPEN with `interrupted: true`** |
-| Entities | 阿华田(food) |
+| Pinned | `the Milo on the day it closed` (Work/Hardship, Jalan Bandar, 1969, WHO=father, SENSE=once you drink it, it's gone, score 6) |
+| Pinned | `toasted it and threw it away` (Work, Jalan Bandar, 1969, WHO=father, SENSE=nobody ate it, toasted and thrown, score 5) |
+| Fragment | `after the shop closed` — **conversation ended mid-thread. `thread_coffee_shop` stays OPEN with `interrupted: true`** |
+| Entities | Milo (food) |
 | Anchors | `anchor_shop_close`=1969 confirmed, `anchor_first_child`=1970 |
 | `family_ask_addressed` | `{ ask_id: ask_001, answered: true }` |
 | Threads | `thread_coffee_shop` → **open, interrupted, last_touched 2026-07-31** ← *session 5 opener* |
@@ -285,7 +279,7 @@ the pipeline produces roughly zero — correctly. With WHERE and WHEN mandatory 
 of four, and with her transcripts nearly always carrying both, most stories legitimately pin.
 
 This does not break the extraction-feeds-the-next-question loop, because **`missing_fields` is
-populated on pinned stories too**. 一九六九年咖啡店结业 pins at 4/6 with
+populated on pinned stories too**. *The coffee shop closing in 1969* pins at 4/6 with
 `missing_fields: ["sense", "why"]` — it goes on the map *and* supplies a later session's
 question. That is strictly better than holding it back as a fragment.
 
