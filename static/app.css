@@ -21,8 +21,8 @@
   --line:       #EADFCC;
   --line-soft:  #EFE6D6;
 
-  --serif: 'Noto Serif SC', Georgia, serif;
-  --sans:  'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  --serif: 'Noto Serif', Georgia, serif;
+  --sans:  'Noto Sans', system-ui, -apple-system, sans-serif;
 
   /* The elder floor. Nothing in the app goes below these. */
   --body:   22px;
@@ -210,3 +210,17 @@ sampan-map { display: block; width: 100%; height: 100%; }
           margin-bottom: .8rem; animation: fadeup .25s ease; }
 .bubble.mine { background: var(--card-warm); margin-left: 3rem; }
 .empty { color: var(--ink-faint); text-align: center; padding: 3rem 1rem; }
+
+
+/* Shown when the archive cannot be loaded at all. A blank page cannot tell you
+   whether the key is missing or the service is down. */
+.failed {
+  max-width: 28rem; margin: 18vh auto 0; padding: 0 1.6rem;
+  font-family: var(--sans); color: var(--ink); text-align: center;
+}
+.failed h1 { font-family: var(--serif); font-size: 2rem; margin: 0 0 .8rem; }
+.failed p { line-height: 1.6; opacity: .85; }
+.failed code {
+  font-size: .95em; background: rgba(36,30,26,.07);
+  padding: .1rem .35rem; border-radius: .25rem;
+}

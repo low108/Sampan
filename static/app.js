@@ -27,7 +27,12 @@ const api = async (path, opts = {}) => {
 
 const esc = (s) => (s ?? '').replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const given = (name) => (name || '').split(' ')[0];
+/* Chinese names are surname-first, so the first token of "Lim Siew Khim" is
+ * the family name half this household shares. The given name is what follows. */
+const given = (name) => {
+  const parts = (name || '').trim().split(/\s+/);
+  return parts.length < 2 ? (name || '') : parts.slice(1).join(' ');
+};
 const initial = (name) => (name || '?').trim()[0];
 
 const nav = (patch) => { Object.assign(S, patch); render(); };
@@ -35,14 +40,33 @@ const nav = (patch) => { Object.assign(S, patch); render(); };
 /* ── data ──────────────────────────────────────────────────────── */
 
 async function load() {
-  const [house, bell] = await Promise.all([
-    api('/api/household'),
-    api(`/api/bell/${encodeURIComponent(ME)}`).catch(() => ({ unseen: 0, notifications: [] })),
-  ]);
+  let house, bell;
+  try {
+    [house, bell] = await Promise.all([
+      api('/api/household'),
+      api(`/api/bell/${encodeURIComponent(ME)}`).catch(() => ({ unseen: 0, notifications: [] })),
+    ]);
+  } catch (err) {
+    /* Without this the first 401 rejected here, render() never ran, and the
+     * page stayed blank forever — the same white screen whether the key was
+     * missing, the service was down, or the archive was empty. Say which. */
+    fail(err.message === '401'
+      ? 'This link is missing its access key. Open the URL that ends in <code>?key=…</code>.'
+      : `Could not reach the archive (${esc(err.message)}). It may still be starting up — try again in a moment.`);
+    return;
+  }
   S.data = house;
   S.bell = bell;
   render();
   syncPins();
+}
+
+function fail(message) {
+  document.getElementById('app').innerHTML = `
+    <div class="failed">
+      <h1>Sampan</h1>
+      <p>${message}</p>
+    </div>`;
 }
 
 const memberOf = (id) => (S.data?.members || []).find((m) => m.narrator_id === id);
