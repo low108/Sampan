@@ -1,3 +1,14 @@
+# The React/TypeScript front end is built here rather than committed, so the
+# deployed bundle always matches the source in web/ and a stale static/ cannot
+# ship by accident.
+FROM node:22-slim AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web ./
+RUN npm run build
+
+
 FROM python:3.12-slim
 
 # Pinned: a mutable tag lets an upstream uv release change resolver behaviour
@@ -13,9 +24,10 @@ RUN uv sync --locked --no-dev --no-install-project
 COPY src ./src
 RUN uv sync --locked --no-dev
 
-# The elder and family pages. Easy to forget, and their absence shows up only
-# as a 404 on the deployed service — the API keeps working perfectly.
-COPY static ./static
+# The elder and family pages, as built above. Easy to forget, and their absence
+# shows up only as a 404 on the deployed service — the API keeps working
+# perfectly.
+COPY --from=web /static ./static
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1

@@ -579,6 +579,11 @@ def create_app() -> FastAPI:
             "waiting": True,
             "from_name": ask.from_name,
             "relation": ask.relation,
+            # The question itself. Without it the bell says "Wei Lun asked you
+            # something", she taps, and the screen shows his name and nothing
+            # he wanted to know -- which is the one thing the bell exists to
+            # carry across.
+            "question": ask.question,
             "voice_note": ask.voice_note_url,
         }
 

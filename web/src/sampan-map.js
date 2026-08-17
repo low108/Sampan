@@ -119,6 +119,13 @@
         this.dispatchEvent(new CustomEvent('sampan-blank', { bubbles: true, composed: true }));
       });
       map.on('zoomend moveend', () => { this._draw(); this._reportOffscreen(); });
+      /* A Leaflet map with no centre or zoom throws on every subsequent call,
+       * and resetView() sets neither when there are no pins yet. Whether that
+       * happened came down to whether Leaflet was still downloading when the
+       * first pins arrived: on a cold load it raced ahead, on a cached load it
+       * initialised first and the map stayed viewless. Perak, wide enough to
+       * hold the whole archive, until the real bounds are known. */
+      map.setView([4.6, 101.1], 6);
       this.resetView();
       this._draw();
       const bump = () => { map.invalidateSize(); this.resetView(); this._draw(); this._reportOffscreen(); };
@@ -168,7 +175,19 @@
       this._map.fitBounds(b, { padding: [64, 96], maxZoom: 13 });
     }
 
-    _clear() { this._layers.forEach((l) => this._map.removeLayer(l)); this._layers = []; }
+    _clear() {
+      /* Take the list first. _draw() is re-entrant -- fitBounds() fires
+       * 'moveend' synchronously, whose handler calls _draw() again while the
+       * outer one is still running -- so a list read during removal can be
+       * removed twice, and Leaflet throws reading parentNode of a path it has
+       * already detached. Every layer then stays recorded but absent, which is
+       * how the map ended up reporting 7 layers and drawing none. */
+      const layers = this._layers;
+      this._layers = [];
+      layers.forEach((l) => {
+        try { this._map.removeLayer(l); } catch (e) { /* already detached */ }
+      });
+    }
     _add(l) { l.addTo(this._map); this._layers.push(l); }
 
     _marker(latlng, html, size, onClick, zIndex) {
@@ -182,6 +201,15 @@
 
     _draw() {
       if (!this._map) return;
+      /* Re-entrancy guard: the nested call would otherwise clear the layers the
+       * outer call is in the middle of adding. The outer call finishes the
+       * drawing; the inner one would only repeat it. */
+      if (this._drawing) return;
+      this._drawing = true;
+      try { this._drawInner(); } finally { this._drawing = false; }
+    }
+
+    _drawInner() {
       const L = this._L, map = this._map;
       this._clear();
       const pins = this._visible();
