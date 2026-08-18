@@ -145,11 +145,16 @@ def finish_call(
     for subject in prepared.memory.private_marks:
         repository.mark_private(narrator_id, subject)
 
+    if len(transcript) < MIN_TURNS_TO_EXTRACT:
+        # The question is *not* consumed here. A call this short is a misdial,
+        # a wrong moment, or a phone put down -- she may have heard his question
+        # read out and had no chance to answer it. Burning it would tell Wei Lun
+        # it had been delivered and leave her never asked again.
+        return None
+
+    # Consumed only by a call that was long enough to be a real exchange.
     if prepared.memory.ask_delivered and prepared.memory.ask is not None:
         repository.mark_ask_delivered(narrator_id, prepared.memory.ask.ask_id)
-
-    if len(transcript) < MIN_TURNS_TO_EXTRACT:
-        return None
 
     outcome = ingest_conversation(
         transcript.render(),

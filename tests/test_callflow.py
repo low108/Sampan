@@ -363,6 +363,37 @@ class TestFamilyAsks:
 
         assert repository.pending_ask(NARRATOR) is None
 
+    def test_a_call_too_short_to_extract_does_not_burn_the_question(
+        self, repository: Repository, settings: Settings
+    ) -> None:
+        """A misdial must not spend his question.
+
+        This is what a real test call looked like: four turns, her "hello", the
+        agent reading Wei Lun's question out, "No.", and the line closing. It
+        produced no stories and consumed the ask anyway, so the bell went empty
+        and he was told she had been asked.
+        """
+        repository.queue_ask(
+            NARRATOR,
+            Ask(
+                ask_id="a1", from_name="Wei Lun", question="Did Ah Gong leave anything?"
+            ),
+        )
+        prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
+        prepared.memory.ask_delivered = True
+
+        finish_call(
+            repository,
+            StubExtractor(FULL),
+            prepared,
+            conversation(MIN_TURNS_TO_EXTRACT - 1),
+            narrator_id=NARRATOR,
+        )
+
+        still_waiting = repository.pending_ask(NARRATOR)
+        assert still_waiting is not None
+        assert still_waiting.ask_id == "a1"
+
     def test_an_undelivered_ask_waits_for_the_next_call(
         self, repository: Repository, settings: Settings
     ) -> None:
