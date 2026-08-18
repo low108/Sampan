@@ -372,6 +372,12 @@ class SessionPlan(BaseModel):
     considered: list[Candidate] = Field(
         default_factory=list, description="Everything scored, for the overlay"
     )
+    # One subject the call may *lean* toward if a natural opening appears.
+    # Not an offer and never an instruction to raise it: the domains a family
+    # archive most wants -- where she came from, what she ate -- are the ones
+    # least likely to come up unprompted, and the difference between leaning
+    # and steering is the whole product.
+    target_domain: Domain | None = None
 
 
 class PreferenceType(StrEnum):

@@ -160,6 +160,37 @@ def _ask_candidate(
     )
 
 
+def choose_target(
+    covered: set[Domain],
+    session_count: int,
+    sensitivities: list[SensitiveTopic],
+    preferred: tuple[Domain, ...] = (Domain.ROOT, Domain.TASTE),
+) -> Domain | None:
+    """One subject to lean toward, if the conversation opens toward it.
+
+    Chosen only from domains trust has unlocked and she has not covered. The
+    depth gate is doing real work here: ROOT sits at level 2, so ancestry is
+    not reachable until the third call. That was a decision about trust, not an
+    accident, and steering must not route around it.
+
+    A refused subject is not merely deprioritised, it is never eligible.
+    """
+    depth = unlocked_depth(session_count)
+    eligible = [
+        domain
+        for domain, level in DOMAIN_DEPTH.items()
+        if level <= depth
+        and domain not in covered
+        and may_raise(DOMAIN_PROMPTS[domain], sensitivities)
+    ]
+    if not eligible:
+        return None
+    for wanted in preferred:
+        if wanted in eligible:
+            return wanted
+    return min(eligible, key=lambda d: (DOMAIN_DEPTH[d], d.value))
+
+
 def _domain_candidate(
     covered: set[Domain], session_count: int, sensitivities: list[SensitiveTopic]
 ) -> Candidate | None:
@@ -234,6 +265,7 @@ def build_session_plan(
         offers=offers,
         light_offer=light,
         considered=ranked,
+        target_domain=choose_target(covered, session_count, sensitivities),
     )
 
 
@@ -270,6 +302,19 @@ def render_plan(plan: SessionPlan) -> str:
     lines.append("   - Fine: offer at most two, and never as a menu:")
     for offer in plan.offers:
         lines.append(f"     - {offer.say}")
+
+    if plan.target_domain is not None:
+        # Deliberately placed above the never-steer-back rule, so the rule is
+        # the last thing read. A lean is an ear, not an agenda: if the opening
+        # does not arrive, nothing happens and nothing is lost.
+        lines.append("")
+        lines.append(
+            "If a natural opening appears — and only then — you would like to "
+            f"hear about {DOMAIN_PROMPTS[plan.target_domain]}. "
+            "**Do not raise it, do not work toward it, and do not return to "
+            "it if she moves away.** It is somewhere she has not been, not "
+            "somewhere she must go."
+        )
 
     lines.append("")
     lines.append(

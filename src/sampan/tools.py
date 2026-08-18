@@ -45,6 +45,10 @@ class CallMemory:
     affect: AffectState = field(default_factory=AffectState)
     # The edges of the graph, loaded before the call. Retrieval reads these.
     facts: list[Fact] = field(default_factory=list)
+    # One subject the call may lean toward, carried from the session plan. It
+    # rides on tool responses because that is the only channel reaching the
+    # agent mid-call without her hearing it.
+    target_domain: str = ""
     # Entities named so far in *this* conversation. They seed the graph
     # traversal, which is how agent-initiated retrieval still reflects where
     # the conversation already is -- nothing can be injected per turn.
@@ -75,6 +79,10 @@ def _with_guidance(memory: CallMemory, payload: dict[str, Any]) -> dict[str, Any
     knobs = policy(memory.affect)
     payload["_guidance"] = knobs.guidance
     payload["_turn_length"] = knobs.turn_length
+    if memory.target_domain:
+        # Phrased as an observation, never a request. The agent is told where
+        # she has not been, not where to take her.
+        payload["_not_yet_spoken_of"] = memory.target_domain
     return payload
 
 

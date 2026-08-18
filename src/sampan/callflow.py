@@ -109,6 +109,8 @@ def prepare_call(
         last_closure=stored.last_closure,
     )
 
+    memory.target_domain = plan.target_domain.value if plan.target_domain else ""
+
     agent = build_agent(
         settings,
         preferences=stored.preferences,

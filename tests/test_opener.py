@@ -254,3 +254,75 @@ class TestRendering:
         rendered = render_plan(build_session_plan(threads=[thread("the coffee shop")]))
 
         assert "first two turns" in rendered
+
+
+class TestLeaning:
+    """A lean, not a push.
+
+    The domains a family archive most wants — where she came from, what she ate
+    — are the ones least likely to come up unprompted. But an elder who feels
+    steered stops talking, so the difference between leaning and steering is the
+    whole product.
+    """
+
+    def test_a_subject_is_chosen_to_lean_toward(self) -> None:
+        plan = build_session_plan(session_count=6)
+
+        assert plan.target_domain is not None
+
+    def test_it_never_reaches_past_the_trust_gate(self) -> None:
+        """ROOT sits at depth 2. Ancestry is not first-conversation material,
+        and steering must not route around a decision about trust."""
+        from sampan.models import Domain
+
+        first = build_session_plan(session_count=0)
+
+        assert first.target_domain is not Domain.ROOT
+
+    def test_ancestry_becomes_reachable_once_trust_is_earned(self) -> None:
+        from sampan.models import Domain
+
+        later = build_session_plan(session_count=6)
+
+        assert later.target_domain is Domain.ROOT
+
+    def test_a_covered_subject_is_not_chosen_again(self) -> None:
+        from sampan.models import Domain
+
+        plan = build_session_plan(session_count=6, covered_domains={Domain.ROOT})
+
+        assert plan.target_domain is not Domain.ROOT
+
+    def test_a_refused_subject_is_never_chosen(self) -> None:
+        from sampan.models import Domain
+        from sampan.opener import DOMAIN_PROMPTS, choose_target
+
+        target = choose_target(
+            covered=set(),
+            session_count=6,
+            sensitivities=[
+                SensitiveTopic(topic=DOMAIN_PROMPTS[Domain.ROOT], refusals=1)
+            ],
+        )
+
+        assert target is not Domain.ROOT
+
+    def test_the_instruction_forbids_raising_it(self) -> None:
+        """The load-bearing assertion. A lean the agent acts on is a push."""
+        rendered = render_plan(build_session_plan(session_count=6))
+
+        assert "Do not raise it" in rendered
+        assert "do not work toward it" in rendered
+
+    def test_never_steering_back_is_still_the_last_word(self) -> None:
+        rendered = render_plan(build_session_plan(session_count=6))
+
+        assert rendered.rstrip().endswith("you never steer back.**")
+
+    def test_nothing_is_said_when_there_is_nowhere_to_lean(self) -> None:
+        from sampan.models import Domain
+
+        plan = build_session_plan(session_count=0, covered_domains=set(Domain))
+
+        assert plan.target_domain is None
+        assert "natural opening" not in render_plan(plan)
