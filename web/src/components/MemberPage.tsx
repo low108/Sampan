@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, givenName, ME } from '../api';
 import { SampanMap } from '../SampanMap';
+import { Chapters } from './Chapters';
 import type { ChatLine, Member, MemberTab, Pin } from '../types';
 
 interface Props {
@@ -17,6 +18,7 @@ interface Props {
 const TABS: [MemberTab, string][] = [
   ['chat', 'Ask about her'],
   ['map', 'Her map'],
+  ['chapters', 'Her chapters'],
   ['ask', 'Leave a question'],
 ];
 
@@ -46,6 +48,15 @@ export function MemberPage(props: Props) {
           style={{ top: '4rem' }}
         />
       </>
+    );
+  }
+
+  if (tab === 'chapters') {
+    return (
+      <div className="pad">
+        {subtabs}
+        <Chapters narratorId={person.narrator_id} />
+      </div>
     );
   }
 

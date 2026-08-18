@@ -1,5 +1,6 @@
 import type {
   AboutAnswer,
+  ChaptersView,
   Bell,
   FeedView,
   Household,
@@ -51,6 +52,9 @@ export const api = {
 
   mapView: (narrator: string) =>
     request<MapView>(`/api/family/${encodeURIComponent(narrator)}?view=map`),
+
+  chapters: (narrator: string) =>
+    request<ChaptersView>(`/api/family/${encodeURIComponent(narrator)}?view=chapters`),
 
   timeline: (narrator: string) =>
     request<TimelineView>(`/api/family/${encodeURIComponent(narrator)}?view=timeline`),

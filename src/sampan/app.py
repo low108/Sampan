@@ -463,6 +463,37 @@ def create_app() -> FastAPI:
             payload["allStories"] = [c.model_dump() for c in timeline(cards)]
         elif view == "timeline":
             payload["stories"] = [c.model_dump() for c in timeline(cards)]
+        elif view == "chapters":
+            # Her life in named sections, clustered from the fact graph rather
+            # than written by anyone. Facts carry the sentence she said, so a
+            # chapter can be opened all the way down to her own words.
+            by_id = {e.entity_id: e for e in entities}
+            facts = repository.load_facts(narrator_id)
+            payload["chapters"] = [
+                {
+                    "id": chapter.community_id,
+                    "name": chapter.name,
+                    "summary": chapter.summary,
+                    # Names, for recognition. Extraction occasionally produces
+                    # a whole clause as an entity -- "toast the bread, charcoal
+                    # fire one, spread butter" -- which is a phrase she said
+                    # rather than something anyone would recognise as a name.
+                    # It stays in the graph and out of the chips.
+                    "members": [
+                        by_id[m].canonical_name
+                        for m in chapter.member_ids
+                        if m in by_id and len(by_id[m].canonical_name) <= 30
+                    ],
+                    "facts": [
+                        {"fact": f.render(), "she_said": f.quote}
+                        for f in facts
+                        if f.subject_id in set(chapter.member_ids)
+                        or (f.object_id or "") in set(chapter.member_ids)
+                    ][:6],
+                }
+                for chapter in repository.load_communities(narrator_id)
+                if chapter.member_ids
+            ]
         else:
             ordered = feed(cards)
             payload["stories"] = [c.model_dump() for c in ordered]

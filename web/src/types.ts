@@ -83,6 +83,25 @@ export interface FeedView {
   stories: StoryCard[];
 }
 
+export interface ChapterFact {
+  /** Rendered with its interval, e.g. "1958–1969 · her father ran a coffee shop". */
+  fact: string;
+  /** The sentence she said that put it there. */
+  she_said: string;
+}
+
+export interface Chapter {
+  id: string;
+  name: string;
+  summary: string;
+  members: string[];
+  facts: ChapterFact[];
+}
+
+export interface ChaptersView {
+  chapters: Chapter[];
+}
+
 export interface TimelineView {
   stories: StoryCard[];
 }
@@ -125,6 +144,6 @@ export interface ChatLine {
 }
 
 export type Tab = 'map' | 'record' | 'family';
-export type MemberTab = 'chat' | 'map' | 'ask';
+export type MemberTab = 'chat' | 'map' | 'chapters' | 'ask';
 export type Sheet = 'notifs' | 'unplaced' | 'cluster';
 export type RecordState = 'idle' | 'live';
