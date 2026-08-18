@@ -633,6 +633,9 @@ time; the second earns *"did you sleep well?"*.
 code("""
 from sampan.archivist import ingest_conversation
 
+# The same transcript, the same prompt, the same temperature -- run a second
+# time. `finish_call` already ran one of these and saved the result, so the two
+# can be compared directly.
 outcome = ingest_conversation(
     transcript.render(),
     extractor,
@@ -640,38 +643,85 @@ outcome = ingest_conversation(
     conversation_id="conv_demo",
 )
 
-print("stories   :", len(outcome.stories), "|", len(outcome.pinned), "pinnable")
-print("entities  :", len(outcome.entities), "|", len(outcome.new_entities), "new")
-print("threads   :", len(outcome.threads))
-print("anchors   :", len(outcome.anchors))
-print("preferences:", len(outcome.preferences))
+filed = repo.load_memory(NARRATOR)
+saved_entities = len(repo.load_entities(NARRATOR))
+
+rows = [
+    ("entities", saved_entities, len(outcome.entities)),
+    ("threads", len(filed.threads), len(outcome.threads)),
+    ("preferences", len(filed.preferences), len(outcome.preferences)),
+    ("anchors", len(filed.anchors), len(outcome.anchors)),
+]
+print(f"{'':14}{'filed by':>12}{'this second':>14}")
+print(f"{'':14}{'finish_call':>12}{'run':>14}")
+for name, first, second in rows:
+    flag = "   <- differs" if first != second else ""
+    print(f"  {name:12}{first:>12}{second:>14}{flag}")
+
 print()
-print("RESOLUTIONS — the story->entity edges, computed here and never persisted:")
+print("  stories this run:", len(outcome.stories),
+      "|", len(outcome.pinned), "of them pinnable")
+for story in outcome.stories:
+    print("     ", story.candidate.title)
+print()
+print("RESOLUTIONS — the story-to-entity links, worked out here and then thrown away:")
 for r in outcome.resolutions[:8]:
     print(f'  "{r.mention.surface_form}" -> {r.entity_id:20} via {r.matched_by}'
           f'{"  (new)" if r.created else ""}')
 """)
 
 md("""
-### Something you can see in the numbers above
+### The two runs do not agree, and that is the point
 
-That cell just ran extraction a **second** time on the same transcript, and it
-will usually disagree with the run inside `finish_call` — a different number of
-stories, a slightly different number of entities. Same input, same temperature,
-same prompt.
+Look at the table above. The same transcript went through the same function
+twice, with the same prompt and the same temperature setting — and the rows
+marked `<- differs` came out with different numbers.
 
-The reason is that the model is not consistent about **where one memory ends and
-the next begins**. Whether the river and the line house are one childhood story
-or two is a judgement call, and it makes it differently on different runs. Every
-story still scores 5 or 6, and every one still has a place and a time. The
-boundaries move; the quality does not.
+Which rows differ is itself not fixed. One run it is the entity count; another
+run it is threads and preferences as well. Run the notebook again and the table
+will very likely disagree in a different place.
 
-This is why the integration tests check *properties* — enough pins, at least
-three distinct places, at least fifteen years covered — instead of counts. A
-threshold like `pinned >= 9` sits inside that variation and fails for no reason
-anyone can act on.
+Nothing is broken. **The model is making judgement calls, and it does not make
+them the same way twice.**
 
-### Back to the resolutions
+Take one concrete example. In this conversation she mentions playing in the
+river, and she mentions the line house she grew up in. Is that:
+
+- one story — *"her childhood on the estate"* — or
+- two stories — *"playing in the river"* and *"the line house"*?
+
+Both readings are defensible. A human archivist would also hesitate. The model
+picks one, and on the next run it might pick the other. The same thing happens
+with entities: is *"the river"* a place worth its own record, or just a detail
+inside a story? Is *"speak louder, my left ear is not good"* one preference
+about hearing, or two about hearing and pace?
+
+What does **not** vary is quality. Every story still scores 5 or 6 out of 6.
+Every one still has a place and a time. The *boundaries* move; the content does
+not.
+
+### Why this changed how the tests are written
+
+If the output count moves between runs, then a test like this is a coin flip:
+
+```python
+assert len(pinned_stories) >= 9      # fails for no reason anyone can act on
+```
+
+It did exactly that. It failed one afternoon, and passed unchanged an hour later
+with no code in between. A failing test is supposed to tell you what to fix, and
+this one could not, because nothing was wrong.
+
+So the integration tests assert **properties** instead of counts:
+
+| Instead of | Assert |
+|---|---|
+| "9 stories" | enough stories to fill a map |
+| "exactly these entities" | no duplicate of anyone in the family intake |
+| "12 preferences" | preferences never *decrease* between sessions |
+
+Each of those is true regardless of where the model draws its boundaries, and
+each still fails loudly if the pipeline genuinely breaks.
 """)
 
 code("""
