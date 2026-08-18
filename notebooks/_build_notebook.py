@@ -624,10 +624,39 @@ because a neighbour rang the doorbell is *interrupted*. One that ended because
 she got tired is *fatigue*. The first earns *"you still owe me the rest"* next
 time; the second earns *"did you sleep well?"*.
 
-### What gets computed, including what gets thrown away
+### What the Archivist actually does
 
-`finish_call` wraps `ingest_conversation`. Calling it directly exposes the
-`resolutions` that section 1 said are computed and then discarded:
+`finish_call` in the cell above did the real work by calling
+`ingest_conversation`. That one function is the entire post-call pipeline: a
+transcript goes in, structured memory comes out. Inside it, in order:
+
+| Step | What it does |
+|---|---|
+| `extractor.extract()` | **The one model call.** Returns raw stories, the people and places she mentioned, subjects left unfinished, dates, and preferences |
+| `resolve_mentions()` | Works out who each mention refers to. Creates a record for anyone new |
+| `fold_anchors()`, `apply_anchors()` | Adds newly-learned dates, then uses them to turn *"before I married"* into a year |
+| `assess()` | Scores each story against the six-field rubric from section 2 |
+| `fold_threads()`, `fold_preferences()` | Merges with what was already known instead of replacing it |
+
+The next cell calls `ingest_conversation` **a second time**, directly. That is
+not how production works, and it is here for one reason: `finish_call` hands
+back only the updated memory, so the `resolutions` — the links between a story
+and the people in it — never come out of it. Calling the inner function is the
+only way to see them.
+
+Reading a resolution line:
+
+```
+"my father"  -> ent_father         via alias        she said "my father", and the
+                                                    family intake lists that as
+                                                    one of his names
+"Ah Chwee"   -> ent_5f3a...        via new  (new)   nobody in the intake is Ah
+                                                    Chwee, so a new record was
+                                                    created for him
+```
+
+Those arrows are exactly the links section 1 said are missing. Watch what
+happens to them.
 """)
 
 code("""
