@@ -67,8 +67,15 @@ md("""
 ## 0. Setup
 
 Nothing to install beyond the project's own dependencies (`uv sync`). The
-knowledge base is swapped for an in-memory store so the notebook is safe to
+knowledge base is swapped for an in-memory store, so the notebook is safe to
 re-run and never touches the real Firestore archive.
+
+Run it with `uv run python notebooks/run_notebook.py`, which clears every output
+before executing. That matters more than it sounds: a run that fails partway
+leaves earlier cells showing results from an older version of the code, and the
+page then answers the same question two different ways with nothing marking
+either as out of date. It happened here — section 4 printed nine tools while
+section 5 printed five, from the same object.
 """)
 
 code("""
