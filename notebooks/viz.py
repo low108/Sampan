@@ -258,37 +258,37 @@ D3_TEMPLATE = """
 <!doctype html>
 <meta charset="utf-8">
 <title>__TITLE__</title>
-<body style="margin:0;background:#EDE4D6;font-family:Georgia,serif">
-<div id="__ID__" style="background:#EDE4D6;border-radius:10px;padding:6px 10px 10px">
-  <div style="font:13px Georgia,serif;color:#241E1A;padding:6px 2px 4px">
+<body style="margin:0;height:100vh;overflow:hidden;background:#EDE4D6;
+             font-family:Georgia,serif;display:flex;flex-direction:column">
+
+  <div style="font:13px Georgia,serif;color:#241E1A;padding:10px 14px 2px;flex:none">
     <b>__TITLE__</b>
     <span style="color:#8A7F76">
-      &nbsp;drag to move &middot; hover an edge for what she said &middot; click a
-      node to isolate it &middot; double-click to reset
+      &nbsp;scroll to zoom &middot; drag the background to pan &middot; drag a node
+      to move it &middot; hover an edge for what she said &middot; click a node to
+      isolate it &middot; double-click to reset
     </span>
   </div>
-  <div id="__ID__-legend" style="font:11px Georgia,serif;padding:2px 2px 6px"></div>
-  <!-- user-select:none is what makes dragging work. Without it the browser
-       starts selecting the label text the moment the pointer moves, the node
-       never follows the cursor, and the graph fills up with blue highlight.
-       touch-action:none does the same job for a trackpad or a touchscreen. -->
-  <svg id="__ID__-svg" width="820" height="__H__"
-       style="max-width:100%;user-select:none;-webkit-user-select:none;
-              touch-action:none;cursor:grab"></svg>
-  <div id="__ID__-tip" style="font:12px Georgia,serif;color:#4A403B;
-       min-height:2.6em;padding:4px 2px"></div>
-</div>
+  <div id="__ID__-legend" style="font:11px Georgia,serif;padding:4px 14px 6px;
+       flex:none"></div>
+
+  <!-- flex:1 gives the graph the rest of the window. user-select:none is what
+       makes dragging work at all: without it the browser starts selecting the
+       label text as soon as the pointer moves. -->
+  <svg id="__ID__-svg" style="flex:1;width:100%;display:block;
+       user-select:none;-webkit-user-select:none;touch-action:none;
+       cursor:grab"></svg>
+
+  <div id="__ID__-tip" style="font:12px Georgia,serif;color:#4A403B;flex:none;
+       min-height:3.2em;padding:6px 14px 10px;border-top:1px solid #EADFCC"></div>
+
 <script>
 (function () {
   // A <script src> injected through innerHTML does not block, so the drawing
-  // code below cannot assume d3 exists yet -- it runs first and dies silently,
-  // leaving an empty panel. Load it explicitly and draw on the callback.
+  // code cannot assume d3 exists yet. Load it and draw on the callback.
   function start() {
     if (window.d3 && window.d3.forceSimulation) { draw(); return; }
-    const existing = document.getElementById("d3-v7-loader");
-    if (existing) { existing.addEventListener("load", draw); return; }
     const tag = document.createElement("script");
-    tag.id = "d3-v7-loader";
     tag.src = "https://d3js.org/d3.v7.min.js";
     tag.onload = draw;
     tag.onerror = function () {
@@ -302,20 +302,28 @@ D3_TEMPLATE = """
   const data = __DATA__;
   const root = document.getElementById("__ID__-svg");
   const tip = document.getElementById("__ID__-tip");
-  const width = root.clientWidth || 820, height = __H__;
-  const svg = d3.select(root).attr("viewBox", [0, 0, width, height]);
-  svg.selectAll("*").remove();
+  const svg = d3.select(root);
+
+  function size() {
+    const box = root.getBoundingClientRect();
+    return [box.width || 900, box.height || 600];
+  }
+  let [width, height] = size();
+
+  // Everything is drawn inside this group, so panning and zooming is a single
+  // transform on it rather than moving every node.
+  const view = svg.append("g");
 
   const legend = d3.select("#__ID__-legend");
   data.legend.forEach(function (entry) {
     legend.append("span")
-      .style("margin-right", "14px")
-      .html('<span style="display:inline-block;width:9px;height:9px;border-radius:9px;'
-            + 'background:' + entry.colour + ';margin-right:5px">'
-            + '</span>' + entry.label);
+      .style("margin-right", "16px")
+      .html('<span style="display:inline-block;width:9px;height:9px;'
+            + 'border-radius:9px;background:' + entry.colour
+            + ';margin-right:5px"></span>' + entry.label);
   });
 
-  const link = svg.append("g").selectAll("line").data(data.links).join("line")
+  const link = view.append("g").selectAll("line").data(data.links).join("line")
     .attr("stroke", "#C9BCA6").attr("stroke-width", 1.6)
     .on("mouseover", function (event, d) {
       d3.select(this).attr("stroke", "#9C3B24").attr("stroke-width", 3);
@@ -326,8 +334,8 @@ D3_TEMPLATE = """
       d3.select(this).attr("stroke", "#C9BCA6").attr("stroke-width", 1.6);
     });
 
-  const node = svg.append("g").selectAll("circle").data(data.nodes).join("circle")
-    .attr("r", function (d) { return 5 + Math.min(d.degree, 8) * 1.6; })
+  const node = view.append("g").selectAll("circle").data(data.nodes).join("circle")
+    .attr("r", function (d) { return 6 + Math.min(d.degree, 8) * 1.7; })
     .attr("fill", function (d) { return d.colour; })
     .attr("stroke", "#FFFCF5").attr("stroke-width", 2)
     .style("cursor", "pointer")
@@ -336,17 +344,18 @@ D3_TEMPLATE = """
                     + " connection(s)" + (d.detail ? "<br>" + d.detail : "");
     })
     .on("click", function (event, d) {
+      event.stopPropagation();
       const near = new Set([d.id]);
       data.links.forEach(function (l) {
         const a = l.source.id || l.source, b = l.target.id || l.target;
         if (a === d.id) near.add(b);
         if (b === d.id) near.add(a);
       });
-      node.attr("opacity", function (n) { return near.has(n.id) ? 1 : 0.15; });
-      label.attr("opacity", function (n) { return near.has(n.id) ? 1 : 0.15; });
+      node.attr("opacity", function (n) { return near.has(n.id) ? 1 : 0.12; });
+      label.attr("opacity", function (n) { return near.has(n.id) ? 1 : 0.12; });
       link.attr("opacity", function (l) {
         const a = l.source.id || l.source, b = l.target.id || l.target;
-        return (a === d.id || b === d.id) ? 1 : 0.08;
+        return (a === d.id || b === d.id) ? 1 : 0.06;
       });
     })
     .call(d3.drag()
@@ -358,32 +367,37 @@ D3_TEMPLATE = """
       .on("drag", function (event, d) { d.fx = event.x; d.fy = event.y; })
       .on("end", function (event, d) {
         if (!event.active) sim.alphaTarget(0);
-        // fx/fy are deliberately left set, so a node stays where it was put.
-        // Releasing them here is the D3 default and makes the node spring back,
-        // which reads as the drag not having worked at all.
+        // fx/fy are left set on purpose, so a node stays where it was put.
         root.style.cursor = "grab";
       }));
 
-  const label = svg.append("g").selectAll("text").data(data.nodes).join("text")
+  const label = view.append("g").selectAll("text").data(data.nodes).join("text")
     .text(function (d) { return d.name; })
-    .attr("font-family", "Georgia, serif").attr("font-size", 10.5)
-    .attr("fill", "#241E1A").attr("text-anchor", "middle").attr("dy", -11)
+    .attr("font-family", "Georgia, serif").attr("font-size", 11)
+    .attr("fill", "#241E1A").attr("text-anchor", "middle").attr("dy", -13)
     .style("pointer-events", "none");
 
-  // Double-click anywhere: unpin every node, undo any isolation, start again.
+  // Pan and zoom the whole canvas. d3.drag on the nodes stops propagation, so
+  // dragging a node never pans the background by accident.
+  const zoom = d3.zoom().scaleExtent([0.2, 4]).on("zoom", function (event) {
+    view.attr("transform", event.transform);
+  });
+  svg.call(zoom).on("dblclick.zoom", null);
+
   svg.on("dblclick", function () {
     data.nodes.forEach(function (n) { n.fx = null; n.fy = null; });
     node.attr("opacity", 1); label.attr("opacity", 1); link.attr("opacity", 1);
     tip.innerHTML = "";
+    svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity);
     sim.alpha(0.6).restart();
   });
 
   const sim = d3.forceSimulation(data.nodes)
     .force("link", d3.forceLink(data.links).id(function (d) { return d.id; })
-                     .distance(95).strength(0.45))
-    .force("charge", d3.forceManyBody().strength(-430))
+                     .distance(110).strength(0.45))
+    .force("charge", d3.forceManyBody().strength(-520))
     .force("center", d3.forceCenter(width / 2, height / 2))
-    .force("collide", d3.forceCollide().radius(34))
+    .force("collide", d3.forceCollide().radius(38))
     .on("tick", function () {
       link.attr("x1", function (d) { return d.source.x; })
           .attr("y1", function (d) { return d.source.y; })
@@ -394,6 +408,13 @@ D3_TEMPLATE = """
       label.attr("x", function (d) { return d.x; })
            .attr("y", function (d) { return d.y; });
     });
+
+  window.addEventListener("resize", function () {
+    const next = size();
+    width = next[0]; height = next[1];
+    sim.force("center", d3.forceCenter(width / 2, height / 2));
+    sim.alpha(0.3).restart();
+  });
   }
 
   start();
@@ -402,9 +423,7 @@ D3_TEMPLATE = """
 """
 
 
-def interactive_graph(
-    entities, facts, groups=None, hub=None, title="Her memory graph", height=480
-):
+def interactive_graph(entities, facts, groups=None, hub=None, title="Her memory graph"):
     """A force-directed D3 view of the semantic subgraph.
 
     The reason it is worth being interactive rather than a static picture: every
@@ -481,13 +500,10 @@ def interactive_graph(
         D3_TEMPLATE.replace("__ID__", "g" + uuid.uuid4().hex[:8])
         .replace("__DATA__", payload)
         .replace("__TITLE__", title)
-        .replace("__H__", str(height))
     )
 
 
-def save_graph(
-    path, entities, facts, groups=None, hub=None, title="Her memory graph", height=520
-):
+def save_graph(path, entities, facts, groups=None, hub=None, title="Her memory graph"):
     """Write the interactive graph to a standalone HTML file, and say where.
 
     Not displayed inline, and that is deliberate. A notebook viewer will happily
@@ -501,9 +517,7 @@ def save_graph(
     """
     import pathlib as _pathlib
 
-    html = interactive_graph(
-        entities, facts, groups=groups, hub=hub, title=title, height=height
-    )
+    html = interactive_graph(entities, facts, groups=groups, hub=hub, title=title)
     target = _pathlib.Path(path)
     target.write_text(html, encoding="utf-8")
 
