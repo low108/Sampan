@@ -315,7 +315,7 @@ archive is preloaded.**
 
 That is behavioural, not a context-budget decision. An agent holding nine
 stories in context *acts* like it holds nine stories — it references things she
-has not raised, and it steers. The archive stays behind the `recall` tool so
+has not raised, and it steers. The archive stays behind the `remember` tool so
 the agent reaches for it only when the conversation actually calls for it.
 
 ### The session plan is a plan, not a dump
@@ -361,8 +361,13 @@ Two channels reach the model once the stream is open. That is all there are.
 
 ### Channel one: pull — the agent asks
 
-`build_tools(memory)` closes nine tools over a `CallMemory`. The notebook calls
-them directly; in production the model calls exactly these.
+`build_tools(memory)` closes five tools over a `CallMemory` — down from nine.
+`recall`, `get_open_threads` and `what_do_you_remember` became one `remember`
+call, and `note_preference` and `save_fragment` are gone because the Archivist
+infers both from the transcript afterwards, and better than an agent noticing
+mid-conversation while trying to listen.
+
+The notebook calls them directly; in production the model calls exactly these.
 """)
 
 code("""
@@ -385,18 +390,22 @@ allowed to actually consume the question.
 And the response carries `_guidance` and `_turn_length`, which the agent never
 asked for. That is channel two, arriving as a passenger.
 
-### `recall` — the closest thing here to retrieval
+### `remember` — the closest thing here to retrieval
 """)
 
 code("""
-found = tools["recall"]("Ah Hock")
+found = tools["remember"]("Ah Hock")
 print(json.dumps(found, indent=2, ensure_ascii=False))
 """)
 
 md("""
-`recall` returns **two** things: `found` (substring hits over the entity index)
-and `she_said` (a search of her actual transcripts — empty here, since this
-in-memory archive has no conversations in it yet).
+`remember` returns **three** things: `known` (facts, each with the sentence
+behind it), `she_said` (a search of her actual transcripts — empty here, since
+this in-memory archive has no conversations yet) and `unfinished` (threads she
+left open, which nothing published treats as a memory type).
+
+`known` is empty at this point because no facts exist yet; section 9 shows the
+ranking that fills it.
 
 The comment in `tools.py` says why:
 
@@ -479,7 +488,7 @@ print("guidance   :", knobs.guidance)
 
 print()
 print("...and this is what rides back on the next tool response:")
-print(json.dumps(tools["get_open_threads"](), indent=2, ensure_ascii=False)[:400])
+print(json.dumps(tools["remember"]("shop"), indent=2, ensure_ascii=False)[:400])
 """)
 
 md("""
@@ -732,7 +741,319 @@ sharper timeline than session 3"* is a mechanism rather than a claim.
 
 # ── 8 ────────────────────────────────────────────────────────────────────────
 md("""
-## 8. Summary
+## 8. The memory graph
+
+Everything above was the original spine. What follows is the layer built on top
+of it, after **Zep** (*A Temporal Knowledge Graph Architecture for Agent
+Memory*, arXiv 2501.13956) — with the departures argued rather than assumed,
+because an oral history is not the enterprise dataset that paper targets.
+
+Section 1 said this was an entity *index* and not a graph. That is what changed:
+the graph now has edges, and they are **facts**.
+""")
+
+code("""
+from sampan.facts import Fact, Predicate
+
+print("A fact carries both timelines and the sentence behind it:")
+for name in Fact.model_fields:
+    print("   ", name)
+
+print()
+print("Relations are a closed vocabulary:", ", ".join(p.value for p in Predicate))
+""")
+
+md("""
+Three departures from the paper, each visible in those fields.
+
+**`Predicate` is a closed enum.** These are join keys. We already paid for
+letting a model name them: one refusal came back as *"the reason the shop
+closed"* in session 2 and *"grandfather's shop shutting"* in session 4, no
+string match reconciles them, and the subject stayed marked `do_not_raise`
+through the session meant to reopen it. The paper makes the same argument about
+its own writes, preferring predefined Cypher to LLM-generated queries.
+
+**`valid_from` / `valid_to` are `When`, not `datetime`.** She says *"before I
+married"*. A timestamp forces a date she never gave. Published agent-memory
+systems store valid-time edges but not *uncertain* valid-time intervals, and
+sixty-year-old recollection is nothing else.
+
+**`quote` is required and verified.** Fourth time this check has been needed.
+""")
+
+code("""
+from sampan.fact_extraction import ExtractedFact, build_facts
+
+TRANSCRIPT = (
+    "K: Later he saved a bit of money, nineteen fifty-eight he opened a coffee "
+    "shop in Ipoh, at Jalan Bandar. Sixty-nine the shop closed."
+)
+
+honest = ExtractedFact(
+    subject_id=intake[0].entity_id,
+    predicate=Predicate.OWNED,
+    object_literal="a coffee shop at Jalan Bandar",
+    statement="her father ran a coffee shop at Jalan Bandar",
+    quote="nineteen fifty-eight he opened a coffee shop in Ipoh, at Jalan Bandar",
+)
+invented = honest.model_copy(
+    update={"quote": "The father is identified as a coffee shop proprietor."}
+)
+
+kept = build_facts(
+    [honest, invented],
+    transcript=TRANSCRIPT,
+    known_entities=intake,
+    episode_id="conv_demo",
+)
+print(f"proposed 2 -> kept {len(kept)}")
+for f in kept:
+    print("   ", f.render())
+    print("     because she said:", f.quote)
+""")
+
+md("""
+The second was dropped silently. It reads like a citation and is the model's own
+reasoning — the exact failure that produced `sense_detail` paraphrases, a
+`flag_concern` that notified nobody, and place links justified by *"Identified
+as being in the vicinity of Sungai Siput"*. **A claim about a source can be
+tested against the source**, so it is.
+""")
+
+# ── 9 ────────────────────────────────────────────────────────────────────────
+md("""
+## 9. Retrieval — seam 4
+
+Zep retrieves per turn: search, rerank, inject into the prompt. **The Live API
+cannot do that** — the instruction is fixed at connect and all three injection
+routes failed. So retrieval is *agent-initiated*: one `remember` tool the model
+calls when the conversation needs it.
+
+Ranking is a pure function over a fixture graph, with no model call anywhere. A
+reranker that returns the wrong five facts throws nothing and fails nothing; the
+agent simply sounds confidently wrong to an eighty-year-old.
+""")
+
+code("""
+from sampan.facts import Fact
+from sampan.retrieval import FactGraph, search_facts
+
+
+def demo_fact(fact_id, subject, statement, obj=None, episode="conv_001"):
+    return Fact(
+        fact_id=fact_id, subject_id=subject, predicate=Predicate.WORKED_AT,
+        object_id=obj, object_literal="" if obj else "somewhere",
+        statement=statement, episode_id=episode,
+        quote="a sentence long enough to satisfy the quote check comfortably",
+        confidence=0.8,
+    )
+
+
+FACTS = [
+    demo_fact("f_shop", "ent_father",
+              "her father ran a coffee shop at Jalan Bandar", "ent_shop"),
+    demo_fact("f_mother", "ent_mother",
+              "her mother cooked at the back of the coffee shop", "ent_shop"),
+    demo_fact("f_toast", "ent_father",
+              "her father toasted bread over a charcoal fire"),
+]
+graph = FactGraph(facts=FACTS)
+
+cold = search_facts("coffee", graph, limit=2)
+seeded = search_facts("coffee", graph, seeds=["ent_mother"], limit=2)
+print("cold  :", [f.fact_id for f in cold])
+print("seeded:", [f.fact_id for f in seeded])
+""")
+
+md("""
+The same query, answered differently. BM25 alone prefers the father's shop — the
+shorter sentence — but seed the traversal on the mother, as it would be if she
+had just been talking about her, and the mother's fact comes first.
+
+**That is what makes agent-initiated retrieval feel contextual.** The seeds are
+the entity asked about *plus* everyone already named in this call, so nothing has
+to be injected per turn for the conversation's history to steer the answer.
+
+Following Zep §3, with two deliberate omissions:
+
+| | |
+|---|---|
+| φ_bm25 over `statement` | the search field for an edge is its fact text, not the entity name |
+| φ_bfs from seeds | Zep: *"can accept nodes as parameters… recent episodes as seeds"* |
+| φ_cos | a **slot**, not an implementation — nothing measurable to gain at this size |
+| RRF | fuses rank *positions*; BM25 scores and hop counts share no scale |
+| node distance, episode mentions | closeness to the conversation, and how often the archive has heard it |
+| ~~MMR~~ | diversity matters at five hundred results, not five |
+| ~~cross-encoder~~ | an extra LLM call inside a live voice turn |
+
+Note what is **not** here: no recency decay, no importance score. Zep is IR, not
+the Generative Agents formula — several retrievers for recall, then rerankers for
+precision.
+
+And the bug this found within hours of being written:
+""")
+
+code("""
+print('remember("Ah Seng") ->', search_facts("Ah Seng", graph))
+""")
+
+md("""
+Empty, correctly. It did not used to be: `Ah Seng` matched a fact about `Ah
+Chwee` on the shared honorific `ah`, two characters half the family carries.
+BM25's IDF is supposed to discount exactly that and across a few dozen sentences
+has no room to. Query terms under three characters are now dropped.
+
+The worst class of bug in this product: nothing throws, and the agent tells her
+something confident and wrong about a person she asked after.
+""")
+
+# ── 10 ───────────────────────────────────────────────────────────────────────
+md("""
+## 10. Contradiction — the departure that matters
+
+She will say the shop closed in 1969, and later say 1970.
+
+Zep sets the old edge's `t_invalid` to the new edge's `t_valid` and prioritises
+new information. Applied literally here that yields *"her father ran a coffee
+shop, and that stopped being true in 1970"* — a claim she never made. **The shop
+closed once.**
+
+Two different things wear the same shape, and only one is what that rule is for:
+""")
+
+code("""
+from sampan.contradiction import apply_conflicting_testimony, apply_state_change
+from sampan.models import Precision
+
+
+def when(v):
+    return When(
+        raw_phrase=str(v), start_year=v, precision=Precision.YEAR, confidence=0.9
+    )
+
+
+def shop(fid, statement, vf, vt):
+    return Fact(
+        fact_id=fid, subject_id="ent_father", predicate=Predicate.OWNED,
+        object_literal="a coffee shop", statement=statement,
+        valid_from=vf, valid_to=vt, episode_id="c1",
+        quote="a sentence long enough to satisfy the quote check comfortably",
+    )
+
+
+held = shop("f_old", "the shop closed in 1969", when(1958), when(1969))
+newer = shop("f_new", "the shop closed in 1970", when(1958), when(1970))
+
+testimony = apply_conflicting_testimony(held, newer)
+print("CONFLICTING TESTIMONY — her account moved")
+print("   still asserted :", testimony.is_current)
+print("   valid_to       :", testimony.valid_to.start_year, "  <- untouched")
+print("   superseded_by  :", testimony.superseded_by)
+
+# A different pair: she lived above the shop, then her son moved her to a flat.
+lived = shop("f_lived", "she lived above the shop", when(1969), None)
+flat = shop("f_flat", "she lived in a flat in Ipoh", when(2016), None)
+moved = apply_state_change(lived, flat)
+
+print()
+print("STATE CHANGE — the world moved")
+print("   still asserted :", moved.is_current)
+print("   valid_to       :", moved.valid_to.start_year, "  <- where the new one opens")
+""")
+
+md("""
+Both axes are already in the paper. The mistake would be collapsing onto one.
+
+| | What moved | Axis |
+|---|---|---|
+| *"she moved house in 2016"* | the world | `valid_to` (T) — Zep as written |
+| *"closed in 1969"* → *"1970"* | her account | `t_expired` (T′), valid time untouched |
+
+An enterprise dataset is almost entirely the first. An oral history is almost
+entirely the second: sixty years on she is not reporting state transitions, she
+is recalling one fixed past with varying accuracy.
+
+Three rules hold either way. **Nothing is ever deleted** — she said it, and that
+stays true about her. **Newest wins for display.** And **a contradiction becomes
+a question, not a decision**: it reaches the next call the way a missing field
+does, because which telling is right is hers to settle.
+
+The family cannot edit a fact. They *can* correct the geocoder that put Sungai
+Siput ninety kilometres away — that is our error, not her memory.
+""")
+
+# ── 11 ───────────────────────────────────────────────────────────────────────
+md("""
+## 11. Communities — her chapters
+
+The third tier. Entities that keep appearing together get clustered, and the
+cluster is named from the facts joining them.
+
+Zep uses **label propagation rather than Leiden**, chosen for "straightforward
+dynamic extension". Both halves exist here: `extend` places one new entity by
+plurality of its neighbours, and `detect` runs full propagation for the periodic
+refresh the paper says remains necessary.
+""")
+
+code("""
+from sampan.communities import detect, hub_entities
+from sampan.models import EntityType
+
+names = [
+    ("father", "Lim Ah Hock"), ("shop", "Jalan Bandar"),
+    ("husband", "Tan Eng Huat"), ("mother", "Tan Ah Tai"),
+    ("estate", "Sungai Siput"), ("chwee", "Ah Chwee"), ("her", "Ah Khim"),
+]
+people = [
+    Entity(entity_id=i, type=EntityType.PERSON, canonical_name=n, provisional=False)
+    for i, n in names
+]
+links = [
+    demo_fact("a", "father", "x", "shop"),
+    demo_fact("b", "husband", "x", "shop"),
+    demo_fact("c", "mother", "x", "estate"),
+    demo_fact("d", "chwee", "x", "estate"),
+]
+# She is the subject of a fact about nearly everyone, as the real archive has.
+others = ["shop", "estate", "father", "mother", "husband", "chwee"]
+hub = [demo_fact(f"h{i}", "her", "x", o) for i, o in enumerate(others)]
+everything = links + hub
+found = hub_entities(people, everything)
+
+print("with her   :", detect(people, everything))
+print("hub found  :", found)
+print("without her:", detect(people, everything, exclude=found))
+""")
+
+md("""
+**The narrator wrecks her own clustering.** Nearly every fact in her archive is
+about her life, so she neighbours everyone, and label propagation collapses her
+estate childhood and her shop years into one chapter because she is the only
+thing they share. She belongs to every chapter, which is exactly why she cannot
+be used to tell them apart.
+
+Two wrong fixes came first, and both are the finding:
+
+- **By name.** The narrator entity is `Ah Khim`; the household record says `Lim
+  Siew Khim`; the profile's `display_name` was empty. The exclusion set was
+  empty, the code ran, chapters came out, and nothing said the filter had
+  matched nothing.
+- **By threshold.** "More than half the graph" also excluded nobody — 28
+  entities exist but only 17 appear in any fact. "At least half" would have
+  thrown out the coffee shop, which is a chapter and not a hub.
+- **By dominance.** She has degree 8; the next entity has 3. An outlier, not a
+  busy node. And the script now prints who it removed, because the previous two
+  failures were both silent.
+
+On her real archive this produces three chapters — the shop years, the estate
+childhood, the grandfather's arrival — each opening down to her own sentences in
+the app.
+""")
+
+
+# ── 12 ───────────────────────────────────────────────────────────────────────
+md("""
+## 12. Summary
 
 | Component | Where | What it does |
 |---|---|---|
@@ -742,33 +1063,43 @@ md("""
 | Call setup | `callflow.prepare_call` | Loads memory, builds the plan, closes tools over it |
 | Session plan | `opener.build_session_plan` | Ranked, sensitivity-gated, depth-gated, max two offers |
 | Instruction | `companion.build_instruction` | Three layers, sent **once** at connect |
-| Pull channel | `tools.recall` | Entity index as lookup key; returns her actual words |
+| Facts | `facts.py` | Bi-temporal edges; `When` valid time, required verified quote |
+| Extraction | `fact_extraction.py` | Second pass, own schema |
+| Retrieval | `retrieval.search_facts` | Seam 4 — BM25 + BFS + RRF + rerankers, pure |
+| Contradiction | `contradiction.py` | Routed to the right time axis; nothing deleted |
+| Communities | `communities.py` | Label propagation; her chapters |
+| Pull channel | `tools.remember` | One tool where there were three |
 | Push channel | `tools._with_guidance` | Affect policy rides on every tool response |
 | Affect | `affect.apply_assessment` | Two agreeing readings to move; distress acts immediately |
 | Archivist | `archivist.ingest_conversation` | Seam 1 — text in, structured memory out |
 | Persistence | `repository.py` | Entities, stories, threads, anchors, preferences, sensitivities |
 
-### The three seams
+### The four seams
 
-`ingest_conversation`, `build_session_plan`, and `apply_assessment` are pure
-functions with the model calls behind protocols. That is why 297 tests run in
-under a second without touching a network.
+`ingest_conversation`, `build_session_plan`, `apply_assessment` and
+`search_facts` are pure functions with the model calls behind protocols. That is
+why 382 tests run in under a second without touching a network.
 
 ### What I would change
 
-1. **Persist the resolutions.** The story→entity edge is computed every ingest
-   and discarded. Cheapest high-value fix.
-2. **Stop letting the model own join keys.** Topic labels, entity names and
-   place names are strings a nondeterministic model produces. It already bit:
-   one refusal came back as *"the reason the shop closed"* in session 2 and
-   *"grandfather's shop shutting"* in session 4, so an engagement landed on a
-   different topic and the subject stayed marked do-not-raise.
-3. **Model contradiction.** If she contradicts herself in session 9 there is no
-   principled merge. In an oral history, contradiction is interesting — it
-   should be a state, not a last-write-wins accident.
+Sections 8–11 did two of the three things this notebook originally listed as
+future work: **join keys** are now a closed `Predicate` enum, and
+**contradiction** is a modelled state rather than a last-write-wins accident.
+
+What is still true:
+
+1. **Persist the resolutions.** The story→entity edge is still computed every
+   ingest and discarded. Facts have their own subject and object ids, so the
+   graph works — but a *story* still names people as raw strings.
+2. **φ_cos is a slot, not an implementation.** Retrieval is lexical and
+   structural. Fine at this size, and the third leg of Zep's search is missing.
+3. **Recency is not reliability.** Zep's "prioritise new information" is a
+   database instinct; with a narrator of eighty the later telling may be the
+   less accurate one. Followed anyway, because the alternatives need evidence we
+   do not have — and `superseded_by` keeps the decision reversible.
 4. **Carry affect past the hang-up.** The monitor's state is read on the
    overlay and on tool responses and is then dropped; `finish_call` could fold
-   it into preferences the way `note_preference` observations already are.
+   it into preferences the way the Archivist already infers them.
 """)
 
 nb = {
