@@ -264,13 +264,31 @@ D3_TEMPLATE = """
     </span>
   </div>
   <div id="__ID__-legend" style="font:11px Georgia,serif;padding:2px 2px 6px"></div>
-  <svg id="__ID__-svg" width="100%" height="__H__"></svg>
+  <svg id="__ID__-svg" width="820" height="__H__" style="max-width:100%"></svg>
   <div id="__ID__-tip" style="font:12px Georgia,serif;color:#4A403B;
        min-height:2.6em;padding:4px 2px"></div>
 </div>
-<script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
 (function () {
+  // A <script src> injected through innerHTML does not block, so the drawing
+  // code below cannot assume d3 exists yet -- it runs first and dies silently,
+  // leaving an empty panel. Load it explicitly and draw on the callback.
+  function start() {
+    if (window.d3 && window.d3.forceSimulation) { draw(); return; }
+    const existing = document.getElementById("d3-v7-loader");
+    if (existing) { existing.addEventListener("load", draw); return; }
+    const tag = document.createElement("script");
+    tag.id = "d3-v7-loader";
+    tag.src = "https://d3js.org/d3.v7.min.js";
+    tag.onload = draw;
+    tag.onerror = function () {
+      document.getElementById("__ID__-tip").innerHTML =
+        "Could not load D3 from its CDN — the graph needs a network connection.";
+    };
+    document.head.appendChild(tag);
+  }
+
+  function draw() {
   const data = __DATA__;
   const root = document.getElementById("__ID__-svg");
   const tip = document.getElementById("__ID__-tip");
@@ -345,10 +363,10 @@ D3_TEMPLATE = """
 
   const sim = d3.forceSimulation(data.nodes)
     .force("link", d3.forceLink(data.links).id(function (d) { return d.id; })
-                     .distance(70).strength(0.5))
-    .force("charge", d3.forceManyBody().strength(-230))
+                     .distance(95).strength(0.45))
+    .force("charge", d3.forceManyBody().strength(-430))
     .force("center", d3.forceCenter(width / 2, height / 2))
-    .force("collide", d3.forceCollide().radius(26))
+    .force("collide", d3.forceCollide().radius(34))
     .on("tick", function () {
       link.attr("x1", function (d) { return d.source.x; })
           .attr("y1", function (d) { return d.source.y; })
@@ -359,6 +377,9 @@ D3_TEMPLATE = """
       label.attr("x", function (d) { return d.x; })
            .attr("y", function (d) { return d.y; });
     });
+  }
+
+  start();
 })();
 </script>
 """

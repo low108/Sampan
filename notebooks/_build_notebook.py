@@ -1346,7 +1346,7 @@ for members in groups:
 
 display(HTML(interactive_graph(
     outcome.entities, her_graph_facts, groups,
-    title="Her memory graph — entities joined by facts, coloured by community",
+    title="Her memory graph: entities joined by facts, coloured by community",
 )))
 """)
 
@@ -1408,7 +1408,7 @@ groups = detect(everyone, as_full_archive, exclude=too_connected)
 print(f"with her set aside: {len(groups)} communities")
 display(HTML(interactive_graph(
     everyone, as_full_archive, groups, hub=too_connected,
-    title="The same graph with her set aside — the communities separate",
+    title="The same graph with her set aside: the communities separate",
 )))
 for members in groups:
     print("   ", ", ".join(name_of.get(m, m) for m in members))
