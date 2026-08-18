@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from sampan.archivist import StoryExtractor, ingest_conversation
 from sampan.companion import build_agent
 from sampan.config import Settings
+from sampan.contradiction import ContradictionJudge, reconcile
 from sampan.fact_extraction import FactExtractor, build_facts
 from sampan.opener import build_session_plan, render_plan
 from sampan.preferences import fold_preferences
@@ -134,6 +135,7 @@ def finish_call(
     *,
     narrator_id: str,
     fact_extractor: FactExtractor | None = None,
+    judge: ContradictionJudge | None = None,
 ) -> NarratorMemory | None:
     """Fold a finished call back into stored memory.
 
@@ -201,14 +203,25 @@ def finish_call(
     # Optional, so a call still folds in cleanly without it.
     if fact_extractor is not None:
         rendered = transcript.render()
-        repository.save_facts(
-            narrator_id,
-            build_facts(
-                fact_extractor.extract(rendered, outcome.entities),
-                transcript=rendered,
-                known_entities=outcome.entities,
-                episode_id=prepared.conversation_id,
-            ),
+        extracted = build_facts(
+            fact_extractor.extract(rendered, outcome.entities),
+            transcript=rendered,
+            known_entities=outcome.entities,
+            episode_id=prepared.conversation_id,
         )
+        if judge is not None:
+            # A later telling retires an earlier assertion; it never deletes
+            # it, and where the disagreement is about her account rather than
+            # about the world, valid time is left alone. Disputes come back as
+            # questions for the next call, because which telling is right is
+            # hers to settle.
+            extracted, disputes = reconcile(
+                extracted, repository.load_facts(narrator_id), judge
+            )
+            for dispute in disputes:
+                repository.raise_concern(
+                    narrator_id, "contradiction", dispute, prepared.conversation_id
+                )
+        repository.save_facts(narrator_id, extracted)
 
     return updated
