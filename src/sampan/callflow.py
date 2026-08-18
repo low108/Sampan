@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from sampan.archivist import StoryExtractor, ingest_conversation
 from sampan.companion import build_agent
 from sampan.config import Settings
+from sampan.fact_extraction import FactExtractor, build_facts
 from sampan.opener import build_session_plan, render_plan
 from sampan.preferences import fold_preferences
 from sampan.repository import NarratorMemory, Repository
@@ -129,6 +130,7 @@ def finish_call(
     transcript: Transcript,
     *,
     narrator_id: str,
+    fact_extractor: FactExtractor | None = None,
 ) -> NarratorMemory | None:
     """Fold a finished call back into stored memory.
 
@@ -189,4 +191,21 @@ def finish_call(
     repository.save_memory(updated)
     repository.save_entities(narrator_id, outcome.entities)
     repository.save_stories(narrator_id, prepared.conversation_id, outcome.stories)
+
+    # Facts are a second pass with its own schema, deliberately not another
+    # field on the story extraction: a schema is part of the prompt, and one
+    # carrying fields its instructions do not govern gets those fields filled.
+    # Optional, so a call still folds in cleanly without it.
+    if fact_extractor is not None:
+        rendered = transcript.render()
+        repository.save_facts(
+            narrator_id,
+            build_facts(
+                fact_extractor.extract(rendered, outcome.entities),
+                transcript=rendered,
+                known_entities=outcome.entities,
+                episode_id=prepared.conversation_id,
+            ),
+        )
+
     return updated

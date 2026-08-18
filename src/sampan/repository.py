@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
+from sampan.facts import Fact
 from sampan.models import (
     Anchor,
     Ask,
@@ -33,6 +34,7 @@ ASKS = "asks"
 CONCERNS = "concerns"
 FORGOTTEN = "forgotten"
 PRIVATE = "private"
+FACTS = "facts"
 
 
 class NarratorMemory(BaseModel):
@@ -80,6 +82,42 @@ class Repository:
             Entity.model_validate(raw)
             for raw in self._store.list(self._scoped(ENTITIES, narrator_id))
         ]
+
+    # --- facts ------------------------------------------------------------
+
+    def load_facts(self, narrator_id: str, *, current_only: bool = True) -> list[Fact]:
+        """The edges of the graph.
+
+        Superseded facts are excluded by default: they remain in the archive
+        because she said them, but the map, the letters and retrieval speak only
+        what is currently believed. Pass `current_only=False` to read the
+        history of a belief.
+        """
+        facts = [
+            Fact.model_validate(raw)
+            for raw in self._store.list(self._scoped(FACTS, narrator_id))
+        ]
+        return [f for f in facts if f.is_current] if current_only else facts
+
+    def save_facts(self, narrator_id: str, facts: list[Fact]) -> None:
+        collection = self._scoped(FACTS, narrator_id)
+        for fact in facts:
+            self._store.put(collection, fact.fact_id, fact.model_dump(mode="json"))
+
+    def expire_fact(self, narrator_id: str, fact_id: str, superseded_by: str) -> None:
+        """Retire a belief without deleting it.
+
+        She told it differently later. The archive stops asserting the old
+        version and keeps it readable, because both tellings are things she
+        actually said.
+        """
+        collection = self._scoped(FACTS, narrator_id)
+        raw = self._store.get(collection, fact_id)
+        if raw is None:
+            return
+        raw["t_expired"] = datetime.now(UTC).isoformat()
+        raw["superseded_by"] = superseded_by
+        self._store.put(collection, fact_id, raw)
 
     def save_entities(self, narrator_id: str, entities: list[Entity]) -> None:
         collection = self._scoped(ENTITIES, narrator_id)
