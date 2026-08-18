@@ -671,3 +671,69 @@ an ungoverned instruction.
 The visible result: before, nine of nine stories were placed and the tray was
 empty, which read as a system doing well. Two of those pins rested on sentences
 she never said.
+
+## A filter that quietly excludes nobody is worse than no filter
+
+**2026-08-18, the temporal-graph revamp.**
+
+Clustering her entities into chapters collapsed her estate childhood and her
+shop years into one. The cause was structural and, once seen, obvious: nearly
+every fact in her archive has her as its subject, so she neighbours everyone,
+and label propagation joins everything through her. **She belongs to every
+chapter of her life, which is exactly why she cannot be used to tell them
+apart.**
+
+The fix — exclude the narrator — took three attempts, and the first two are the
+finding.
+
+**By name.** The narrator entity is called `Ah Khim`. The household record says
+`Lim Siew Khim`. The profile's `display_name` was empty string. So the exclusion
+set was empty, the code ran, the chapters came out, and nothing anywhere said
+that the filter had matched nothing. It looked exactly like a working filter.
+Only checking the member list of the output — and noticing her still in it —
+surfaced it.
+
+**By threshold.** "Connected to more than half the graph" also excluded nobody:
+28 entities exist but only 17 appear in any fact, so the denominator was wrong.
+Lowering it to "at least half" would have thrown out the coffee shop, which is
+a chapter rather than a hub.
+
+**By dominance.** She has degree 8; the next entity has 3. She is an *outlier*,
+not a busy node, and that is what the rule should say. A single node whose
+degree is at least twice the runner-up, and the script now prints who it
+removed — because the previous two failures were both silent.
+
+**Lesson:** any filter that can legitimately select nothing must say when it
+selects nothing. Both failures produced plausible output, and a name comparison
+between two different naming conventions failed in the one direction that leaves
+no trace.
+
+## In a small corpus, IDF cannot protect you from a common word
+
+Retrieval returned a fact about **Ah Chwee** when asked about **Ah Seng** —
+someone the archive has never heard of. The shared token was `ah`, an honorific
+half the family carries. BM25's inverse document frequency is supposed to
+discount exactly this, and across a few dozen sentences it has no room to: with
+a handful of documents, every term looks rare.
+
+Query terms under three characters are now dropped. The general point is that
+IR defaults assume a corpus, and a personal archive is not one for years.
+
+What makes this the worst class of bug in the product: nothing throws. The agent
+tells an eighty-year-old something confident and wrong about a person she asked
+after, in a voice she has come to trust.
+
+## An interval with only one end reads as a date
+
+A fact whose valid time has an end but no beginning — which is precisely what a
+state change leaves behind, when a later fact closes an earlier one — rendered
+as a bare `1968`. Indistinguishable from a fact that *happened* in 1968.
+
+It travelled: the renderer fed the community summariser, which wrote *"she grew
+up on a rubber estate in Sungai Siput during her childhood in 1968"*. A year she
+never gave, in a sentence about her childhood, produced by a system whose entire
+design principle is not inventing dates.
+
+Now `until 1968`, and `from 1969` for the open other end. **Lesson:** a
+half-open interval is not a point, and any formatter that flattens one into the
+other will eventually be read aloud to someone.

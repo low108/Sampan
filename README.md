@@ -25,7 +25,12 @@ with four conversations for one narrator and two for another.
 - **Places** — relational names ("my father's shop") joined to places she named in other
   sessions, each link carrying the sentence that justifies it.
 
-**Gate 1: 51 integration tests** over four chained sessions against the real model, plus 292
+**Memory v2** (`docs/spec-temporal-graph.md`) adds bi-temporal fact edges after
+Zep/Graphiti, Zep-style retrieval behind a single `remember` tool, contradiction
+routed to the correct time axis, a topic *lean* that never becomes a push, and
+communities as her chapters.
+
+**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 382
 unit tests. Everything is in English, including the seeds and the UI.
 
 Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
