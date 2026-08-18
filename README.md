@@ -32,6 +32,11 @@ Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
 
 ## Documents
 
+- **[`docs/spec-temporal-graph.md`](docs/spec-temporal-graph.md)** — the memory revamp:
+  bi-temporal fact edges after Zep/Graphiti, Zep-style retrieval behind one tool,
+  communities as her chapters, and the contradiction rules. Supersedes the memory
+  sections of `spec-p0.md`.
+
 - **[`notebooks/knowledge_base_flow.ipynb`](notebooks/knowledge_base_flow.ipynb)** — the
   memory design walked end to end against the real code: the pre-set intake, what is
   committed into the model's context when recording starts, the two channels that reach

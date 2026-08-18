@@ -8,21 +8,30 @@ import pathlib
 cells: list[dict] = []
 
 
+def lines(text: str) -> list[str]:
+    """Split into source lines, newlines kept.
+
+    nbformat concatenates this list with nothing between the entries, so a line
+    that has lost its "\\n" is a line that has lost its line break. Markdown
+    dropped that way renders as one fused paragraph — no headings, no tables,
+    and words welded together at the old wrap points.
+    """
+    split = text.strip("\n").split("\n")
+    return [line + "\n" for line in split[:-1]] + [split[-1]]
+
+
 def md(text: str) -> None:
-    cells.append(
-        {"cell_type": "markdown", "metadata": {}, "source": text.strip("\n").split("\n")}
-    )
+    cells.append({"cell_type": "markdown", "metadata": {}, "source": lines(text)})
 
 
 def code(text: str) -> None:
-    lines = text.strip("\n").split("\n")
     cells.append(
         {
             "cell_type": "code",
             "execution_count": None,
             "metadata": {},
             "outputs": [],
-            "source": [line + "\n" for line in lines[:-1]] + [lines[-1]],
+            "source": lines(text),
         }
     )
 
@@ -126,10 +135,11 @@ story names people as raw strings (`"my sister"`). There is no foreign key from
 a story to an entity anywhere in storage.
 
 The edges *are* computed at ingest, by `resolve_mentions()`, which returns
-`Resolution(mention, entity_id, matched_by)`. They are used for the
-family-confirmation screen and then **discarded** — `finish_call` persists
-entities and stories, never resolutions. Section 5 shows them existing and then
-being thrown away.
+`Resolution(mention, entity_id, created, matched_by)` — and then **discarded**.
+Nothing outside `ingest_conversation` ever reads them: `finish_call` persists
+entities and stories, never resolutions, and the family-confirmation screen
+works off entities still marked `provisional`, not off the edges. Section 6
+shows them existing and then being thrown away.
 
 The one genuinely persisted edge in the whole system is on **places**:
 `Place.linked_from` + `linked_evidence`, e.g. *"my father's shop" → Jalan
@@ -285,7 +295,9 @@ the first's.
 
 Now the instruction actually sent to the model — assembled in three layers,
 concatenated rather than woven together so the diff between session 1 and
-session 20 stays legible:
+session 20 stays legible. This is the first call, so the middle layer (what
+previous calls taught) is still empty and only the persona and the session plan
+print:
 """)
 
 code("""
@@ -448,7 +460,16 @@ Energy is also ratcheted: it only worsens, and only excitement partially
 reverses it. An eighty-year-old who has been talking for eleven minutes does
 not become fresh again because one sentence came out brightly.
 
-Here is what that state does to the agent's behaviour:
+Here is what that state does to the agent's behaviour. The reading was both
+fading *and* withdrawing, and `policy` is ordered: withdrawal is read as being
+about a subject before tiredness is read as being about the call, so what comes
+back is "move to something lighter", not "start closing".
+
+Watch the second half of the output too. The tools were closed over this call's
+memory back in section 4, and the notebook never hands them the new reading, so
+the guidance riding on that tool response is still the opening one. In
+production that hand-off is a single line — `memory.affect = state`, in
+`_publish_affect` (`app.py`) — run every time the monitor reports.
 """)
 
 code("""
@@ -465,9 +486,14 @@ md("""
 **The honest weakness:** the push channel is parasitic on the pull channel. If
 the agent never calls a tool — which is the *ideal* call, where she talks
 steadily for eleven minutes and it just listens — the affect monitor's
-conclusions reach nothing within that call. `enable_affective_dialog` covers
-some of this natively in-turn, and affect still shapes the *next* call's
-instruction, but inside one call the coupling is real and unsolved.
+conclusions reach nothing but the family-facing overlay.
+`enable_affective_dialog` covers some of this natively in-turn, but inside one
+call the coupling is real and unsolved.
+
+Worse, it does not survive the call either. `finish_call` never reads
+`prepared.memory.affect`, so nothing the monitor concluded is written down. All
+the *next* opener inherits about how this call went is the closure reason, and
+the Archivist reads that off the transcript rather than off the audio.
 """)
 
 # ── 6 ────────────────────────────────────────────────────────────────────────
@@ -667,6 +693,11 @@ for p in memory_after.preferences:
 """)
 
 md("""
+The row that looks alarming is `sensitivities`, nothing to five after a single
+call. It is not a blocklist. `SensitiveTopic` is the ledger of how she answered
+each subject that came up, and only one she refused once — or deflected twice —
+and never engaged with becomes `do_not_raise`.
+
 Nothing here was hand-written into the store. Every row came out of the
 pipeline, which is the whole reason the seed sessions are run through the real
 Archivist rather than stuffed into Firestore directly: if the pipeline cannot
@@ -715,7 +746,7 @@ md("""
 | Push channel | `tools._with_guidance` | Affect policy rides on every tool response |
 | Affect | `affect.apply_assessment` | Two agreeing readings to move; distress acts immediately |
 | Archivist | `archivist.ingest_conversation` | Seam 1 — text in, structured memory out |
-| Persistence | `repository.py` | Entities, stories, threads, anchors, preferences |
+| Persistence | `repository.py` | Entities, stories, threads, anchors, preferences, sensitivities |
 
 ### The three seams
 
@@ -735,6 +766,9 @@ under a second without touching a network.
 3. **Model contradiction.** If she contradicts herself in session 9 there is no
    principled merge. In an oral history, contradiction is interesting — it
    should be a state, not a last-write-wins accident.
+4. **Carry affect past the hang-up.** The monitor's state is read on the
+   overlay and on tool responses and is then dropped; `finish_call` could fold
+   it into preferences the way `note_preference` observations already are.
 """)
 
 nb = {
