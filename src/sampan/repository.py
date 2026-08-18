@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
+from sampan.communities import Community
 from sampan.facts import Fact
 from sampan.models import (
     Anchor,
@@ -35,6 +36,7 @@ CONCERNS = "concerns"
 FORGOTTEN = "forgotten"
 PRIVATE = "private"
 FACTS = "facts"
+COMMUNITIES = "communities"
 
 
 class NarratorMemory(BaseModel):
@@ -82,6 +84,37 @@ class Repository:
             Entity.model_validate(raw)
             for raw in self._store.list(self._scoped(ENTITIES, narrator_id))
         ]
+
+    # --- communities ------------------------------------------------------
+
+    def load_communities(self, narrator_id: str) -> list[Community]:
+        return [
+            Community.model_validate(raw)
+            for raw in self._store.list(self._scoped(COMMUNITIES, narrator_id))
+        ]
+
+    def save_communities(self, narrator_id: str, communities: list[Community]) -> None:
+        """Replace the chapter list wholesale.
+
+        A refresh recomputes every label, so merging would leave chapters that
+        the current graph no longer supports.
+        """
+        collection = self._scoped(COMMUNITIES, narrator_id)
+        for existing in self._store.list(collection):
+            self._store.put(
+                collection,
+                existing["community_id"],
+                {
+                    "community_id": existing["community_id"],
+                    "name": "",
+                    "summary": "",
+                    "member_ids": [],
+                },
+            )
+        for community in communities:
+            self._store.put(
+                collection, community.community_id, community.model_dump(mode="json")
+            )
 
     # --- facts ------------------------------------------------------------
 

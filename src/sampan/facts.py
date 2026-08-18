@@ -119,8 +119,17 @@ class Fact(BaseModel):
         start, end = self.year_span
         if start and end and start != end:
             when = f"{start}–{end}"
-        elif start or end:
-            when = str(start or end)
+        elif start and end:
+            when = str(start)
+        elif start:
+            # Open-ended: it began then and nothing has ended it.
+            when = f"from {start}"
+        elif end:
+            # An end with no beginning, which is what a state change leaves
+            # behind. Rendered bare it reads as the year the thing *happened* --
+            # "she grew up on the estate in 1968" -- and that reading reached a
+            # chapter summary before this was fixed.
+            when = f"until {end}"
         elif self.valid_from and self.valid_from.raw_phrase:
             when = self.valid_from.raw_phrase
         else:

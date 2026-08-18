@@ -52,6 +52,15 @@ REAL_QUOTE = (
 )
 
 
+def year_when(value: int) -> When:
+    return When(
+        raw_phrase=str(value),
+        start_year=value,
+        precision=Precision.YEAR,
+        confidence=0.9,
+    )
+
+
 def extracted(**overrides) -> ExtractedFact:
     base = {
         "subject_id": "ent_father",
@@ -230,6 +239,19 @@ class TestRendering:
         )
 
         assert "before I married" in fact.render()
+
+    def test_an_end_year_alone_is_not_read_as_the_year_it_happened(self) -> None:
+        """What a state change leaves behind: she lived on the estate until
+        1968. Rendered bare it read as "she grew up on the estate in 1968",
+        and that reading reached a chapter summary."""
+        fact = self._with(None, year_when(1968))
+
+        assert "until 1968" in fact.render()
+
+    def test_a_start_year_alone_is_open_ended(self) -> None:
+        fact = self._with(year_when(1969), None)
+
+        assert "from 1969" in fact.render()
 
     def test_an_undated_fact_says_so_rather_than_guessing(self) -> None:
         assert "year not yet told" in self._with(None, None).render()
