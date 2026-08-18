@@ -264,11 +264,17 @@ D3_TEMPLATE = """
     <b>__TITLE__</b>
     <span style="color:#8A7F76">
       &nbsp;drag to move &middot; hover an edge for what she said &middot; click a
-      node to isolate it
+      node to isolate it &middot; double-click to reset
     </span>
   </div>
   <div id="__ID__-legend" style="font:11px Georgia,serif;padding:2px 2px 6px"></div>
-  <svg id="__ID__-svg" width="820" height="__H__" style="max-width:100%"></svg>
+  <!-- user-select:none is what makes dragging work. Without it the browser
+       starts selecting the label text the moment the pointer moves, the node
+       never follows the cursor, and the graph fills up with blue highlight.
+       touch-action:none does the same job for a trackpad or a touchscreen. -->
+  <svg id="__ID__-svg" width="820" height="__H__"
+       style="max-width:100%;user-select:none;-webkit-user-select:none;
+              touch-action:none;cursor:grab"></svg>
   <div id="__ID__-tip" style="font:12px Georgia,serif;color:#4A403B;
        min-height:2.6em;padding:4px 2px"></div>
 </div>
@@ -347,11 +353,15 @@ D3_TEMPLATE = """
       .on("start", function (event, d) {
         if (!event.active) sim.alphaTarget(0.3).restart();
         d.fx = d.x; d.fy = d.y;
+        root.style.cursor = "grabbing";
       })
       .on("drag", function (event, d) { d.fx = event.x; d.fy = event.y; })
       .on("end", function (event, d) {
         if (!event.active) sim.alphaTarget(0);
-        d.fx = null; d.fy = null;
+        // fx/fy are deliberately left set, so a node stays where it was put.
+        // Releasing them here is the D3 default and makes the node spring back,
+        // which reads as the drag not having worked at all.
+        root.style.cursor = "grab";
       }));
 
   const label = svg.append("g").selectAll("text").data(data.nodes).join("text")
@@ -360,9 +370,12 @@ D3_TEMPLATE = """
     .attr("fill", "#241E1A").attr("text-anchor", "middle").attr("dy", -11)
     .style("pointer-events", "none");
 
+  // Double-click anywhere: unpin every node, undo any isolation, start again.
   svg.on("dblclick", function () {
+    data.nodes.forEach(function (n) { n.fx = null; n.fy = null; });
     node.attr("opacity", 1); label.attr("opacity", 1); link.attr("opacity", 1);
     tip.innerHTML = "";
+    sim.alpha(0.6).restart();
   });
 
   const sim = d3.forceSimulation(data.nodes)
