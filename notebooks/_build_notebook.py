@@ -70,6 +70,11 @@ Nothing to install beyond the project's own dependencies (`uv sync`). The
 knowledge base is swapped for an in-memory store, so the notebook is safe to
 re-run and never touches the real Firestore archive.
 
+The graphs are drawn with **D3**, loaded from its CDN, so viewing them needs a
+network connection — the same arrangement as the GraphRAG notebook this follows.
+Drag nodes to move them, hover an edge to see the sentence she said, click a node
+to isolate its neighbourhood, double-click to reset.
+
 Run it with `uv run python notebooks/run_notebook.py`, which clears every output
 before executing. That matters more than it sounds: a run that fails partway
 leaves earlier cells showing results from an older version of the code, and the
@@ -990,10 +995,15 @@ archive is allowed to assert the sentence at all.
 
 ### The three departures from the paper
 
-**1. Two clocks, not one.** Each fact records *when it was true in her life* and,
-separately, *when the archive came to believe it*. Zep calls these valid time and
-transaction time. Keeping them apart is what makes section 11 possible; collapse
-them and the archive starts making claims she never made.
+**1. A bi-temporal model.** Every fact carries two independent timelines:
+
+| Timeline | Fields | Answers |
+|---|---|---|
+| **valid time** (T) | `valid_from`, `valid_to` | when was this true in her life? |
+| **transaction time** (T\u2032) | `t_created`, `t_expired` | when did the archive believe it? |
+
+Keeping them apart is what makes section 11 possible. Collapse them and the
+archive starts asserting things she never said.
 
 **2. Time is kept the way she said it.** She says *"before I married"*. A date
 field would force a year she never gave. So the same two-field idea from section
@@ -1001,11 +1011,24 @@ field would force a year she never gave. So the same two-field idea from section
 Published memory systems store valid time as exact dates. None of them store
 *uncertain* time, and sixty-year-old recollection is nothing but uncertain time.
 
-**3. Relations come from a fixed list.** The model picks from a closed set —
+**3. A closed predicate vocabulary.** The model picks from a fixed set —
 `lived_at`, `worked_at`, `owned`, `married_to` and so on — and cannot invent a
 new one. We already paid for allowing that elsewhere: a subject she refused came
 back labelled *"the reason the shop closed"* in one session and *"grandfather's
 shop shutting"* in another, and nothing could tell they were the same subject.
+""")
+
+md("""
+### Her life, as the archive now holds it
+
+Valid time drawn out. Each bar is a fact, spanning the years it was true.
+""")
+
+code("""
+from IPython.display import SVG, display
+from viz import bitemporal_svg
+
+display(SVG(bitemporal_svg(her_facts)))
 """)
 
 code("""
@@ -1092,48 +1115,69 @@ for fact in search_facts("coffee shop", graph, limit=3):
 """)
 
 md("""
-### Why the conversation so far changes the answer
+### What the words miss, the graph finds
 
-The search starts from whatever she is already talking about. Watch the same
-query answered twice — once cold, and once as though her mother had just come up
-in conversation.
+The search does not only match words. It also walks outward from whatever she is
+already talking about.
+
+Below, the same question is asked twice. First cold, with nothing else in mind.
+Then again as though she had just been talking about her father's shop — which is
+what happens in a real call, because the tool seeds the search with everyone
+mentioned so far.
+
+Watch the second list. The extra facts do not contain the word that was searched
+for at all. They were reached by walking from the shop to the things attached to
+it.
 """)
 
 code("""
-mother = next(
-    e.entity_id for e in outcome.entities if e.canonical_name == "Tan Ah Tai"
+from viz import search_svg
+
+# Whichever record stands for her father's shop.
+shop = next(
+    (
+        e.entity_id
+        for e in outcome.entities
+        if "bandar" in e.canonical_name.lower() or "shop" in e.canonical_name.lower()
+    ),
+    None,
 )
 
-print("cold — nothing mentioned yet:")
-for fact in search_facts("rice", graph, limit=2):
-    print("   ", fact.statement)
+question = "charcoal"
 
-print()
-print("after she has been talking about her mother:")
-for fact in search_facts("rice", graph, seeds=[mother], limit=2):
-    print("   ", fact.statement)
+cold = search_facts(question, graph, limit=4)
+seeded = search_facts(question, graph, seeds=[shop] if shop else [], limit=4)
+
+display(SVG(search_svg(question, cold, seeded)))
 """)
 
 md("""
-Word matching alone ranks by which sentences share rare words with the query.
-Starting from her mother's record instead, the search walks outward through the
-graph, and facts about her mother rise.
+That is the whole idea. Word matching finds the sentence about the charcoal
+fire. Walking the graph finds what else happened in the same place — who ran it,
+who lived above it — none of which mentions charcoal anywhere.
 
 **This is what makes agent-started search feel like it is paying attention.**
-Nothing had to be injected into the prompt for the conversation's history to
-shape the answer.
+Nothing was injected into the prompt. The conversation's own history shaped the
+answer, because the tool starts its search from the people and places she has
+already brought up.
 
 Three searches run and their results are combined:
 
 | Search | Finds |
 |---|---|
-| **word matching** | facts whose sentences share uncommon words with the query |
-| **graph walking** | facts one or two steps from where the conversation already is |
-| **meaning matching** | *not implemented* — nothing measurable to gain at this size |
+| **BM25** full-text | sentences sharing uncommon words with the question |
+| **breadth-first search** | facts one or two hops from where the conversation already is |
+| **cosine similarity** | *a slot, not implemented* — nothing measurable to gain at this size |
+
+Their results are fused by **Reciprocal Rank Fusion**, which combines rank
+*positions* rather than scores — a word-match score and a hop count are not
+measured in the same units, and averaging them would invent a relationship
+between them. Two further rerankers then apply: **node distance** from the seeds,
+and **episode mentions**, which favours what she has returned to across calls.
 
 Two of Zep's ranking steps are deliberately left out. One increases variety among
 results, which matters at five hundred results and not at five. The other asks a
-language model to score each candidate — the most accurate option, and an extra
+language model to score every candidate — the most accurate option, and an extra
 model call in the middle of a live conversation while she waits.
 
 ### The bug this found within hours of being written
@@ -1269,29 +1313,41 @@ kilometres from where it is. They cannot edit what she said.
 
 # ── 11 ──────────────────────────────────────────────────────────────────────
 md("""
-## 12. Chapters
+## 12. Communities — her chapters
 
 The last layer. People, places and things that keep appearing together get
 grouped, and each group is named from the facts joining them. Those groups are
 the chapters of her life, and nobody writes them.
 
-The grouping method is **label propagation**: everything starts in its own group,
-then repeatedly joins whichever group most of its neighbours are in, until
-nothing moves. Zep chooses it over the better-known Leiden algorithm because a
-single new person can be slotted in without recomputing everything — cheap enough
-to run after every call.
+These groups are **communities**, the third tier of the graph, and the algorithm
+is **label propagation**: every node starts in its own community, then repeatedly
+adopts the label held by the plurality of its neighbours, until nothing moves.
+
+Zep chooses label propagation over the better-known **Leiden** algorithm for one
+reason — it extends dynamically. A single new entity can be slotted into the
+community most of its neighbours are in, without recomputing anything, which is
+cheap enough to run after every call. That drifts, so a full re-run is also
+scheduled periodically.
 """)
 
 code("""
+from IPython.display import HTML
+from viz import interactive_graph
+
 from sampan.communities import detect, hub_entities
 
 name_of = {e.entity_id: e.canonical_name for e in outcome.entities}
 her_graph_facts = repo.load_facts(NARRATOR)
 
 groups = detect(outcome.entities, her_graph_facts)
-print(f"grouping everyone: {len(groups)} chapter(s)")
+print(f"communities in her archive: {len(groups)}")
 for members in groups:
     print("   ", ", ".join(name_of.get(m, m) for m in members))
+
+display(HTML(interactive_graph(
+    outcome.entities, her_graph_facts, groups,
+    title="Her memory graph — entities joined by facts, coloured by community",
+)))
 """)
 
 md("""
@@ -1307,13 +1363,53 @@ to tell them apart.
 """)
 
 code("""
-too_connected = hub_entities(outcome.entities, her_graph_facts)
-print("too connected to separate anything:",
+# Across her whole archive she is the subject of most facts -- "she lived
+# above the shop", "she married Tan Eng Huat" -- so she ends up with an edge to
+# nearly everyone.
+#
+# Whether that shows up in four sessions is luck: this run the extractor wrote
+# "her father ran..." instead, so she has no node at all. Looking her up by name
+# is exactly the brittle approach this section is about, so her node is built
+# here and joined to everything, which is the shape the full archive has.
+from sampan.models import Entity, EntityType
+
+her = "narrator"
+narrator = Entity(
+    entity_id=her, type=EntityType.PERSON,
+    canonical_name="Ah Khim", provisional=False,
+)
+everyone = [narrator, *outcome.entities]
+name_of[her] = "Ah Khim"
+
+others = sorted(
+    {f.subject_id for f in her_graph_facts}
+    | {f.object_id for f in her_graph_facts if f.object_id}
+)
+as_full_archive = her_graph_facts + [
+    her_graph_facts[0].model_copy(
+        update={"fact_id": f"hub_{i}", "subject_id": her, "object_id": other,
+                "statement": f"she is connected to {name_of.get(other, other)}"}
+    )
+    for i, other in enumerate(others)
+]
+
+collapsed = detect(everyone, as_full_archive)
+print(f"with her included: {len(collapsed)} community")
+display(HTML(interactive_graph(
+    everyone, as_full_archive, collapsed,
+    title="Everything joined to everything, through her",
+)))
+
+too_connected = hub_entities(everyone, as_full_archive)
+print("found by dominance, not by name:",
       [name_of.get(e, e) for e in too_connected] or "nobody")
 
-print()
-groups = detect(outcome.entities, her_graph_facts, exclude=too_connected)
-print(f"grouping everyone else: {len(groups)} chapter(s)")
+groups = detect(everyone, as_full_archive, exclude=too_connected)
+print(f"with her set aside: {len(groups)} communities")
+display(HTML(interactive_graph(
+    everyone, as_full_archive, groups, hub=too_connected,
+    title="The same graph with her set aside — the communities separate",
+)))
 for members in groups:
     print("   ", ", ".join(name_of.get(m, m) for m in members))
 """)
