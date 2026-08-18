@@ -54,3 +54,8 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# A document generator: its long lines are markdown prose and table rows inside
+# string literals, and wrapping a table row breaks the table.
+"notebooks/_build_notebook.py" = ["E501"]

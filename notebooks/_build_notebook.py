@@ -64,23 +64,27 @@ re-run and never touches the real Firestore archive.
 
 code("""
 import json
+import os
 import sys
 from pathlib import Path
 
-ROOT = Path.cwd().parent if Path.cwd().name == "notebooks" else Path.cwd()
-sys.path.insert(0, str(ROOT / "src"))
 
-# Load .env the way the app does, so the extraction step in section 4 can run.
-env = ROOT / ".env"
-if env.is_file():
-    import os
-
+def load_env(root: Path) -> None:
+    # Read .env the way the app does, so extraction can run in section 6.
+    env = root / ".env"
+    if not env.is_file():
+        return
     for line in env.read_text().splitlines():
         if line.strip() and not line.startswith("#") and "=" in line:
             key, _, value = line.partition("=")
             os.environ.setdefault(key.strip(), value.strip().strip('"'))
 
-from sampan.config import Settings, apply_genai_env
+
+ROOT = Path.cwd().parent if Path.cwd().name == "notebooks" else Path.cwd()
+sys.path.insert(0, str(ROOT / "src"))
+load_env(ROOT)
+
+from sampan.config import Settings, apply_genai_env  # noqa: E402
 
 settings = Settings()
 apply_genai_env(settings)
@@ -144,9 +148,12 @@ and the load-bearing idea is visible in `When`:
 code("""
 from sampan.models import When, Where
 
-print(When.__doc__)
-for name, field in When.model_fields.items():
-    print(f"  {name:12} {str(field.annotation):24} {field.description or ''}")
+for model in (When, Where):
+    doc = (model.__doc__ or "").strip().splitlines()
+    print(model.__name__, "--", doc[0] if doc else "(no docstring)")
+    for name, field in model.model_fields.items():
+        print(f"  {name:12} {str(field.annotation):24} {field.description or ''}")
+    print()
 """)
 
 md("""
@@ -160,7 +167,7 @@ The same shape repeats:
 | She says | The interpretation | Held in |
 |---|---|---|
 | `raw_phrase` "before I married" | `start_year` + `anchor_ref` | `When` |
-| `raw_name` "my father's shop" | geocoded `Place` + `linked_evidence` | `Where` → `Place` |
+| `raw_name` "my father's shop" | geocoded `Place` | `Where` → `Place` |
 | `surface_form` "my sister" | `canonical_name` "Lim Siew Choo" | `PersonMention` → `Entity` |
 
 Three payoffs from one decision: she keeps her voice in the letters, the map
@@ -210,7 +217,8 @@ repo.save_entities(NARRATOR, intake)
 print(f"{'name':22} {'type':8} {'role':12} detail")
 print("-" * 100)
 for e in intake:
-    print(f"{e.canonical_name:22} {e.type.value:8} {str(e.role or ''):12} {e.detail[:44]}")
+    print(f"{e.canonical_name:22} {e.type.value:8} {str(e.role or ''):12}"
+          f" {e.detail[:40]}")
 """)
 
 md("""
@@ -230,7 +238,10 @@ repo.queue_ask(
         ask_id="ask_001",
         from_name="Wei Lun",
         relation="son",
-        question="Did Ah Gong leave anything behind? Xin Yi asked me and I couldn't answer.",
+        question=(
+            "Did Ah Gong leave anything behind?"
+            " Xin Yi asked me and I couldn't answer."
+        ),
     ),
 )
 
@@ -310,9 +321,10 @@ plan = build_session_plan(
 )
 
 print("greeting:", plan.greeting)
-print("offers  :", [(o.kind.value, o.label) for o in plan.offers], f"(max {MAX_OFFERS})")
+print("offers  :", [(o.kind.value, o.label) for o in plan.offers])
+print("max offers:", MAX_OFFERS)
 print("considered but not offered:", len(plan.considered))
-print("depth unlocked at session 0:", unlocked_depth(0), "| at session 6:", unlocked_depth(6))
+print("depth at session 0:", unlocked_depth(0), "| session 6:", unlocked_depth(6))
 """)
 
 md("""
@@ -390,8 +402,8 @@ model new direction. I tried three and all three failed in front of a user:
 
 | Route | What happened |
 |---|---|
-| `role="user"`, fenced "do not read aloud" | Agent read the fence out loud, brackets and all |
-| `role="system"` | Agent acknowledged it aloud: *"Alright, understood. Preparing to wrap up."* |
+| `role="user"`, fenced "do not read aloud" | Read the fence out loud, brackets and all |
+| `role="system"` | Agent acknowledged it aloud: *"Alright, understood."* |
 | `role="model"` | Turn-taking broke; it stopped answering her |
 
 Tool responses are the one payload the model treats as data rather than speech.
@@ -478,7 +490,7 @@ for line in raw_transcript.splitlines():
     elif line.startswith("A:"):
         transcript.add("agent", line[2:])
 
-print(f"{len(transcript)} turns (extraction threshold is {MIN_TURNS_TO_EXTRACT})")
+print(len(transcript), "turns | extraction threshold:", MIN_TURNS_TO_EXTRACT)
 print(transcript.render()[:400])
 """)
 
@@ -499,13 +511,12 @@ testable offline.
 
 code("""
 from sampan.archivist import GeminiStoryExtractor
+from sampan.callflow import finish_call
 
 if not settings.configured:
     raise RuntimeError("Set GOOGLE_CLOUD_PROJECT in .env to run the extraction step.")
 
 extractor = GeminiStoryExtractor(settings)
-
-from sampan.callflow import finish_call
 
 updated = finish_call(
     repo,
@@ -626,7 +637,8 @@ rows = [
     ("threads", len(memory_before.threads), len(memory_after.threads)),
     ("anchors", len(memory_before.anchors), len(memory_after.anchors)),
     ("preferences", len(memory_before.preferences), len(memory_after.preferences)),
-    ("sensitivities", len(memory_before.sensitivities), len(memory_after.sensitivities)),
+    ("sensitivities", len(memory_before.sensitivities),
+     len(memory_after.sensitivities)),
     ("session_count", memory_before.session_count, memory_after.session_count),
 ]
 print(f"{'':16}{'before':>8}{'after':>8}")
@@ -640,8 +652,8 @@ print("NEW ENTITIES — provisional until the family confirms them:")
 known_ids = {e.entity_id for e in intake}
 for e in entities_after:
     if e.entity_id not in known_ids:
-        print(f"  {e.canonical_name:20} {e.type.value:8} provisional={e.provisional}"
-              f"  first seen in {e.first_mentioned_in}")
+        print(f"  {e.canonical_name:26} {e.type.value:8}"
+              f" provisional={e.provisional}")
 
 print()
 print("ANCHORS — dates that sharpen every relative phrase said afterwards:")
@@ -649,7 +661,7 @@ for a in memory_after.anchors:
     print(f"  {a.anchor_id:26} {a.year}  {a.label}")
 
 print()
-print("PREFERENCES — one value per kind, so session 20 speaks differently from session 1:")
+print("PREFERENCES — one value per kind; this is why session 20 differs:")
 for p in memory_after.preferences:
     print(f"  {p.type.value:18} {p.value}")
 """)
