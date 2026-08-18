@@ -255,6 +255,10 @@ def search_svg(query, cold, seeded, width: int = 820) -> str:
 
 
 D3_TEMPLATE = """
+<!doctype html>
+<meta charset="utf-8">
+<title>__TITLE__</title>
+<body style="margin:0;background:#EDE4D6;font-family:Georgia,serif">
 <div id="__ID__" style="background:#EDE4D6;border-radius:10px;padding:6px 10px 10px">
   <div style="font:13px Georgia,serif;color:#241E1A;padding:6px 2px 4px">
     <b>__TITLE__</b>
@@ -466,3 +470,32 @@ def interactive_graph(
         .replace("__TITLE__", title)
         .replace("__H__", str(height))
     )
+
+
+def save_graph(
+    path, entities, facts, groups=None, hub=None, title="Her memory graph", height=520
+):
+    """Write the interactive graph to a standalone HTML file, and say where.
+
+    Not displayed inline, and that is deliberate. A notebook viewer will happily
+    show the container and silently refuse to run the script inside it, leaving
+    a blank panel that looks like a broken cell. The GraphRAG notebook this
+    follows does the same thing: it writes `ai_copyright_graph.html` and prints
+    "open it in your browser to explore".
+
+    A separate document also gets the whole window, which a force layout of
+    thirty nodes needs more than a notebook cell can give it.
+    """
+    import pathlib as _pathlib
+
+    html = interactive_graph(
+        entities, facts, groups=groups, hub=hub, title=title, height=height
+    )
+    target = _pathlib.Path(path)
+    target.write_text(html, encoding="utf-8")
+
+    nodes = html.count('"id":')
+    edges = html.count('"statement":')
+    print(f"   graph written to {target.name} — {nodes} entities, {edges} facts")
+    print(f"   open it to explore: {target.resolve()}")
+    return target

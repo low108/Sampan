@@ -70,10 +70,17 @@ Nothing to install beyond the project's own dependencies (`uv sync`). The
 knowledge base is swapped for an in-memory store, so the notebook is safe to
 re-run and never touches the real Firestore archive.
 
-The graphs are drawn with **D3**, loaded from its CDN, so viewing them needs a
-network connection — the same arrangement as the GraphRAG notebook this follows.
-Drag nodes to move them, hover an edge to see the sentence she said, click a node
-to isolate its neighbourhood, double-click to reset.
+The interactive graphs are **written to HTML files beside this notebook** rather
+than displayed inline, which is what the GraphRAG notebook this follows also
+does. Notebook viewers differ in whether they will run a script inside a cell,
+and one that refuses shows an empty panel that looks like a broken cell — a
+separate file always works, and a force layout of thirty nodes wants the whole
+window anyway.
+
+Section 12 writes three of them. Open them in a browser: drag nodes to move
+them, **hover an edge to see the sentence she said**, click a node to isolate
+its neighbourhood, double-click to reset. They load D3 from its CDN, so they
+need a network connection.
 
 Run it with `uv run python notebooks/run_notebook.py`, which clears every output
 before executing. That matters more than it sounds: a run that fails partway
@@ -1331,8 +1338,7 @@ scheduled periodically.
 """)
 
 code("""
-from IPython.display import HTML
-from viz import interactive_graph
+from viz import save_graph
 
 from sampan.communities import detect, hub_entities
 
@@ -1344,10 +1350,11 @@ print(f"communities in her archive: {len(groups)}")
 for members in groups:
     print("   ", ", ".join(name_of.get(m, m) for m in members))
 
-display(HTML(interactive_graph(
+save_graph(
+    ROOT / "notebooks" / "graph_communities.html",
     outcome.entities, her_graph_facts, groups,
     title="Her memory graph: entities joined by facts, coloured by community",
-)))
+)
 """)
 
 md("""
@@ -1395,10 +1402,11 @@ as_full_archive = her_graph_facts + [
 
 collapsed = detect(everyone, as_full_archive)
 print(f"with her included: {len(collapsed)} community")
-display(HTML(interactive_graph(
+save_graph(
+    ROOT / "notebooks" / "graph_with_her.html",
     everyone, as_full_archive, collapsed,
     title="Everything joined to everything, through her",
-)))
+)
 
 too_connected = hub_entities(everyone, as_full_archive)
 print("found by dominance, not by name:",
@@ -1406,10 +1414,11 @@ print("found by dominance, not by name:",
 
 groups = detect(everyone, as_full_archive, exclude=too_connected)
 print(f"with her set aside: {len(groups)} communities")
-display(HTML(interactive_graph(
+save_graph(
+    ROOT / "notebooks" / "graph_without_her.html",
     everyone, as_full_archive, groups, hub=too_connected,
     title="The same graph with her set aside: the communities separate",
-)))
+)
 for members in groups:
     print("   ", ", ".join(name_of.get(m, m) for m in members))
 """)
