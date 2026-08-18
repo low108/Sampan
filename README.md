@@ -32,6 +32,12 @@ Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
 
 ## Documents
 
+- **[`notebooks/knowledge_base_flow.ipynb`](notebooks/knowledge_base_flow.ipynb)** — the
+  memory design walked end to end against the real code: the pre-set intake, what is
+  committed into the model's context when recording starts, the two channels that reach
+  it mid-call, and exactly what the Archivist changes when recording stops. Executed, with
+  outputs.
+
 | File | What it is |
 |---|---|
 | `PRD.md` | The product requirements, tiered P0/P1/P2 |
