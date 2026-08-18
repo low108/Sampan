@@ -15,17 +15,18 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from sampan.affect import policy
+from sampan.facts import Fact
 from sampan.models import (
     AffectState,
     Ask,
     Entity,
     Preference,
     PreferenceObservation,
-    PreferenceType,
     SensitiveTopic,
     Thread,
 )
 from sampan.preferences import may_raise
+from sampan.retrieval import FactGraph, search_facts
 from sampan.threads import rank_for_opener
 
 
@@ -42,6 +43,12 @@ class CallMemory:
     sensitivities: list[SensitiveTopic] = field(default_factory=list)
     ask: Ask | None = None
     affect: AffectState = field(default_factory=AffectState)
+    # The edges of the graph, loaded before the call. Retrieval reads these.
+    facts: list[Fact] = field(default_factory=list)
+    # Entities named so far in *this* conversation. They seed the graph
+    # traversal, which is how agent-initiated retrieval still reflects where
+    # the conversation already is -- nothing can be injected per turn.
+    mentioned: list[str] = field(default_factory=list)
 
     # Collected during the call, folded in afterwards.
     noted_preferences: list[PreferenceObservation] = field(default_factory=list)
@@ -93,72 +100,66 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
             },
         )
 
-    def get_open_threads() -> dict[str, Any]:
-        """Subjects left unfinished last time, ordered by what to raise first."""
-        ranked = [
-            {
-                "topic": t.topic,
-                "left_off_at": t.left_off_at,
-                "was_interrupted": t.interrupted,
-            }
-            for t in rank_for_opener(memory.threads)
-            if may_raise(t.topic, memory.sensitivities)
-        ]
-        return _with_guidance(memory, {"threads": ranked[:5]})
+    def remember(query: str) -> dict[str, Any]:
+        """Look up what is known about a person, place or thing she mentioned.
 
-    def recall(query: str) -> dict[str, Any]:
-        """Look up a person, place or thing she has mentioned before.
+        Use it when she refers to something she has spoken about before and you
+        need to know what was already said. If nothing comes back, say so --
+        do not pretend to remember.
 
         Args:
             query: the name to look for, e.g. "Ah Chwee", "Jalan Bandar".
         """
         needle = query.strip()
-        hits = [
-            {"name": e.canonical_name, "type": e.type.value, "detail": e.detail}
-            for e in memory.entities
-            if needle
-            and (
-                needle in e.canonical_name
-                or any(needle in alias for alias in e.aliases)
-                or needle in e.detail
+        if not needle:
+            return _with_guidance(
+                memory, {"known": [], "she_said": [], "unfinished": []}
             )
+
+        # Seeds are the thing asked about plus everyone already named in this
+        # call, so the same query answers differently depending on where the
+        # conversation has been.
+        matched = [
+            e.entity_id
+            for e in memory.entities
+            if e.merged_into is None and e.knows(needle)
+        ] or [
+            e.entity_id
+            for e in memory.entities
+            if e.merged_into is None and needle.lower() in e.canonical_name.lower()
         ]
-        # Extracted records lose sequence, context and affect, so the graph is
-        # only an index — her own words are the thing worth reaching.
+        seeds = list(dict.fromkeys([*matched, *memory.mentioned]))
+
+        facts = search_facts(
+            needle, FactGraph(facts=memory.facts, entities=memory.entities), seeds=seeds
+        )
+
+        # The graph is an index. Her own words are the thing worth reaching --
+        # extracted records lose sequence, context and affect.
         said = (
             memory.search_transcripts(needle)
-            if needle and memory.search_transcripts is not None
+            if memory.search_transcripts is not None
             else []
         )
-        return _with_guidance(memory, {"found": hits[:5], "she_said": said})
 
-    def note_preference(kind: str, value: str) -> dict[str, Any]:
-        """Note how she likes to be treated. **Never say it out loud.**
+        unfinished = [
+            t.topic
+            for t in rank_for_opener(memory.threads)
+            if may_raise(t.topic, memory.sensitivities)
+            and (needle.lower() in t.topic.lower() or not facts)
+        ]
 
-        Args:
-            kind: one of hearing / pace / session_length / best_time /
-                question_style / silence_tolerance / topic_favourite /
-                listen_talk_ratio.
-            value: one short phrase, e.g. "left ear is weak".
-        """
-        try:
-            preference_type = PreferenceType(kind)
-        except ValueError:
-            return _with_guidance(memory, {"recorded": False, "reason": "unknown kind"})
-        memory.noted_preferences.append(
-            PreferenceObservation(type=preference_type, value=value, confidence=0.7)
+        if needle not in memory.mentioned:
+            memory.mentioned.append(needle)
+
+        return _with_guidance(
+            memory,
+            {
+                "known": [{"fact": f.render(), "she_said": f.quote} for f in facts],
+                "she_said": said,
+                "unfinished": unfinished[:3],
+            },
         )
-        return _with_guidance(memory, {"recorded": True})
-
-    def save_fragment(topic: str, detail: str) -> dict[str, Any]:
-        """Keep a piece of what she just said, so it is not lost.
-
-        Args:
-            topic: a short label.
-            detail: what she said, in her words.
-        """
-        memory.fragments.append({"topic": topic, "detail": detail})
-        return _with_guidance(memory, {"saved": True})
 
     def mark_private(topic: str) -> dict[str, Any]:
         """Use when she says something should not be shown to the family.
@@ -171,44 +172,6 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
         memory.private_marks.append(topic)
         return _with_guidance(
             memory, {"private": True, "tell_her": "Alright, I won't write that down."}
-        )
-
-    def what_do_you_remember(about: str = "") -> dict[str, Any]:
-        """Use when she asks "what do you remember about me?" Answer honestly.
-
-        She has a right to know what is held about her. Say it in ordinary
-        words; do not read out a list.
-
-        Args:
-            about: a particular subject she asked about, e.g. "my sister".
-                Leave empty for everything.
-        """
-        needle = about.strip()
-        people = [
-            e.canonical_name
-            for e in memory.entities
-            if e.type.value == "person" and (not needle or needle in e.canonical_name)
-        ]
-        places = [
-            e.canonical_name
-            for e in memory.entities
-            if e.type.value == "place" and (not needle or needle in e.canonical_name)
-        ]
-        unfinished = [
-            t.topic for t in memory.threads if not needle or needle in t.topic
-        ]
-        return _with_guidance(
-            memory,
-            {
-                "people": people[:8],
-                "places": places[:8],
-                "unfinished": unfinished[:5],
-                "how_you_talk_to_her": [p.value for p in memory.preferences],
-                "tell_her": (
-                    "Answer plainly. If she wants any of it gone, use "
-                    "forget_this — do not talk her out of it."
-                ),
-            },
         )
 
     def forget_this(subject: str) -> dict[str, Any]:
@@ -273,14 +236,15 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
             },
         )
 
+    # Five, down from nine. `recall`, `get_open_threads` and
+    # `what_do_you_remember` are one `remember` call now; `note_preference` and
+    # `save_fragment` are gone because the Archivist infers both from the
+    # transcript afterwards, and it does so better than an agent noticing
+    # mid-conversation while trying to listen.
     return [
         get_pending_ask,
-        get_open_threads,
-        recall,
-        note_preference,
-        save_fragment,
+        remember,
         mark_private,
-        what_do_you_remember,
         forget_this,
         flag_concern,
     ]

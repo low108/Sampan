@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from sampan.facts import Fact, Predicate
 from sampan.models import (
     Affect,
     AffectState,
@@ -11,7 +12,6 @@ from sampan.models import (
     Energy,
     Entity,
     EntityType,
-    PreferenceType,
     SensitiveTopic,
     Thread,
 )
@@ -50,6 +50,18 @@ def memory() -> CallMemory:
                 detail="father's coffee shop",
             ),
         ],
+        facts=[
+            Fact(
+                fact_id="f1",
+                subject_id="e1",
+                predicate=Predicate.NEIGHBOUR_OF,
+                object_id="e2",
+                statement="Ah Chwee lived next door on Jalan Bandar",
+                episode_id="conv_001",
+                quote="next door stayed Ah Chwee, and we went to the river every day",
+                confidence=0.8,
+            )
+        ],
         sensitivities=[SensitiveTopic(topic="sister", refusals=1)],
         ask=Ask(
             ask_id="a1",
@@ -82,58 +94,58 @@ class TestPendingAsk:
         assert tool(empty, "get_pending_ask")()["has_ask"] is False
 
 
-class TestOpenThreads:
-    def test_the_interrupted_thread_comes_first(self, memory: CallMemory) -> None:
-        threads = tool(memory, "get_open_threads")()["threads"]
+class TestRemember:
+    """One tool where there were three. Retrieval is agent-initiated because a
+    live session's instruction is fixed at connect and nothing can be injected
+    per turn (FINDINGS.md)."""
 
-        assert threads[0]["topic"] == "why the shop closed"
-        assert threads[0]["was_interrupted"] is True
+    def test_it_finds_a_fact_by_name(self, memory: CallMemory) -> None:
+        result = tool(memory, "remember")("Ah Chwee")
 
-    def test_a_forbidden_thread_is_withheld(self, memory: CallMemory) -> None:
-        """She said talk about something else about her sister. The tool must not hand
-        the agent
-        a thread it is not allowed to open."""
-        topics = [t["topic"] for t in tool(memory, "get_open_threads")()["threads"]]
+        assert result["known"]
+        assert "Jalan Bandar" in result["known"][0]["fact"]
 
-        assert "sister" not in topics
+    def test_a_fact_arrives_with_the_sentence_behind_it(
+        self, memory: CallMemory
+    ) -> None:
+        """The agent should be able to say what she said, not paraphrase the
+        archive back at her."""
+        result = tool(memory, "remember")("Ah Chwee")
 
-    def test_each_thread_says_where_she_stopped(self, memory: CallMemory) -> None:
-        threads = tool(memory, "get_open_threads")()["threads"]
+        assert "next door stayed Ah Chwee" in result["known"][0]["she_said"]
 
-        assert all(t["left_off_at"] for t in threads)
-
-
-class TestRecall:
-    def test_finds_a_person_by_name(self, memory: CallMemory) -> None:
-        found = tool(memory, "recall")("Ah Chwee")["found"]
-
-        assert found[0]["name"] == "Ah Chwee"
-        assert "walking stick" in found[0]["detail"]
-
-    def test_finds_by_an_alias(self, memory: CallMemory) -> None:
-        assert tool(memory, "recall")("Ong Ah Chwee")["found"]
+    def test_an_alias_reaches_the_same_entity(self, memory: CallMemory) -> None:
+        assert tool(memory, "remember")("Ong Ah Chwee")["known"]
 
     def test_an_unknown_name_returns_nothing_rather_than_guessing(
         self, memory: CallMemory
     ) -> None:
-        assert tool(memory, "recall")("")["found"] == []
+        assert tool(memory, "remember")("Ah Seng")["known"] == []
 
     def test_an_empty_query_matches_nothing(self, memory: CallMemory) -> None:
-        assert tool(memory, "recall")("")["found"] == []
+        result = tool(memory, "remember")("   ")
 
+        assert result["known"] == []
+        assert result["she_said"] == []
 
-class TestNotePreference:
-    def test_records_a_valid_preference(self, memory: CallMemory) -> None:
-        result = tool(memory, "note_preference")("hearing", "left ear is weak")
+    def test_it_still_surfaces_unfinished_threads(self, memory: CallMemory) -> None:
+        """Folded in from get_open_threads. Nothing published handles unfinished
+        threads as a memory type, so they had to survive the consolidation."""
+        result = tool(memory, "remember")("shop")
 
-        assert result["recorded"] is True
-        assert memory.noted_preferences[0].type is PreferenceType.HEARING
+        assert any("shop" in topic for topic in result["unfinished"])
 
-    def test_rejects_a_kind_it_does_not_know(self, memory: CallMemory) -> None:
-        result = tool(memory, "note_preference")("favourite_colour", "")
+    def test_a_forbidden_subject_is_never_offered(self, memory: CallMemory) -> None:
+        """Her sister. Two deflections and the agent stops raising her."""
+        result = tool(memory, "remember")("sister")
 
-        assert result["recorded"] is False
-        assert memory.noted_preferences == []
+        assert all("sister" not in topic for topic in result["unfinished"])
+
+    def test_asking_seeds_the_next_search(self, memory: CallMemory) -> None:
+        """What she has already been talking about steers later traversal."""
+        tool(memory, "remember")("Ah Chwee")
+
+        assert "Ah Chwee" in memory.mentioned
 
 
 class TestPrivacy:
@@ -207,22 +219,18 @@ class TestGuidanceRidesAlong:
     def test_every_tool_carries_current_guidance(self, memory: CallMemory) -> None:
         memory.affect = AffectState(energy=Energy.DEPLETED)
 
-        for name in ("get_pending_ask", "get_open_threads", "note_preference"):
+        for name in ("get_pending_ask", "remember"):
             call = tool(memory, name)
-            result = (
-                call("hearing", "left ear is weak")
-                if name == "note_preference"
-                else call()
-            )
+            result = call("Ah Chwee") if name == "remember" else call()
 
             assert "Ending early is a success" in result["_guidance"]
 
     def test_the_guidance_changes_with_her_state(self, memory: CallMemory) -> None:
         memory.affect = AffectState(affect=Affect.EXCITED)
-        excited = tool(memory, "get_open_threads")()["_guidance"]
+        excited = tool(memory, "remember")("Ah Chwee")["_guidance"]
 
         memory.affect = AffectState(energy=Energy.DEPLETED)
-        depleted = tool(memory, "get_open_threads")()["_guidance"]
+        depleted = tool(memory, "remember")("Ah Chwee")["_guidance"]
 
         assert excited != depleted
         assert "Do not interrupt" in excited
@@ -230,6 +238,6 @@ class TestGuidanceRidesAlong:
     def test_guidance_never_names_the_state(self, memory: CallMemory) -> None:
         memory.affect = AffectState(energy=Energy.DEPLETED)
 
-        result = tool(memory, "get_open_threads")()
+        result = tool(memory, "remember")("Ah Chwee")
 
         assert "depleted" not in result["_guidance"]

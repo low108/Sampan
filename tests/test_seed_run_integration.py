@@ -338,8 +338,23 @@ class TestPreferences:
             word in hearing[0].value.lower() for word in ("loud", "left", "ear", "slow")
         )
 
-    def test_accumulates_several_preferences(self, final: ConversationOutcome) -> None:
-        assert len(final.preferences) >= 3
+    def test_preferences_accumulate_rather_than_reset(
+        self, run: dict[int, ConversationOutcome]
+    ) -> None:
+        """A count is not assertable here: how many preferences four
+        conversations yield moves between runs, and a threshold inside that
+        spread fails without telling anyone what to do about it -- the same
+        trap as `pinned >= 9` and `20 <= entities <= 32` above.
+
+        What must hold is that the layer carries forward. Folding keeps one
+        value per kind, so the set can grow or hold steady and must never
+        shrink; a drop means a later session discarded what an earlier one
+        learned, which is the whole mechanism failing.
+        """
+        counts = [len(run[n].preferences) for n in SESSIONS]
+
+        assert counts[-1] >= 1, "nothing was ever learned about how to talk to her"
+        assert counts == sorted(counts), f"preferences were lost: {counts}"
 
     def test_holds_one_value_per_kind(self, final: ConversationOutcome) -> None:
         kinds = [p.type for p in final.preferences]

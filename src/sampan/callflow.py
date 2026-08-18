@@ -82,6 +82,9 @@ def prepare_call(
         preferences=stored.preferences,
         sensitivities=stored.sensitivities,
         ask=ask,
+        # Only what the archive currently believes. Superseded facts stay in
+        # the store because she said them, but the agent must not speak them.
+        facts=repository.load_facts(narrator_id),
     )
 
     def deliver_concern(kind: str, detail: str) -> None:
