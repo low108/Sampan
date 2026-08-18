@@ -386,7 +386,8 @@ plan = build_session_plan(
 print("greeting:", plan.greeting)
 print("offers  :", [(o.kind.value, o.label) for o in plan.offers])
 print("max offers:", MAX_OFFERS)
-print("considered but not offered:", len(plan.considered))
+held_back = len(plan.considered) - len(plan.offers)
+print("scored in all:", len(plan.considered), "| held back:", held_back)
 print("depth at session 0:", unlocked_depth(0), "| session 6:", unlocked_depth(6))
 """)
 
@@ -396,6 +397,8 @@ Four rules shape that plan:
 - **At most two things to offer her.** She is eighty and this is a voice call. A
   list of four options is not choice, it is work. Everything else that scored is
   kept in `considered` for the family's screen, and never shown to the model.
+  On this first call only two things scored at all, so nothing is held back —
+  the number grows once she has left subjects unfinished.
 - **Anything she has refused is removed completely.** Not ranked lower — it never
   enters the scoring at all. Her late sister appears nowhere in the context.
 - **Deeper subjects unlock slowly**, through `unlocked_depth(session_count)`.
@@ -532,9 +535,15 @@ knobs = policy(state)
 print("turn_length:", knobs.turn_length)
 print("guidance   :", knobs.guidance)
 
+# In a real call the affect monitor writes this back as each reading lands.
+# Without it the tools would go on reporting how she was at the start.
+prepared.memory.affect = state
+
 print()
-print("...and this is what rides back on the next tool response:")
-print(json.dumps(tools["remember"]("shop"), indent=2, ensure_ascii=False)[:400])
+print("...and this is what now rides back on any tool reply:")
+reply = tools["remember"]("shop")
+print("  _guidance   :", reply["_guidance"])
+print("  _turn_length:", reply["_turn_length"])
 """)
 
 md("""
@@ -753,6 +762,22 @@ Each of those is true regardless of where the model draws its boundaries, and
 each still fails loudly if the pipeline genuinely breaks.
 """)
 
+md("""
+### What happens to those links
+
+`save_stories` writes the story with `"my sister"` in it as plain text, and no
+id. `save_entities` writes the sister's record. **Nothing writes the arrow
+between them.** Every call works these links out again from scratch, uses them
+for the family's confirmation screen, and drops them.
+
+Section 8 is where this stops being true.
+
+### The stories themselves
+
+Now the other half of what the Archivist produced — the stories, with the score
+each one earned:
+""")
+
 code("""
 for s in outcome.stories:
     c = s.candidate
@@ -764,16 +789,7 @@ for s in outcome.stories:
     print()
 """)
 
-md("""
-Those `entity_id` values are exactly the missing link. `save_stories` writes the
-story with `"my sister"` as text and no id. `save_entities` writes the entities.
-Nothing writes the column joining them. Every ingest works these out again and
-drops them.
 
-Section 8 is where this stops being true.
-
-### The stories themselves
-""")
 
 # ── 7 ────────────────────────────────────────────────────────────────────────
 md("""
@@ -1271,7 +1287,7 @@ md("""
 
 `ingest_conversation`, `build_session_plan`, `apply_assessment` and
 `search_facts` are pure functions with the model calls behind protocols. That is
-why 382 tests run in under a second without touching a network.
+why 384 tests run in under a second without touching a network.
 
 ### What I would change
 
