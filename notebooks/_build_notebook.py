@@ -568,8 +568,19 @@ for line in raw_transcript.splitlines():
     elif line.startswith("A:"):
         transcript.add("agent", line[2:])
 
+rendered = transcript.render()
+lines = rendered.splitlines()
+
 print(len(transcript), "turns | extraction threshold:", MIN_TURNS_TO_EXTRACT)
-print(transcript.render()[:400])
+print()
+
+# The first six turns only. Cut by line rather than by character count, so
+# nothing ends mid-word and looks as though the pipeline lost it.
+for line in lines[:6]:
+    print(line)
+print()
+print(f"... and {len(lines) - 6} more turns "
+      f"({len(rendered)} characters in all)")
 """)
 
 md("""
