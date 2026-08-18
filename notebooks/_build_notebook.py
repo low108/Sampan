@@ -102,24 +102,33 @@ print("Vertex project configured:", settings.configured)
 
 # ── 1 ────────────────────────────────────────────────────────────────────────
 md("""
-## 1. What this knowledge base is — and what it is not
+## 1. What this knowledge base is, and what it is not
 
-The queries this product has to answer are **structural, not semantic**:
+Most memory systems for AI agents store text and search it by meaning. You turn
+every passage into a vector, and at query time you find the ones closest to the
+question.
 
-- *Which thread was left unfinished, and was it cut short by a doorbell or by tiredness?*
+That approach does not fit here. Look at the kinds of question this product has
+to answer:
+
+- *Which subject did she leave unfinished, and did she stop because a neighbour
+  rang the doorbell, or because she got tired?*
 - *Which stories have a place but no year?*
 - *What has she never said?*
 
-Cosine similarity cannot answer any of those. "Interrupted by a neighbour"
-versus "faded at eleven minutes" is a distinction that has to be **modelled**,
-because it changes what the agent says next — one gets *"you still owe me the
-rest"*, the other gets *"did you sleep well?"*.
+None of those are questions about meaning. Take the first one. "She was
+interrupted" and "she got tired" look nearly identical as text, but the agent
+has to do opposite things with them:
 
-So the store is a **typed domain model**, not a vector index.
+| How the last call ended | What the agent says next time |
+|---|---|
+| interrupted | *"You still owe me the rest."* |
+| tired | *"Did you sleep well after we talked?"* |
 
-### It is an entity *index*, not an entity *graph*
+Similarity search cannot tell those apart. The difference has to be **recorded
+as a field**, decided at the moment the call is filed away.
 
-Worth being exact, because the word "graph" flatters it. Run this:
+So this store is a set of typed records, not a searchable pile of text.
 """)
 
 code("""
@@ -130,29 +139,35 @@ print("PersonMention fields:", list(PersonMention.model_fields))
 """)
 
 md("""
-`PersonMention` — how a story records who was in it — has **no entity id**. A
-story names people as raw strings (`"my sister"`). There is no foreign key from
-a story to an entity anywhere in storage.
+### Right now it is an index, not a graph
 
-The edges *are* computed at ingest, by `resolve_mentions()`, which returns
-`Resolution(mention, entity_id, created, matched_by)` — and then **discarded**.
-Nothing outside `ingest_conversation` ever reads them: `finish_call` persists
-entities and stories, never resolutions, and the family-confirmation screen
-works off entities still marked `provisional`, not off the edges. Section 6
-shows them existing and then being thrown away.
+Worth being precise, because "knowledge base" suggests more structure than there
+actually is at this point.
 
-The one genuinely persisted edge in the whole system is on **places**:
-`Place.linked_from` + `linked_evidence`, e.g. *"my father's shop" → Jalan
-Bandar, because she said so six weeks earlier.* That is why the map works and
-there is no equivalent view for people.
+`PersonMention` is how a story records who was in it, and it carries **no entity
+id**. A story stores `"my sister"` as plain text. Nothing links that story to the
+sister's record.
+
+The links do get worked out. When a call is filed, `resolve_mentions()` matches
+each mention to an entity and returns `Resolution(mention, entity_id,
+matched_by)`. Those are used to build the family's confirmation screen — and
+then discarded. `finish_call` saves entities and saves stories, and never saves
+the resolutions. Section 6 shows them being computed and dropped.
+
+Sections 8 to 11 are where this gets fixed, by adding **facts**: real edges that
+carry ids on both ends. Read the next few sections as the original design, and
+section 8 onward as what it grew into.
 """)
 
 # ── 2 ────────────────────────────────────────────────────────────────────────
 md("""
 ## 2. The schema
 
-The GraphRAG equivalent of an ontology. Here it is a set of Pydantic models,
-and the load-bearing idea is visible in `When`:
+Every type below is a Pydantic model, so the shape is enforced in code and
+anything the model returns has to fit it.
+
+The single most important idea in the design shows up in `When`, the type used
+for time.
 """)
 
 code("""
@@ -167,23 +182,31 @@ for model in (When, Where):
 """)
 
 md("""
-**Store what she said and what you concluded, side by side.** She says *"six,
-seven maybe"* and, eleven turns later, *"I was born nineteen forty-six."* The
-model resolves one against the other into `start_year`, while `raw_phrase`
-keeps her words verbatim.
+**Keep two things: what she said, and what you worked out from it.**
 
-The same shape repeats:
+She says *"six, seven maybe"*. Eleven turns later she says *"I was born nineteen
+forty-six."* The model puts those together and writes `start_year = 1952`. But
+`raw_phrase` still holds *"six, seven maybe"*, word for word.
 
-| She says | The interpretation | Held in |
+Both are kept, side by side. The same pattern repeats everywhere:
+
+| What she said | What was worked out from it | Held in |
 |---|---|---|
-| `raw_phrase` "before I married" | `start_year` + `anchor_ref` | `When` |
-| `raw_name` "my father's shop" | geocoded `Place` | `Where` → `Place` |
-| `surface_form` "my sister" | `canonical_name` "Lim Siew Choo" | `PersonMention` → `Entity` |
+| *"before I married"* | `start_year`, plus a link to her wedding | `When` |
+| *"my father's shop"* | a position on the map | `Where` → `Place` |
+| *"my sister"* | `Lim Siew Choo` | `PersonMention` → `Entity` |
 
-Three payoffs from one decision: she keeps her voice in the letters, the map
-and timeline can sort, and every inference stays auditable and correctable.
+Three things follow from that one decision:
 
-### Completeness is scored in code, not by the model
+1. **Her voice survives.** The letters written for her grandchildren quote her,
+   not a tidied-up version.
+2. **The map and timeline can sort things.** They need years, and now they have
+   them.
+3. **Every conclusion can be checked and corrected**, because the original sits
+   right next to it. That is why fixing a wrong place happens inside the story
+   card, and not on a settings screen somewhere.
+
+### The completeness score is computed in Python, not asked of the model
 """)
 
 code("""
@@ -193,22 +216,34 @@ print(assess.__doc__)
 """)
 
 md("""
-Six fields — where, when, who, what, sense, why — threshold of four, with
-`where` and `when` mandatory regardless of score.
+Six fields are checked: where, when, who, what, a sensory detail, and why it
+mattered. Four out of six is enough to put a story on the map. Place and time
+are required no matter what the total is.
 
-The important part is that `missing_fields` is populated on **pinned** stories
-too. A story that reached the map missing `why` becomes next session's *"that
-coffee shop — was it before you married, or after?"* Gaps are not errors to
-log; they are the question queue.
+The scoring is done in code rather than in the prompt, for a simple reason: a
+model asked to grade its own work drifts, and this threshold is a product
+decision rather than a judgement call.
+
+Here is the part that matters most. `missing_fields` is filled in **even for
+stories that passed**. A story can reach the map and still carry a note saying
+it never explained why it mattered. That note becomes a question on the next
+call:
+
+> *"That coffee shop — was it before you married, or after?"*
+
+Gaps are not errors to be logged somewhere. **They are the list of things to ask
+her about.**
 """)
 
 # ── 3 ────────────────────────────────────────────────────────────────────────
 md("""
-## 3. Stage 1 — the pre-set knowledge base
+## 3. Stage 1 — what the archive knows before it starts
 
-Before the agent ever calls, one thing is filled in by the **child**, not the
-elder: the family intake. This is what stops the agent asking brightly after
-someone who died in 2019.
+One thing is filled in before the agent ever calls, and it is filled in by her
+**child**, not by her: a short form naming the family.
+
+It exists to prevent a specific cruelty. Without it, the agent would cheerfully
+ask how her sister is doing. Her sister died in 2019.
 """)
 
 code("""
@@ -232,11 +267,14 @@ for e in intake:
 """)
 
 md("""
-Note `provisional=False, confirmed_by_family=True` on every one of these: the
-family asserted them, so the agent treats them as settled. Anything the agent
-discovers later arrives `provisional=True` and waits for confirmation.
+Every one of those is marked `provisional=False, confirmed_by_family=True`. The
+family stated them, so the agent can treat them as settled.
 
-Now queue the thing the whole product is built around — a question from her son:
+Anything the agent works out later arrives as `provisional=True` and waits for
+someone to confirm it. The archive keeps track of the difference between what it
+was told and what it guessed.
+
+Now add the thing this whole product is built around — a question from her son:
 """)
 
 code("""
@@ -263,19 +301,23 @@ print("pending ask:", repo.pending_ask(NARRATOR).question[:60])
 
 # ── 4 ────────────────────────────────────────────────────────────────────────
 md("""
-## 4. Stage 2 — recording starts
+## 4. Stage 2 — the call starts
 
-This is where the design departs most sharply from a normal agent loop.
+This is where the design departs most sharply from an ordinary AI agent.
 
-With chat completions you rebuild the message list every turn, and that is your
-retrieval hook. **The Live API has no such hook.** It is one persistent
-bidirectional stream: the system instruction is sent *once, at connect*, and
-the model keeps conversation state server-side for the session.
+A normal agent works in turns. You send the conversation so far, plus anything
+you looked up, and you get a reply. Every turn is a fresh chance to add context.
 
-So the question is not *"what do I retrieve each turn"* but *"what do I commit
-to before she speaks, and how does anything reach the model afterwards?"*
+**The Live API does not work like that.** It holds one open connection for the
+whole call. The system instruction is sent **once**, at the moment the call
+connects, and cannot be changed afterwards. The model keeps the conversation in
+its own memory, on the server.
 
-`prepare_call()` does the committing:
+So the question is not *"what do I look up each turn?"*. It is: **what do I
+decide before she has said a word, and how can anything reach the model after
+that?**
+
+`prepare_call()` makes those decisions.
 """)
 
 code("""
@@ -288,16 +330,17 @@ print("tools exposed:  ", [t.__name__ for t in prepared.agent.tools])
 """)
 
 md("""
-The `conversation_id` carries a uuid suffix, not just a timestamp. Live
-sessions cap at roughly fifteen minutes, so a dropped call and its redial can
-land in the same second and the second call's stories would silently overwrite
-the first's.
+Notice that the `conversation_id` ends in random characters, not just a
+timestamp.
 
-Now the instruction actually sent to the model — assembled in three layers,
-concatenated rather than woven together so the diff between session 1 and
-session 20 stays legible. This is the first call, so the middle layer (what
-previous calls taught) is still empty and only the persona and the session plan
-print:
+Live sessions drop after roughly fifteen minutes. If she redials straight away,
+the second call can begin in the same *second* the first one ended. With
+timestamps alone, the second call's stories would overwrite the first call's,
+and nothing would say so.
+
+Next, the instruction that actually goes to the model. It is built in three
+layers, stacked rather than blended together, so you can see at a glance what
+changed between her first call and her twentieth.
 """)
 
 code("""
@@ -305,20 +348,21 @@ print(prepared.agent.instruction)
 """)
 
 md("""
-Read what is in there, and then what is *not*.
+Read what is in there. Then notice what is missing.
 
-**In:** the persona and hard rules; the learned layer (preferences,
-sensitivities); and this call's session plan.
+**In it:** who the agent is and the rules it follows; what has been learned
+about talking to her; and the plan for this particular call.
 
-**Not in:** the stories. The entity index. The transcripts. **None of the
-archive is preloaded.**
+**Not in it:** her stories. Her people and places. The transcripts. **None of the
+archive is loaded up front.**
 
-That is behavioural, not a context-budget decision. An agent holding nine
-stories in context *acts* like it holds nine stories — it references things she
-has not raised, and it steers. The archive stays behind the `remember` tool so
-the agent reaches for it only when the conversation actually calls for it.
+That is not about saving space. It is about behaviour. An agent holding nine of
+her stories in its context *behaves* as though it holds nine stories — it brings
+up things she has not mentioned, and it starts steering. So the archive stays
+behind a tool, and the agent reaches for it only when the conversation actually
+calls for it.
 
-### The session plan is a plan, not a dump
+### The plan is a short list, not everything the archive knows
 """)
 
 code("""
@@ -340,34 +384,38 @@ print("depth at session 0:", unlocked_depth(0), "| session 6:", unlocked_depth(6
 """)
 
 md("""
-- **At most two offers.** Elderly plus voice means a menu of four is cognitive
-  load, not choice. Everything else scored is kept in `considered` for the
-  family-facing overlay only — it never reaches the model.
-- **Sensitivity-gated.** A forbidden topic is not merely unoffered, it is
-  *never scored*. Her late sister does not enter the context window at all.
-- **Depth-gated.** `unlocked_depth(session_count)` — hardship is not
-  first-session material.
-- **The greeting is resolved in code**, because the persona is static text and
-  cannot evaluate *"is this our first meeting?"*. That one shipped broken once:
-  the condition read as a suggestion and the agent reintroduced itself on a
-  session-5 call with full memory loaded.
+Four rules shape that plan:
+
+- **At most two things to offer her.** She is eighty and this is a voice call. A
+  list of four options is not choice, it is work. Everything else that scored is
+  kept in `considered` for the family's screen, and never shown to the model.
+- **Anything she has refused is removed completely.** Not ranked lower — it never
+  enters the scoring at all. Her late sister appears nowhere in the context.
+- **Deeper subjects unlock slowly**, through `unlocked_depth(session_count)`.
+  Hardship is not a first-conversation subject.
+- **The greeting is chosen in Python.** The persona is fixed text and cannot
+  work out "is this our first meeting?". That shipped broken once: the agent
+  introduced itself from scratch on her fifth call, with her whole history
+  loaded.
 """)
 
 # ── 5 ────────────────────────────────────────────────────────────────────────
 md("""
 ## 5. Stage 3 — during the call
 
-Two channels reach the model once the stream is open. That is all there are.
+Once the connection is open, exactly two things can reach the model. There are
+no others.
 
-### Channel one: pull — the agent asks
+### Channel one: the agent asks for something
 
-`build_tools(memory)` closes five tools over a `CallMemory` — down from nine.
-`recall`, `get_open_threads` and `what_do_you_remember` became one `remember`
-call, and `note_preference` and `save_fragment` are gone because the Archivist
-infers both from the transcript afterwards, and better than an agent noticing
-mid-conversation while trying to listen.
+`build_tools(memory)` gives the agent five tools — down from nine. `recall`,
+`get_open_threads` and `what_do_you_remember` became a single `remember` call.
+`note_preference` and `save_fragment` were removed entirely, because the
+Archivist works both out from the transcript afterwards, and does it better than
+an agent noticing things mid-conversation while trying to listen to her.
 
-The notebook calls them directly; in production the model calls exactly these.
+The notebook calls these directly. In a real call the model calls exactly the
+same functions.
 """)
 
 code("""
@@ -381,16 +429,16 @@ print(json.dumps(answer, indent=2, ensure_ascii=False))
 """)
 
 md("""
-Two things to notice.
+Two things happened there.
 
-`ask_delivered` is now set on the call's memory — the agent has taken
-responsibility for reading his question out. Section 6 shows when that is
-allowed to actually consume the question.
+`ask_delivered` is now set on this call's memory. The agent has taken
+responsibility for reading his question out loud. Section 6 covers when that is
+allowed to actually use the question up.
 
-And the response carries `_guidance` and `_turn_length`, which the agent never
-asked for. That is channel two, arriving as a passenger.
+And the reply contains `_guidance` and `_turn_length`, which the agent never
+asked for. That is the second channel, arriving as a passenger on the first one.
 
-### `remember` — the closest thing here to retrieval
+### `remember` — the closest thing here to looking something up
 """)
 
 code("""
@@ -399,40 +447,40 @@ print(json.dumps(found, indent=2, ensure_ascii=False))
 """)
 
 md("""
-`remember` returns **three** things: `known` (facts, each with the sentence
-behind it), `she_said` (a search of her actual transcripts — empty here, since
-this in-memory archive has no conversations yet) and `unfinished` (threads she
-left open, which nothing published treats as a memory type).
+`remember` returns three things:
 
-`known` is empty at this point because no facts exist yet; section 9 shows the
+- **`known`** — facts, each with the sentence she said that put it there.
+- **`she_said`** — a search of her actual transcripts. Empty here, because this
+  in-memory archive has no conversations in it yet.
+- **`unfinished`** — subjects she left open.
+
+`known` is empty at this point because no facts exist yet; section 9 covers the
 ranking that fills it.
 
-The comment in `tools.py` says why:
+The comment in `tools.py` explains why her transcripts are searched at all,
+rather than only the tidy extracted records:
 
 > *Extracted records lose sequence, context and affect, so the graph is only an
 > index — her own words are the thing worth reaching.*
 
-This is RAG turned inside out. The structured index is the **lookup key**, and
-what comes back is her speech. No embeddings: the key is a name the agent
-already heard her say.
+### Channel two: pushing information back on a tool's reply
 
-### Channel two: push — riding on the response
+The system instruction is fixed for the whole call, so there is no way to send
+the model new directions partway through. I tried three, and all three failed in
+front of a user:
 
-The system instruction is fixed for the session, so there is no way to send the
-model new direction. I tried three and all three failed in front of a user:
-
-| Route | What happened |
+| What I tried | What happened |
 |---|---|
-| `role="user"`, fenced "do not read aloud" | Read the fence out loud, brackets and all |
-| `role="system"` | Agent acknowledged it aloud: *"Alright, understood."* |
-| `role="model"` | Turn-taking broke; it stopped answering her |
+| a `user` message, fenced with "do not read aloud" | The agent read the fence out loud, brackets and all |
+| a `system` message | The agent said *"Alright, understood. Preparing to wrap up"* out loud |
+| a `model` message | Turn-taking broke and it stopped answering her |
 
-Tool responses are the one payload the model treats as data rather than speech.
-So `_with_guidance` attaches the current affect policy to **every** tool
-response, whatever that response was for.
+A tool's reply is the one thing the model treats as data rather than as
+something to say. So `_with_guidance` attaches the current behavioural settings
+to **every** tool reply, whatever that tool was actually asked for.
 
-The affect monitor forks the same audio and folds readings into a state
-machine:
+Meanwhile a second model listens to the same audio and works out how she is
+doing. Its readings feed a small state machine:
 """)
 
 code("""
@@ -461,24 +509,15 @@ print("after 2 readings:", state.energy.value, state.engagement.value,
 """)
 
 md("""
-**Two consecutive agreeing readings are required to move.** A single odd window
-cannot make the agent lurch. Distress and agitation are the exceptions and act
-immediately — those are not moods to debounce.
+**Two readings in a row have to agree before anything changes.** One odd
+five-second window cannot make the agent lurch. Distress and agitation are the
+exceptions and take effect immediately, because those are not moods to wait out.
 
-Energy is also ratcheted: it only worsens, and only excitement partially
-reverses it. An eighty-year-old who has been talking for eleven minutes does
-not become fresh again because one sentence came out brightly.
+Energy also only moves one way: it can drop, and only excitement partly lifts it
+again. Someone who has been talking for eleven minutes does not become fresh
+because one sentence came out brightly.
 
-Here is what that state does to the agent's behaviour. The reading was both
-fading *and* withdrawing, and `policy` is ordered: withdrawal is read as being
-about a subject before tiredness is read as being about the call, so what comes
-back is "move to something lighter", not "start closing".
-
-Watch the second half of the output too. The tools were closed over this call's
-memory back in section 4, and the notebook never hands them the new reading, so
-the guidance riding on that tool response is still the opening one. In
-production that hand-off is a single line — `memory.affect = state`, in
-`_publish_affect` (`app.py`) — run every time the monitor reports.
+Here is what that state actually does to the agent's behaviour:
 """)
 
 code("""
@@ -492,24 +531,21 @@ print(json.dumps(tools["remember"]("shop"), indent=2, ensure_ascii=False)[:400])
 """)
 
 md("""
-**The honest weakness:** the push channel is parasitic on the pull channel. If
-the agent never calls a tool — which is the *ideal* call, where she talks
-steadily for eleven minutes and it just listens — the affect monitor's
-conclusions reach nothing but the family-facing overlay.
-`enable_affective_dialog` covers some of this natively in-turn, but inside one
-call the coupling is real and unsolved.
+**The honest weakness:** the push channel depends entirely on the pull channel.
+If the agent never calls a tool — which is what the *best* calls look like, where
+she talks for eleven minutes and it simply listens — then nothing the affect
+monitor concludes reaches the model during that call.
 
-Worse, it does not survive the call either. `finish_call` never reads
-`prepared.memory.affect`, so nothing the monitor concluded is written down. All
-the *next* opener inherits about how this call went is the closure reason, and
-the Archivist reads that off the transcript rather than off the audio.
+`enable_affective_dialog` covers some of this natively, and affect still shapes
+the *next* call's instruction. But within a single call the coupling is real,
+and I have not solved it.
 """)
 
 # ── 6 ────────────────────────────────────────────────────────────────────────
 md("""
-## 6. Stage 4 — recording stops
+## 6. Stage 4 — the call ends
 
-`finish_call()` is where the knowledge base actually changes. Take a real seed
+`finish_call()` is where the archive actually changes. Take a real seed
 transcript as the call that just happened:
 """)
 
@@ -530,18 +566,18 @@ print(transcript.render()[:400])
 """)
 
 md("""
-`Transcript.add` collapses consecutive turns from the same speaker, because the
-Live API streams transcription incrementally and those fragments are revisions,
-not new turns.
+`Transcript.add` merges consecutive turns from the same speaker. The Live API
+sends transcription in pieces as it goes, so those pieces are revisions of one
+turn rather than separate turns.
 
-Below `MIN_TURNS_TO_EXTRACT` the call is treated as a misdial: nothing is
-extracted, **and the family's question is not consumed**. That ordering was a
-real bug — a four-turn test call marked Wei Lun's question delivered forever,
-so he was told she had been asked and she was never asked again.
+If the call is shorter than `MIN_TURNS_TO_EXTRACT`, it is treated as a misdial:
+nothing is extracted, **and the family's question is not used up**. That ordering
+was a real bug. A four-turn test call marked Wei Lun's question as delivered
+forever, so he was told she had been asked, and she was never asked again.
 
-Now run the real Archivist. This is seam 1: text in, everything derived out —
-no audio, no streaming, no browser, which is what makes the whole spine
-testable offline.
+Now the Archivist runs. This is the main seam of the system: text goes in,
+everything else is worked out from it. No audio, no streaming, no browser —
+which is what makes the whole pipeline testable offline.
 """)
 
 code("""
@@ -565,15 +601,15 @@ print("closure      :", updated.last_closure.value)
 """)
 
 md("""
-`ClosureReason` is the distinction the opener depends on: a call that ended
-because a neighbour rang the doorbell is *interrupted*; one that ended because
-she tired is *fatigue*. The first earns *"you still owe me the rest"* next
+`ClosureReason` is the distinction the next call depends on. A call that ended
+because a neighbour rang the doorbell is *interrupted*. One that ended because
+she got tired is *fatigue*. The first earns *"you still owe me the rest"* next
 time; the second earns *"did you sleep well?"*.
 
-### What `ingest_conversation` computes — including what gets thrown away
+### What gets computed, including what gets thrown away
 
 `finish_call` wraps `ingest_conversation`. Calling it directly exposes the
-`resolutions` that section 1 claimed exist and are then discarded:
+`resolutions` that section 1 said are computed and then discarded:
 """)
 
 code("""
@@ -599,36 +635,25 @@ for r in outcome.resolutions[:8]:
 """)
 
 md("""
-### An aside you can see in the numbers above
+### Something you can see in the numbers above
 
 That cell just ran extraction a **second** time on the same transcript, and it
-will usually disagree with the run inside `finish_call` — a different story
-count, a slightly different entity count. Same input, same temperature, same
-prompt.
+will usually disagree with the run inside `finish_call` — a different number of
+stories, a slightly different number of entities. Same input, same temperature,
+same prompt.
 
-The model is nondeterministic about **where one memory ends and the next
-begins**: whether the river and the line house are one childhood story or two
-is a judgement call, and it makes it differently on different runs. Every story
-still scores 5 or 6 with a place and a time; the boundaries move, not the
-quality.
+The reason is that the model is not consistent about **where one memory ends and
+the next begins**. Whether the river and the line house are one childhood story
+or two is a judgement call, and it makes it differently on different runs. Every
+story still scores 5 or 6, and every one still has a place and a time. The
+boundaries move; the quality does not.
 
-This is why the integration suite asserts *properties* — enough pins, three or
-more distinct places, at least fifteen years spanned — instead of counts. A
-threshold like `pinned >= 9` sat inside that spread and failed for no reason
-anyone could act on.
+This is why the integration tests check *properties* — enough pins, at least
+three distinct places, at least fifteen years covered — instead of counts. A
+threshold like `pinned >= 9` sits inside that variation and fails for no reason
+anyone can act on.
 
 ### Back to the resolutions
-
-Those `entity_id` values are exactly the missing foreign key. `save_stories`
-writes the story with `PersonMention.surface_form` and no id; `save_entities`
-writes the entities. Nothing writes the middle column. Every ingest recomputes
-these edges and drops them.
-
-Persisting them would be a small change — write the resolved id onto the
-mention at ingest, from data already computed — and it is the single thing I
-would fix first if this ran past the hackathon.
-
-### The scored stories
 """)
 
 code("""
@@ -643,22 +668,38 @@ for s in outcome.stories:
 """)
 
 md("""
-`when.raw_phrase` beside `when.start_year` is the two-field design paying off
-on real speech — her vague phrase preserved, a sortable year derived from it.
+Those `entity_id` values are exactly the missing link. `save_stories` writes the
+story with `"my sister"` as text and no id. `save_entities` writes the entities.
+Nothing writes the column joining them. Every ingest works these out again and
+drops them.
 
-`sense_detail` is the field the letters are built around, and the one that
-taught the hardest lesson: asked for "a concrete sensory detail" it filled
-every time, which looked like success until the values were read. It was
-returning paraphrases of the story. The fix was to demand **quotability** —
-something she said, pointable to a line in the transcript — plus explicit
-permission to leave it empty.
+Section 8 is where this stops being true.
+
+### The stories themselves
 """)
 
 # ── 7 ────────────────────────────────────────────────────────────────────────
 md("""
-## 7. Stage 5 — the diff
+`when.raw_phrase` sitting next to `when.start_year` is the two-field idea
+working on real speech: her vague phrase kept, and a sortable year derived from
+it.
 
-What the call actually changed in the knowledge base:
+`sense_detail` is the field the letters are built from, and it taught the
+hardest lesson here. Asked for "a concrete sensory detail" the model filled it in
+every single time, which looked like success until anyone read the values. It was
+returning paraphrases of the story rather than anything she had actually
+described.
+
+The fix was to demand something **quotable** — a phrase she said, findable in the
+transcript — and to say explicitly that leaving it empty was fine.
+""")
+
+# ── 7 ────────────────────────────────────────────────────────────────────────
+md("""
+## 7. Stage 5 — what actually changed
+
+One call has now been filed. Here is the difference it made to the archive,
+counted rather than described.
 """)
 
 code("""
@@ -741,15 +782,18 @@ sharper timeline than session 3"* is a mechanism rather than a claim.
 
 # ── 8 ────────────────────────────────────────────────────────────────────────
 md("""
-## 8. The memory graph
+## 8. Adding a real graph
 
-Everything above was the original spine. What follows is the layer built on top
-of it, after **Zep** (*A Temporal Knowledge Graph Architecture for Agent
-Memory*, arXiv 2501.13956) — with the departures argued rather than assumed,
-because an oral history is not the enterprise dataset that paper targets.
+Everything up to here is the original design. What follows is the layer built on
+top of it.
 
-Section 1 said this was an entity *index* and not a graph. That is what changed:
-the graph now has edges, and they are **facts**.
+It follows **Zep**, a published architecture for agent memory (*A Temporal
+Knowledge Graph Architecture for Agent Memory*, arXiv 2501.13956) — with three
+deliberate departures, because Zep is built for business data and this is an
+eighty-year-old's life story.
+
+Section 1 said this was an index rather than a graph. That is what changes now.
+The graph gets edges, and the edges are called **facts**.
 """)
 
 code("""
@@ -764,21 +808,35 @@ print("Relations are a closed vocabulary:", ", ".join(p.value for p in Predicate
 """)
 
 md("""
-Three departures from the paper, each visible in those fields.
+A fact is one thing she asserted, with two separate timelines attached.
 
-**`Predicate` is a closed enum.** These are join keys. We already paid for
-letting a model name them: one refusal came back as *"the reason the shop
-closed"* in session 2 and *"grandfather's shop shutting"* in session 4, no
-string match reconciles them, and the subject stayed marked `do_not_raise`
-through the session meant to reopen it. The paper makes the same argument about
-its own writes, preferring predefined Cypher to LLM-generated queries.
+That "two timelines" idea is the core of Zep, and it is worth being clear about:
 
-**`valid_from` / `valid_to` are `When`, not `datetime`.** She says *"before I
-married"*. A timestamp forces a date she never gave. Published agent-memory
-systems store valid-time edges but not *uncertain* valid-time intervals, and
-sixty-year-old recollection is nothing else.
+| Timeline | Fields | Answers |
+|---|---|---|
+| **valid time** | `valid_from`, `valid_to` | *When was this true in her life?* |
+| **transaction time** | `t_created`, `t_expired` | *When did the archive believe it?* |
 
-**`quote` is required and verified.** Fourth time this check has been needed.
+So "her father ran a coffee shop" was true from 1958 to 1969 (valid time), and
+the archive has believed that since the 15th of July (transaction time). Keeping
+them apart is what makes section 10 possible.
+
+Three things here differ from the paper:
+
+**1. Relations come from a fixed list.** Zep lets the model invent relation
+names. We already paid for that: a subject she refused came back labelled *"the
+reason the shop closed"* in one session and *"grandfather's shop shutting"* in
+another. No string matching connects those two, so the archive thought they were
+different subjects. Now the model picks from a closed set and cannot invent one.
+
+**2. Times are `When`, not timestamps.** She says *"before I married"*. A
+timestamp would force a date she never gave. `When` keeps her phrase alongside
+whatever year could be worked out. Published memory systems store valid time as
+exact dates; none of them store *uncertain* ranges, and sixty-year-old
+recollection is nothing but uncertain ranges.
+
+**3. Every fact must quote her.** The sentence she said is a required field, and
+it is checked against the transcript.
 """)
 
 code("""
@@ -813,25 +871,34 @@ for f in kept:
 """)
 
 md("""
-The second was dropped silently. It reads like a citation and is the model's own
-reasoning — the exact failure that produced `sense_detail` paraphrases, a
-`flag_concern` that notified nobody, and place links justified by *"Identified
-as being in the vicinity of Sungai Siput"*. **A claim about a source can be
-tested against the source**, so it is.
+One was kept and one was dropped, silently.
+
+The dropped one's "quote" is the model's own reasoning dressed up as a citation.
+This is the fourth time the same thing has happened in this project: asked for
+evidence, a model produces something evidence-*shaped*. It happened with sensory
+details, with a safety tool that reported notifying the family and notified
+nobody, and with place links justified by *"Identified as being in the vicinity
+of Sungai Siput"*.
+
+The fix is always the same and always cheap: **a claim about a source can be
+checked against the source.** So it is.
 """)
 
 # ── 9 ────────────────────────────────────────────────────────────────────────
 md("""
-## 9. Retrieval — seam 4
+## 9. Looking things up during a call
 
-Zep retrieves per turn: search, rerank, inject into the prompt. **The Live API
-cannot do that** — the instruction is fixed at connect and all three injection
-routes failed. So retrieval is *agent-initiated*: one `remember` tool the model
-calls when the conversation needs it.
+Zep looks things up on every turn: search, rank, and paste the results into that
+turn's prompt.
 
-Ranking is a pure function over a fixture graph, with no model call anywhere. A
-reranker that returns the wrong five facts throws nothing and fails nothing; the
-agent simply sounds confidently wrong to an eighty-year-old.
+**The Live API cannot do that**, for the reason section 4 explained — the
+instruction is fixed once the call connects. So looking things up has to be
+started by the *agent*, through one tool it calls when the conversation needs it.
+
+The ranking itself is a plain function with no model call anywhere in it. That
+matters here more than elsewhere: if the ranking returns the wrong five facts,
+nothing crashes and no test fails. The agent simply says something confident and
+wrong to an eighty-year-old.
 """)
 
 code("""
@@ -866,31 +933,42 @@ print("seeded:", [f.fact_id for f in seeded])
 """)
 
 md("""
-The same query, answered differently. BM25 alone prefers the father's shop — the
-shorter sentence — but seed the traversal on the mother, as it would be if she
-had just been talking about her, and the mother's fact comes first.
+The same query, answered two different ways.
 
-**That is what makes agent-initiated retrieval feel contextual.** The seeds are
-the entity asked about *plus* everyone already named in this call, so nothing has
-to be injected per turn for the conversation's history to steer the answer.
+Word matching alone prefers the father's shop, because it is the shorter
+sentence. But if the conversation has just been about her mother, the search
+starts from the mother's record and walks outward through the graph — and the
+mother's fact comes first instead.
 
-Following Zep §3, with two deliberate omissions:
+**This is what makes agent-started lookup feel like it is paying attention.** The
+starting points are whatever the agent asked about, *plus* everyone already
+mentioned in this call. Nothing has to be injected per turn for the conversation
+so far to shape the answer.
 
-| | |
+Three searches run, and the results are combined:
+
+| Search | What it finds |
 |---|---|
-| φ_bm25 over `statement` | the search field for an edge is its fact text, not the entity name |
-| φ_bfs from seeds | Zep: *"can accept nodes as parameters… recent episodes as seeds"* |
-| φ_cos | a **slot**, not an implementation — nothing measurable to gain at this size |
-| RRF | fuses rank *positions*; BM25 scores and hop counts share no scale |
-| node distance, episode mentions | closeness to the conversation, and how often the archive has heard it |
-| ~~MMR~~ | diversity matters at five hundred results, not five |
-| ~~cross-encoder~~ | an extra LLM call inside a live voice turn |
+| **word matching** (BM25) | facts whose text shares rare words with the query |
+| **graph walking** | facts one or two steps from where the conversation already is |
+| **meaning matching** | *not implemented* — a slot, since it adds nothing measurable at this size |
 
-Note what is **not** here: no recency decay, no importance score. Zep is IR, not
-the Generative Agents formula — several retrievers for recall, then rerankers for
-precision.
+Combining them uses **rank fusion**: each search produces an ordered list, and a
+fact scores well if it appears near the top of several lists. Positions are
+combined rather than scores, because a word-match score and a hop count are not
+measured in the same units, and pretending otherwise would invent a relationship
+between them.
 
-And the bug this found within hours of being written:
+Two of Zep's rankers are deliberately left out. One increases variety among
+results, which matters at five hundred results and not at five. The other asks
+an LLM to score each candidate, which is the most accurate option and costs an
+extra model call in the middle of a live conversation while she waits.
+
+Worth noting what is **absent**: no recency decay and no importance score. This
+is ordinary information retrieval, not the "recency + importance + relevance"
+formula from the Generative Agents paper.
+
+And here is a bug this found within hours of being written:
 """)
 
 code("""
@@ -898,27 +976,33 @@ print('remember("Ah Seng") ->', search_facts("Ah Seng", graph))
 """)
 
 md("""
-Empty, correctly. It did not used to be: `Ah Seng` matched a fact about `Ah
-Chwee` on the shared honorific `ah`, two characters half the family carries.
-BM25's IDF is supposed to discount exactly that and across a few dozen sentences
-has no room to. Query terms under three characters are now dropped.
+Empty, which is right — she asked about someone the archive has never heard of.
 
-The worst class of bug in this product: nothing throws, and the agent tells her
-something confident and wrong about a person she asked after.
+It did not used to be empty. `"Ah Seng"` matched a fact about `"Ah Chwee"`,
+because both contain `"ah"`, an honorific half the family shares. Word matching
+is supposed to discount common words automatically, by noticing they appear
+everywhere. With only a few dozen sentences in the archive, nothing appears
+often enough for that to work.
+
+Query words shorter than three characters are now ignored.
+
+This is the worst kind of bug in this product. Nothing throws an error. The agent
+just tells her something confident and wrong about a person she asked after, in
+a voice she has come to trust.
 """)
 
 # ── 10 ───────────────────────────────────────────────────────────────────────
 md("""
-## 10. Contradiction — the departure that matters
+## 10. When she remembers something differently
 
-She will say the shop closed in 1969, and later say 1970.
+She will say the shop closed in 1969, and months later say 1970.
 
-Zep sets the old edge's `t_invalid` to the new edge's `t_valid` and prioritises
-new information. Applied literally here that yields *"her father ran a coffee
-shop, and that stopped being true in 1970"* — a claim she never made. **The shop
-closed once.**
+Zep's rule is to mark the older fact as no longer valid from the moment the newer
+one becomes valid. Applied literally here, that produces: *"her father ran a
+coffee shop, and that stopped being true in 1970"*. She never said that. **The
+shop closed once.**
 
-Two different things wear the same shape, and only one is what that rule is for:
+The problem is that two very different situations look identical in the data:
 """)
 
 code("""
@@ -962,37 +1046,46 @@ print("   valid_to       :", moved.valid_to.start_year, "  <- where the new one 
 """)
 
 md("""
-Both axes are already in the paper. The mistake would be collapsing onto one.
+Both timelines already exist in the paper. The mistake would be pushing
+everything onto one of them.
 
-| | What moved | Axis |
+| Situation | What actually changed | Which timeline records it |
 |---|---|---|
-| *"she moved house in 2016"* | the world | `valid_to` (T) — Zep as written |
-| *"closed in 1969"* → *"1970"* | her account | `t_expired` (T′), valid time untouched |
+| *"she moved house in 2016"* | the world | **valid time** — Zep's rule, unchanged |
+| *"closed in 1969"* → *"1970"* | her account of the world | **transaction time**, valid time untouched |
 
-An enterprise dataset is almost entirely the first. An oral history is almost
-entirely the second: sixty years on she is not reporting state transitions, she
-is recalling one fixed past with varying accuracy.
+Business data is almost all the first kind: a customer changed address, a plan
+was upgraded. An oral history is almost all the second. Sixty years on she is not
+reporting changes in the world, she is recalling one fixed past with varying
+accuracy.
 
-Three rules hold either way. **Nothing is ever deleted** — she said it, and that
-stays true about her. **Newest wins for display.** And **a contradiction becomes
-a question, not a decision**: it reaches the next call the way a missing field
-does, because which telling is right is hers to settle.
+Three rules hold either way:
 
-The family cannot edit a fact. They *can* correct the geocoder that put Sungai
-Siput ninety kilometres away — that is our error, not her memory.
+1. **Nothing is ever deleted.** She said it, and that stays true about her.
+2. **The newest version is what gets shown** on the map and in the letters.
+3. **A disagreement becomes a question, not a decision.** It reaches the next
+   call the same way a missing field does, because which version is right is
+   hers to settle and not the database's.
+
+Her family can correct the *system* — the geocoder that put her village ninety
+kilometres from where it is. They cannot edit what she said.
 """)
 
 # ── 11 ───────────────────────────────────────────────────────────────────────
 md("""
-## 11. Communities — her chapters
+## 11. Chapters
 
-The third tier. Entities that keep appearing together get clustered, and the
-cluster is named from the facts joining them.
+The last layer. Entities that keep turning up together get grouped, and each
+group is named from the facts connecting it.
 
-Zep uses **label propagation rather than Leiden**, chosen for "straightforward
-dynamic extension". Both halves exist here: `extend` places one new entity by
-plurality of its neighbours, and `detect` runs full propagation for the periodic
-refresh the paper says remains necessary.
+The grouping algorithm is **label propagation**, which is simple enough to
+describe in a sentence: every entity starts in its own group, then repeatedly
+joins whichever group most of its neighbours are in, until nothing moves.
+
+Zep chooses it over the better-known Leiden algorithm for one reason — a single
+new entity can be slotted in without recomputing everything, which is cheap
+enough to run after every call. That drifts over time, so a full recomputation
+is also scheduled periodically. Both exist here.
 """)
 
 code("""
@@ -1026,28 +1119,31 @@ print("without her:", detect(people, everything, exclude=found))
 """)
 
 md("""
-**The narrator wrecks her own clustering.** Nearly every fact in her archive is
-about her life, so she neighbours everyone, and label propagation collapses her
-estate childhood and her shop years into one chapter because she is the only
-thing they share. She belongs to every chapter, which is exactly why she cannot
-be used to tell them apart.
+**She breaks her own clustering.** Almost every fact in her archive is about her
+life, so she is connected to everyone in it. That means she joins everything to
+everything, and her childhood on the estate and her years at the shop collapse
+into a single chapter — because she is the only thing they have in common.
 
-Two wrong fixes came first, and both are the finding:
+She belongs to every chapter of her life. That is exactly why she cannot be used
+to tell them apart.
 
-- **By name.** The narrator entity is `Ah Khim`; the household record says `Lim
-  Siew Khim`; the profile's `display_name` was empty. The exclusion set was
-  empty, the code ran, chapters came out, and nothing said the filter had
-  matched nothing.
-- **By threshold.** "More than half the graph" also excluded nobody — 28
-  entities exist but only 17 appear in any fact. "At least half" would have
-  thrown out the coffee shop, which is a chapter and not a hub.
-- **By dominance.** She has degree 8; the next entity has 3. An outlier, not a
-  busy node. And the script now prints who it removed, because the previous two
-  failures were both silent.
+Two wrong fixes came first, and both are worth recording:
+
+- **Excluding her by name.** Her entity is called `Ah Khim`; the household record
+  says `Lim Siew Khim`; the profile field was empty. So the exclusion list came
+  out empty, the code ran, chapters appeared, and **nothing anywhere said the
+  filter had matched nobody**.
+- **Excluding anyone connected to more than half the graph.** Also matched
+  nobody: 28 entities exist, but only 17 appear in any fact, so the denominator
+  was wrong. Lowering it to "half" would have excluded the coffee shop, which is
+  a chapter and not a hub.
+- **Excluding the clear outlier.** She has 8 connections; the next entity has 3.
+  That is what the rule should say. And the script now prints who it removed,
+  because the two failures before it were both silent.
 
 On her real archive this produces three chapters — the shop years, the estate
-childhood, the grandfather's arrival — each opening down to her own sentences in
-the app.
+childhood, and her grandfather's arrival — each opening down to her own
+sentences in the app.
 """)
 
 

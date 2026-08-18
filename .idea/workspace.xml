@@ -5,8 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="77445e17-566f-4784-b13f-3b8a7f0918cd" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/notebooks/_build_notebook.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/_build_notebook.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/knowledge_base_flow.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/knowledge_base_flow.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
