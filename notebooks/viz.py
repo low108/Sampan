@@ -327,8 +327,14 @@ D3_TEMPLATE = """
     .attr("stroke", "#C9BCA6").attr("stroke-width", 1.6)
     .on("mouseover", function (event, d) {
       d3.select(this).attr("stroke", "#9C3B24").attr("stroke-width", 3);
-      tip.innerHTML = "<b>" + d.statement + "</b><br><i>she said: &ldquo;"
-                    + d.quote + "&rdquo;</i>";
+      // Only claim she said something when there is a sentence to show. An
+      // edge without a quote is one this notebook constructed, not one the
+      // archive would ever assert.
+      tip.innerHTML = "<b>" + d.statement + "</b>"
+        + (d.quote
+            ? "<br><i>she said: &ldquo;" + d.quote + "&rdquo;</i>"
+            : "<br><i style='color:#8A7F76'>added to show the shape of the "
+              + "full archive &mdash; not something she said</i>");
     })
     .on("mouseout", function () {
       d3.select(this).attr("stroke", "#C9BCA6").attr("stroke-width", 1.6);

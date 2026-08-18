@@ -1394,8 +1394,18 @@ others = sorted(
 )
 as_full_archive = her_graph_facts + [
     her_graph_facts[0].model_copy(
-        update={"fact_id": f"hub_{i}", "subject_id": her, "object_id": other,
-                "statement": f"she is connected to {name_of.get(other, other)}"}
+        update={
+            "fact_id": f"hub_{i}",
+            "subject_id": her,
+            "object_id": other,
+            "statement": f"she is connected to {name_of.get(other, other)}",
+            # Emptied deliberately. These edges are constructed to show the
+            # shape of the full archive, and copying the quote from the fact
+            # they were cloned from would attach her sentence about her
+            # mother's cooking to a claim about Penang -- exactly the thing
+            # sections 9 and 10 exist to prevent.
+            "quote": "",
+        }
     )
     for i, other in enumerate(others)
 ]
