@@ -12,7 +12,7 @@ shaped this way and what that shape cost.
 
 | Rev | Date | Change | Supersedes |
 |---|---|---|---|
-| 1 | 2026-08-20 | First issue. Covers the service as of `d1652a19`, after the memory v2 revamp, the front-end redesign, and the ask-queue and tool-log fixes. | — |
+| 1 | 2026-08-20 | First issue. Covers the service as of `d1652a19`, after the memory v2 revamp, the front-end redesign, and the ask-queue and tool-log fixes. Auditing the collection inventory for §7.3 found R11, a write-only `forgotten` collection. | — |
 
 Verification basis for this revision: names, routes, collections and constants were read from
 source at `d1652a19`; collection document counts were read from the live Firestore database
@@ -44,7 +44,8 @@ non-optional in the model rather than a nullable convenience field (§7.3).
 
 **Her words are the artefact.** Extraction may summarise, rank and connect, but the verbatim
 sentence is what the product protects. Facts carry the quote that justifies them and are
-refused without it (§8.3, D7).
+refused without it (§8.3, D7). Her control over that record is only half built: `mark_private`
+is honoured end to end, `forget_this` is recorded and never read (R11).
 
 **Uncertainty is drawn, never asserted.** A place the system guessed is stored and rendered
 differently from a place she named. A year nobody said is not written down (D9).
@@ -204,30 +205,63 @@ Annotations that matter:
 ### 7.3 Data model
 
 Firestore, database `(default)`, region `asia-southeast1`. Collections are **flat with `__`
-scoping**, not subcollections (D4). Verified inventory, with live document counts:
+scoping**, not subcollections (D4).
 
-| Collection | Docs | Contents |
-|---|---|---|
-| `members` | 3 | Household roster. Its own collection, not inferred from who has stories, so a grandchild who has never recorded still appears |
-| `profiles` | 2 | `NarratorMemory` — threads, anchors, preferences, sensitivities, session count. Read whole at call start, written whole at call end |
-| `stories__<id>` | 11 / 5 | Scored stories from extraction |
-| `entities__<id>` | 33 / 12 | People, places, things |
-| `facts__<id>` | 18 / 4 | Graph edges, current and retired |
-| `communities__<id>` | 3 / 1 | Chapters |
-| `conversations__<id>` | 13 / 2 | Transcript, `turns`, `tool_calls` |
-| `asks__<id>` | 7 | Queued family questions |
-| `concerns__<id>` | 3 | Care flags |
-| `private__<id>` | 1 | Subjects she asked to keep back |
-| `forgotten__<id>` | 1 | Subjects she asked to drop |
-| `seen` | 2 | Per-viewer notification dismissals |
-| `_places` | 13 | Geocoding cache |
-| `_place_links` | 2 | Relational-place link cache |
-| `_letters` | 15 | Generated letter cache |
-| `_smoke` | 2 | Round-trip probe |
+Sixteen collections exist. The list below is complete in both directions: every collection
+constant declared in source appears here, and every collection present in the live database on
+2026-08-20 appears here. Counts are live document counts; `a` / `w` distinguish `ah_khim` from
+`wei_lun` where a collection is per-narrator.
 
-`NarratorMemory` is small by construction and read whole; the things that grow without bound
-get a collection each, because a single document would hit Firestore's 1 MB limit inside a
-year of daily calls.
+#### Household and identity
+
+| Collection | Doc id | Docs | Written by | Read by | Purpose |
+|---|---|---|---|---|---|
+| `members` | `narrator_id` | 3 | Seed / `save_member` | `list_members` | The household roster. Its **own** collection rather than inferred from who has stories, so a granddaughter who has never recorded still appears — she is a member of the family, not a row in a dataset |
+| `profiles` | `narrator_id` | 2 | `save_memory`, end of every call | `load_memory`, start of every call | `NarratorMemory`: threads, anchors, preferences, sensitivities, session count, last closure. **Read whole and written whole.** Small by construction; everything that grows without bound lives elsewhere |
+
+#### The archive proper
+
+| Collection | Doc id | Docs | Written by | Read by | Purpose |
+|---|---|---|---|---|---|
+| `conversations__<id>` | `conv_<narrator>_<ts>_<rand>` | 13a / 2w | `save_conversation`, immediately on hang-up | `search_transcripts`, `call_log`, place linking | The transcript as spoken, plus `turns` and `tool_calls`. Written **before** extraction and before the length check, so a crash loses derived state and never her words (D6). Also the substrate for `search_transcripts`, because structured records lose sequence, context and affect |
+| `stories__<id>` | `<conversation_id>_<NN>` | 11a / 5w | `save_stories` | `cards_for`, every family view | Scored stories from extraction. Id embeds the conversation, so a story always points back at the call it came from |
+| `entities__<id>` | `entity_id` | 33a / 12w | `save_entities` | `prepare_call`, chapters, retrieval seeds | People, places and things, resolved and merged across calls |
+| `facts__<id>` | `fact_id` | 18a / 4w | `save_facts`, `expire_fact` | `load_facts`, `search_facts`, chapters | The graph edges, current **and** retired. `load_facts` filters to current by default; `current_only=False` reads the history of a belief |
+| `communities__<id>` | `community_id` | 3a / 1w | `save_communities` — replaced wholesale | `load_communities` | Chapters. Replaced rather than merged, because a refresh recomputes every label and merging would leave chapters the current graph no longer supports |
+
+#### The bridge to the family
+
+| Collection | Doc id | Docs | Written by | Read by | Purpose |
+|---|---|---|---|---|---|
+| `asks__<id>` | `ask_id` | 7 | `queue_ask` | `pending_asks` (bell), `pending_ask` (call) | Questions the family left. Carries `delivered`, `delivered_at` and `chosen` **beside** the `Ask` model, not on it — bookkeeping is not part of the domain object, and `_to_ask` strips all three on read |
+| `concerns__<id>` | `care_<microsecond ts>` | 3 | `raise_concern`, from the `flag_concern` tool | `open_concerns` → bell, family view | Care flags. Routed to the family and **never** back to the person they are about |
+| `seen` | `viewer_id` | 2 | `mark_seen` | `_seen_ids` | One document per viewer holding a sorted id list. The only thing about notifications written down at all — everything else in the bell is derived on read |
+
+#### Her control over the record
+
+These two look alike and are not. Both are per-narrator, both hold a subject string, and they
+do opposite things.
+
+| Collection | Doc id | Docs | Written by | Read by | Purpose |
+|---|---|---|---|---|---|
+| `private__<id>` | `priv_<hash>` | 1 | `mark_private`, from the `mark_private` tool | `private_subjects` → `build_cards`, `household` | She asked for something to stay off the family's view. The story is **kept** and hidden from readers. The agent says "I won't write that down"; that sentence has to survive the call, so it is stored rather than held in call memory |
+| `forgotten__<id>` | `forget_<hash>` | 1 | `forget`, from the `forget_this` tool | **Nothing — see R11** | She asked for something to be dropped. A tombstone rather than a delete, so the request itself survives and a later extraction pass cannot rebuild what she asked to lose. **The read side was never built**, so the tombstone currently prevents nothing |
+
+#### Caches and probes
+
+Prefixed `_`, all derived, all safe to delete — the system rebuilds them on next read.
+
+| Collection | Doc id | Docs | Written by | Purpose |
+|---|---|---|---|---|
+| `_places` | `raw_name` | 13 | `_resolve_places` | Geocoding results. Cached because a place does not move, and the map is the view a family opens most often — re-resolving per load would be the single largest avoidable cost |
+| `_place_links` | `narrator_id` | 2 | `_link_relational_places` | Joins "my father's shop" to a place she named in another session. One document per narrator holding the whole link set |
+| `_letters` | `story_id` | 15 | `_letters_for` | Generated letters. Written once and kept, because a letter about 1958 will not change |
+| `_smoke` | `uuid4` | 2 | `POST /debug/smoke` | Write-then-read probe proving the Firestore round trip. Exists so a green health check cannot be mistaken for working persistence |
+
+**Scoping is `f"{collection}__{narrator_id}"`** (`Repository._scoped`). Everything below
+`Repository` is scoped to one person because that is how memory works — the agent remembers
+*her*. `household.py` is the deliberate exception and aggregates across narrators, because the
+map is the one place a family sees itself as a family.
 
 ### 7.4 Extension points
 
@@ -598,3 +632,4 @@ No external template was imposed. Sections omitted from the default structure an
 | R8 | φ_cos absent from retrieval (D11) | Recall depends on lexical overlap and graph proximity. A question phrased with no shared vocabulary will miss | Accepted at current corpus size |
 | R9 | `remember` and `flag_concern` log field names, not values | The tool log proves *that* the agent looked something up, not *what came back* | Open — see B2 |
 | R10 | Single Firestore database, no backup configured | Deleting the database loses the archive | Accepted for a hackathon; unacceptable for the product this pretends to be |
+| R11 | `forgotten__<id>` is **write-only**. `Repository.forgotten()` has no callers anywhere in `src/`, `tests/` or `scripts/` | When she says "forget that", the tombstone is written and then consulted by nothing. Extraction is not filtered by it, so a later pass can rebuild exactly what she asked to lose — and the agent has already told her it would not. The stated rationale for the tombstone design is sound; the read side was never built | **Open — defect, not a limitation.** Found by auditing this document's collection list at rev 1 |
