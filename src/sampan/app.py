@@ -43,7 +43,7 @@ from sampan.household import (
     to_pins,
     unplaced,
 )
-from sampan.live import open_session, pump
+from sampan.live import ToolLog, open_session, pump
 from sampan.models import AffectState, Ask
 from sampan.notifications import mark_seen, notifications_for, unseen_count
 from sampan.places import GeminiPlaceResolver
@@ -71,6 +71,10 @@ MAX_VOICE_NOTE_CHARS = 700_000
 
 class SeenRequest(BaseModel):
     ids: list[str] = Field(default_factory=list)
+
+
+class ChooseAskRequest(BaseModel):
+    ask_id: str = Field(min_length=1, max_length=200)
 
 
 class AboutRequest(BaseModel):
@@ -469,6 +473,14 @@ def create_app() -> FastAPI:
             # chapter can be opened all the way down to her own words.
             by_id = {e.entity_id: e for e in entities}
             facts = repository.load_facts(narrator_id)
+            # Both tellings are kept and the older one is visibly retired,
+            # never deleted -- she is not corrected, and the archive does not
+            # quietly drop the sentence it stopped believing.
+            retired = [
+                f
+                for f in repository.load_facts(narrator_id, current_only=False)
+                if not f.is_current and f.quote
+            ]
             payload["chapters"] = [
                 {
                     "id": chapter.community_id,
@@ -490,6 +502,12 @@ def create_app() -> FastAPI:
                         if f.subject_id in set(chapter.member_ids)
                         or (f.object_id or "") in set(chapter.member_ids)
                     ][:6],
+                    "retired": [
+                        {"fact": f.render(), "she_said": f.quote}
+                        for f in retired
+                        if f.subject_id in set(chapter.member_ids)
+                        or (f.object_id or "") in set(chapter.member_ids)
+                    ],
                 }
                 for chapter in repository.load_communities(narrator_id)
                 if chapter.member_ids
@@ -587,6 +605,55 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=result.reason)
         return result.model_dump()
 
+    @app.get("/api/talk/{narrator_id}/calls", dependencies=[Depends(require_api_key)])
+    def call_log(
+        narrator_id: str,
+        store: Annotated[DocumentStore, Depends(get_store)],
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """What the agent reached for, call by call, newest first.
+
+        The tool record is the only evidence of what the agent did with its
+        memory: the transcript shows what it said, and this shows what it
+        looked up before saying it. Without it a wrong answer mid-call is
+        unfalsifiable after the fact — you cannot tell a bad lookup from a
+        good lookup badly used.
+        """
+        rows = store.list(f"conversations__{narrator_id}")
+        rows.sort(key=lambda raw: raw.get("occurred_at") or "", reverse=True)
+        return {
+            "calls": [
+                {
+                    "conversation_id": raw.get("conversation_id", ""),
+                    "occurred_at": raw.get("occurred_at", ""),
+                    "turns": raw.get("turns", 0),
+                    "tool_calls": raw.get("tool_calls", []),
+                }
+                for raw in rows[: max(1, min(limit, 50))]
+            ]
+        }
+
+    @app.post(
+        "/api/talk/{narrator_id}/pending/choose",
+        dependencies=[Depends(require_api_key)],
+    )
+    def choose_pending(
+        narrator_id: str,
+        body: ChooseAskRequest,
+        store: Annotated[DocumentStore, Depends(get_store)],
+    ) -> dict[str, Any]:
+        """Answer this one next.
+
+        Opening a specific question from the bell has to change what the call
+        asks, not only what the screen shows. Without this the agent read the
+        oldest question in the queue aloud whichever one she had tapped, and
+        said the wrong person's name while doing it.
+        """
+        chosen = Repository(store).choose_ask(narrator_id, body.ask_id)
+        if not chosen:
+            raise HTTPException(status_code=404, detail="No such question is waiting.")
+        return {"ok": True, "ask_id": body.ask_id}
+
     @app.get("/api/talk/{narrator_id}/pending", dependencies=[Depends(require_api_key)])
     def pending_for_her(
         narrator_id: str,
@@ -643,12 +710,17 @@ def create_app() -> FastAPI:
         )
         memory = prepared.memory
         transcript = Transcript()
+        tool_log = ToolLog()
 
         async def relay(message: dict[str, Any]) -> None:
             if (text := message.get("user_transcript")) is not None:
                 transcript.add("user", text)
             if (text := message.get("agent_transcript")) is not None:
                 transcript.add("agent", text)
+            # Recorded here rather than inside the pump so the log holds
+            # exactly what the browser was told, and there is one thing to keep
+            # correct instead of two.
+            tool_log.observe(message, turn=len(transcript))
             await websocket.send_json(message)
 
         session = await open_session(prepared.agent, settings, user_id=user_id)
@@ -686,6 +758,7 @@ def create_app() -> FastAPI:
                     prepared,
                     transcript,
                     narrator_id=user_id,
+                    tool_calls=tool_log.as_records(),
                 )
 
     static_dir = find_static_dir()

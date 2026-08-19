@@ -96,9 +96,13 @@ def notifications_for(
     by_id = {m.narrator_id: m for m in members}
     out: list[Notification] = []
 
-    # Someone left her a question. This is the one that leads to a recording.
-    ask = repository.pending_ask(viewer_id)
-    if ask is not None:
+    # Questions people left. These are the ones that lead to a recording.
+    #
+    # All of them, not just the one the next call will carry. The call takes
+    # the oldest and only the oldest, but a bell that showed only that made
+    # every question behind it invisible — send a second one and nothing on
+    # the screen changed anywhere, for anybody.
+    for ask in repository.pending_asks(viewer_id):
         out.append(
             Notification(
                 id=f"ask:{ask.ask_id}",
@@ -175,6 +179,10 @@ def notifications_for(
                         f"mentioned {raw['kind']}"
                     ),
                     subtitle=raw.get("detail", ""),
+                    # Whose wellbeing this is about. Left unset the row arrived
+                    # with no name at all, which is the one kind of message
+                    # that must never be anonymous.
+                    from_name=by_id[member.narrator_id].display_name,
                     at=raw.get("raised_at", ""),
                     opens="member",
                     target=member.narrator_id,
@@ -183,11 +191,19 @@ def notifications_for(
             )
 
     # Unseen first, then newest. A concern outranks everything regardless.
-    def rank(n: Notification) -> tuple[int, int, str]:
+    #
+    # Two passes rather than one key, because the three fields do not sort in
+    # the same direction: newest means descending, and a single ascending key
+    # was quietly putting the oldest thing on top. It looked right while only
+    # one question could ever be listed. Python's sort is stable, so the
+    # second pass groups without disturbing the ordering the first pass set.
+    def group(n: Notification) -> tuple[int, int]:
         urgent = 0 if n.kind is NotificationKind.CONCERN else 1
-        return (urgent, 0 if not n.seen else 1, n.at)
+        return (urgent, 1 if n.seen else 0)
 
-    return sorted(out, key=rank, reverse=False)[:30]
+    out.sort(key=lambda n: n.at, reverse=True)
+    out.sort(key=group)
+    return out[:30]
 
 
 def unseen_count(notifications: list[Notification]) -> int:

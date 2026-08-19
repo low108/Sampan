@@ -260,3 +260,113 @@ class TestInstruction:
         )
 
         assert "why the shop closed" not in instruction
+
+
+class TestToolLogging:
+    """What the agent reached for, kept with the call.
+
+    The transcript records what it said; without this there is no record of
+    what it looked up before saying it, and a wrong answer mid-call is
+    unfalsifiable afterwards — a bad lookup and a good lookup badly used are
+    indistinguishable. Names alone were not enough: they cannot tell
+    `remember("Ah Seng")` from `remember("the coffee shop")`.
+    """
+
+    @staticmethod
+    def _part(**kw):
+        base = dict(
+            inline_data=None, text=None, function_call=None, function_response=None
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def _event(self, part):
+        return SimpleNamespace(content=SimpleNamespace(parts=[part]))
+
+    def test_a_call_carries_the_arguments_it_was_made_with(self) -> None:
+        event = self._event(
+            self._part(
+                function_call=SimpleNamespace(
+                    name="remember", args={"query": "Ah Seng"}
+                )
+            )
+        )
+
+        message = encode_event(event)
+
+        assert message == {
+            "tools": [{"name": "remember", "args": {"query": "Ah Seng"}}]
+        }
+
+    def test_a_result_is_summarised_rather_than_stored_whole(self) -> None:
+        event = self._event(
+            self._part(
+                function_response=SimpleNamespace(
+                    name="get_pending_ask",
+                    # The guidance channel rides back on every tool response
+                    # and is not part of what the agent looked up.
+                    response={
+                        "has_ask": True,
+                        "from_name": "Wei Lun",
+                        "_guidance": "keep turns short",
+                        "_turn_length": 2,
+                    },
+                )
+            )
+        )
+
+        message = encode_event(event)
+
+        assert message is not None
+        assert message["tool_results"] == [
+            {
+                "name": "get_pending_ask",
+                "result": {"has_ask": True, "from_name": "Wei Lun"},
+            }
+        ]
+
+    def test_an_unrecognised_result_records_its_shape_not_an_empty_object(self) -> None:
+        """Logging `{}` would read as "the tool returned nothing", a different
+        and far more alarming claim than "nothing was recognised"."""
+        from sampan.live import _summarise
+
+        summary = _summarise({"stories": [1, 2], "_guidance": "x"})
+
+        assert summary == {"keys": ["stories"]}
+
+    def test_the_log_keeps_both_halves_in_order_against_the_transcript(self) -> None:
+        from sampan.live import ToolLog
+
+        log = ToolLog()
+        events = [
+            self._event(
+                self._part(
+                    function_call=SimpleNamespace(name="get_pending_ask", args={})
+                )
+            ),
+            self._event(
+                self._part(
+                    function_response=SimpleNamespace(
+                        name="get_pending_ask", response={"has_ask": False}
+                    )
+                )
+            ),
+        ]
+        for turn, event in enumerate(events):
+            message = encode_event(event)
+            assert message is not None
+            log.observe(message, turn=turn)
+
+        assert [(c["turn"], c["phase"]) for c in log.as_records()] == [
+            (0, "call"),
+            (1, "result"),
+        ]
+        assert log.names() == ["get_pending_ask"]
+
+    def test_a_message_with_no_tools_leaves_the_log_alone(self) -> None:
+        from sampan.live import ToolLog
+
+        log = ToolLog()
+        log.observe({"user_transcript": "I grew up on the estate"}, turn=1)
+
+        assert log.as_records() == []

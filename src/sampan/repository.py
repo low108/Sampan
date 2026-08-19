@@ -10,6 +10,7 @@ inside a year of daily calls.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -321,20 +322,65 @@ class Repository:
         payload["created_at"] = ask.created_at or datetime.now(UTC).isoformat()
         self._store.put(self._scoped(ASKS, narrator_id), ask.ask_id, payload)
 
-    def pending_ask(self, narrator_id: str) -> Ask | None:
-        """The oldest undelivered question.
+    # Bookkeeping the Ask model deliberately does not carry: whether a question
+    # has been asked yet, and whether she picked it out of the queue herself.
+    _ASK_INTERNAL = ("delivered", "delivered_at", "chosen")
 
-        One per call by design: two would turn a conversation into an inbox.
-        """
-        undelivered = [
+    def _undelivered(self, narrator_id: str) -> list[dict[str, Any]]:
+        rows = [
             raw
             for raw in self._store.list(self._scoped(ASKS, narrator_id))
             if not raw.get("delivered")
         ]
-        if not undelivered:
+        rows.sort(key=lambda raw: raw.get("created_at") or "")
+        return rows
+
+    def _to_ask(self, raw: dict[str, Any]) -> Ask:
+        return Ask.model_validate(
+            {k: v for k, v in raw.items() if k not in self._ASK_INTERNAL}
+        )
+
+    def pending_asks(self, narrator_id: str) -> list[Ask]:
+        """Every undelivered question, oldest first.
+
+        The call only ever carries one of these (see `pending_ask`), but the
+        bell must show all of them. Showing one meant a second question queued
+        behind the first was invisible to everybody: the sender saw nothing
+        appear, and the person it was for had no idea anyone was waiting.
+        """
+        return [self._to_ask(raw) for raw in self._undelivered(narrator_id)]
+
+    def choose_ask(self, narrator_id: str, ask_id: str) -> bool:
+        """Put this question at the front, because she picked it.
+
+        Tapping "Wei Lun asked you something" and then hearing the agent ask
+        somebody else's question is the archive contradicting itself out loud.
+        The queue is still first-in-first-out; this is her overriding it, and
+        it is the only thing that can.
+        """
+        collection = self._scoped(ASKS, narrator_id)
+        found = False
+        for raw in self._undelivered(narrator_id):
+            wanted = raw.get("ask_id") == ask_id
+            found = found or wanted
+            if bool(raw.get("chosen")) == wanted:
+                continue
+            raw["chosen"] = wanted
+            self._store.put(collection, raw["ask_id"], raw)
+        return found
+
+    def pending_ask(self, narrator_id: str) -> Ask | None:
+        """The question this call will carry.
+
+        One per call by design: two would turn a conversation into an inbox.
+        The one she chose if she chose one, otherwise the one that has been
+        waiting longest. This is the delivery queue, not the notification list.
+        """
+        rows = self._undelivered(narrator_id)
+        if not rows:
             return None
-        oldest = min(undelivered, key=lambda raw: raw.get("created_at") or "")
-        return Ask.model_validate({k: v for k, v in oldest.items() if k != "delivered"})
+        chosen = next((raw for raw in rows if raw.get("chosen")), None)
+        return self._to_ask(chosen or rows[0])
 
     def mark_ask_delivered(self, narrator_id: str, ask_id: str) -> None:
         collection = self._scoped(ASKS, narrator_id)
@@ -343,6 +389,9 @@ class Repository:
             return
         raw["delivered"] = True
         raw["delivered_at"] = datetime.now(UTC).isoformat()
+        # A delivered question must not go on holding the front of the queue,
+        # or the next call would open on the one she has already answered.
+        raw["chosen"] = False
         self._store.put(collection, ask_id, raw)
 
     @staticmethod

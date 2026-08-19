@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 from sampan.archivist import StoryExtractor, ingest_conversation
 from sampan.companion import build_agent
@@ -138,17 +139,21 @@ def finish_call(
     narrator_id: str,
     fact_extractor: FactExtractor | None = None,
     judge: ContradictionJudge | None = None,
+    tool_calls: list[dict[str, Any]] | None = None,
 ) -> NarratorMemory | None:
     """Fold a finished call back into stored memory.
 
     Returns the updated memory, or None if the call was too short to extract
     anything from.
     """
+    # Saved before the length check, like the transcript: a call too short to
+    # extract from is exactly the one you want the tool record for.
     repository.save_conversation(
         narrator_id,
         prepared.conversation_id,
         transcript.render(),
         turns=len(transcript),
+        tool_calls=tool_calls or [],
     )
 
     for subject in prepared.memory.private_marks:

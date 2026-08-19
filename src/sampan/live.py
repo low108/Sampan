@@ -182,6 +182,51 @@ async def open_session(
     )
 
 
+# Tool responses carry the whole guidance channel back to the model -- the
+# affect knobs, the turn-length hint, the not-yet-spoken-of list. None of that
+# belongs in a log of what the agent looked up, and `remember` can return a
+# dozen facts, so the record keeps the shape and drops the bulk.
+_LOG_KEYS = ("has_ask", "from_name", "question", "found", "count", "saved", "ok")
+_MAX_SUMMARY = 200
+
+
+def _summarise(response: Any) -> dict[str, Any] | str:
+    """What a tool answered, small enough to keep for every call."""
+    if isinstance(response, dict):
+        kept = {k: v for k, v in response.items() if k in _LOG_KEYS}
+        # Nothing recognisable came back, so record the shape instead of
+        # silently logging an empty object as if the tool returned nothing.
+        if not kept:
+            return {"keys": sorted(k for k in response if not k.startswith("_"))[:8]}
+        return kept
+    return str(response)[:_MAX_SUMMARY]
+
+
+@dataclass
+class ToolLog:
+    """Every tool the agent reached for during one call, in order.
+
+    Built from the encoded messages rather than from ADK events, so it records
+    exactly what the browser was told and there is one thing to keep correct
+    instead of two. The turn number is the transcript position at the moment of
+    the call, which is what makes the log readable next to the transcript.
+    """
+
+    calls: list[dict[str, Any]] = field(default_factory=list)
+
+    def observe(self, message: dict[str, Any], *, turn: int) -> None:
+        for call in message.get("tools", ()):
+            self.calls.append({"turn": turn, "phase": "call", **call})
+        for result in message.get("tool_results", ()):
+            self.calls.append({"turn": turn, "phase": "result", **result})
+
+    def names(self) -> list[str]:
+        return [c["name"] for c in self.calls if c["phase"] == "call"]
+
+    def as_records(self) -> list[dict[str, Any]]:
+        return list(self.calls)
+
+
 def encode_event(event: Any) -> dict[str, Any] | None:
     """Translate one ADK event into something the browser can use.
 
@@ -199,11 +244,26 @@ def encode_event(event: Any) -> dict[str, Any] | None:
                 payload["sample_rate"] = OUTPUT_SAMPLE_RATE
             if getattr(part, "text", None):
                 payload["text"] = part.text
-            # Surfaced for the demo overlay: watching the agent reach for
-            # memory mid-sentence is the clearest evidence that it has any.
+            # Both halves of a tool call, kept apart.
+            #
+            # The reach and what came back are separate events, and the gap
+            # between them is the interesting part: it is the agent stopping
+            # mid-sentence to look something up. Names alone could not tell
+            # `remember("Ah Seng")` from `remember("the coffee shop")`, which
+            # made the emitted value useless for anything except a spinner.
             call = getattr(part, "function_call", None)
             if call is not None and getattr(call, "name", None):
-                payload.setdefault("tool_calls", []).append(call.name)
+                payload.setdefault("tools", []).append(
+                    {"name": call.name, "args": dict(getattr(call, "args", None) or {})}
+                )
+            reply = getattr(part, "function_response", None)
+            if reply is not None and getattr(reply, "name", None):
+                payload.setdefault("tool_results", []).append(
+                    {
+                        "name": reply.name,
+                        "result": _summarise(getattr(reply, "response", None)),
+                    }
+                )
 
     for flag in ("turn_complete", "interrupted"):
         if getattr(event, flag, None):
