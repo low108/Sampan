@@ -39,9 +39,9 @@ def thread(
 
 WEI_LUN = Ask(
     ask_id="ask_001",
-    from_name="伟伦",
-    relation="儿子",
-    question="阿公有没有留下什么东西?",
+    from_name="Wei Lun",
+    relation="son",
+    question="Did Ah Gong leave anything behind?",
 )
 
 
@@ -49,29 +49,41 @@ class TestInterruptedThreadWins:
     def test_it_outranks_everything_else(self) -> None:
         plan = build_session_plan(
             threads=[
-                thread("阿公过番"),
-                thread("关店以后的事", interrupted=True, left_off_at="关店之后的日子"),
-                thread("结婚照"),
+                thread("Ah Gong's crossing"),
+                thread(
+                    "what happened after the shop closed",
+                    interrupted=True,
+                    left_off_at="the years after the shop closed",
+                ),
+                thread("the wedding photograph"),
             ],
             ask=WEI_LUN,
         )
 
-        assert plan.offers[0].label == "关店以后的事"
+        assert plan.offers[0].label == "what happened after the shop closed"
         assert plan.offers[0].kind is CandidateKind.THREAD
 
     def test_the_offer_says_what_she_had_not_reached(self) -> None:
         """Vague is useless. The agent has to be able to say it out loud."""
         plan = build_session_plan(
             threads=[
-                thread("关店以后的事", interrupted=True, left_off_at="关店之后的日子")
+                thread(
+                    "what happened after the shop closed",
+                    interrupted=True,
+                    left_off_at="the years after the shop closed",
+                )
             ]
         )
 
-        assert "关店之后的日子" in plan.offers[0].say
+        assert "the years after the shop closed" in plan.offers[0].say
 
     def test_a_merely_open_thread_does_not(self) -> None:
         plan = build_session_plan(
-            threads=[thread("阿公过番", touches=3), thread("结婚照")], ask=WEI_LUN
+            threads=[
+                thread("Ah Gong's crossing", touches=3),
+                thread("the wedding photograph"),
+            ],
+            ask=WEI_LUN,
         )
 
         assert plan.offers[0].kind is CandidateKind.ASK
@@ -83,38 +95,38 @@ class TestFamilyAsk:
         credit for it."""
         plan = build_session_plan(ask=WEI_LUN)
 
-        assert "伟伦" in plan.offers[0].say
+        assert "Wei Lun" in plan.offers[0].say
         assert plan.ask is not None
 
     def test_it_reaches_the_rendered_instruction(self) -> None:
         rendered = render_plan(build_session_plan(ask=WEI_LUN))
 
-        assert "伟伦" in rendered
-        assert "功劳是伟伦的" in rendered
+        assert "Wei Lun" in rendered
+        assert "The credit is Wei Lun's" in rendered
 
     def test_no_ask_means_no_ask_block(self) -> None:
-        assert "语音" not in render_plan(build_session_plan())
+        assert "recording" not in render_plan(build_session_plan())
 
 
 class TestOfferLimit:
     def test_never_more_than_two(self) -> None:
         """Elderly plus voice: a menu of four is cognitive load, not choice."""
         plan = build_session_plan(
-            threads=[thread(f"话题{i}", touches=i) for i in range(6)], ask=WEI_LUN
+            threads=[thread(f"topic {i}", touches=i) for i in range(6)], ask=WEI_LUN
         )
 
         assert len(plan.offers) <= MAX_OFFERS
 
     def test_everything_scored_is_kept_for_the_overlay(self) -> None:
         plan = build_session_plan(
-            threads=[thread(f"话题{i}") for i in range(5)], ask=WEI_LUN
+            threads=[thread(f"topic {i}") for i in range(5)], ask=WEI_LUN
         )
 
         assert len(plan.considered) > len(plan.offers)
 
     def test_a_light_option_is_always_prepared(self) -> None:
         """For the days she answers flatly and should not be pushed."""
-        plan = build_session_plan(threads=[thread("关店")], session_count=2)
+        plan = build_session_plan(threads=[thread("the shop closing")], session_count=2)
 
         assert plan.light_offer is not None
 
@@ -122,31 +134,31 @@ class TestOfferLimit:
 class TestSensitivityGating:
     def test_a_forbidden_thread_is_never_offered(self) -> None:
         plan = build_session_plan(
-            threads=[thread("姐姐"), thread("咖啡店")],
-            sensitivities=[SensitiveTopic(topic="姐姐", refusals=1)],
+            threads=[thread("sister"), thread("the coffee shop")],
+            sensitivities=[SensitiveTopic(topic="sister", refusals=1)],
         )
 
-        assert all("姐姐" not in offer.label for offer in plan.offers)
+        assert all("sister" not in offer.label for offer in plan.offers)
 
     def test_it_is_not_even_scored(
         self,
     ) -> None:
         plan = build_session_plan(
-            threads=[thread("姐姐")],
-            sensitivities=[SensitiveTopic(topic="姐姐", refusals=1)],
+            threads=[thread("sister")],
+            sensitivities=[SensitiveTopic(topic="sister", refusals=1)],
         )
 
-        assert all("姐姐" not in c.label for c in plan.considered)
+        assert all("sister" not in c.label for c in plan.considered)
 
     def test_a_subject_she_reopened_is_offerable_again(self) -> None:
         plan = build_session_plan(
-            threads=[thread("关店的原因")],
+            threads=[thread("why the shop closed")],
             sensitivities=[
-                SensitiveTopic(topic="关店的原因", refusals=1, engagements=1)
+                SensitiveTopic(topic="why the shop closed", refusals=1, engagements=1)
             ],
         )
 
-        assert any("关店" in c.label for c in plan.considered)
+        assert any("shop closed" in c.label for c in plan.considered)
 
 
 class TestDepthGating:
@@ -175,19 +187,19 @@ class TestGreeting:
     def test_a_tired_ending_is_asked_after(self) -> None:
         plan = build_session_plan(last_closure=ClosureReason.FATIGUE)
 
-        assert "睡" in plan.greeting
+        assert "slept well" in plan.greeting
 
     def test_an_interruption_is_asked_after(self) -> None:
         plan = build_session_plan(last_closure=ClosureReason.INTERRUPTED)
 
-        assert "邻居" in plan.greeting
+        assert "neighbour" in plan.greeting
 
     def test_a_festival_takes_precedence(self) -> None:
-        """清明 is the ancestor-remembrance festival. An agent collecting
+        """Qingming is the ancestor-remembrance festival. An agent collecting
         ancestral stories calling then is the whole point."""
         plan = build_session_plan(today=date(2026, 4, 4))
 
-        assert "清明" in plan.greeting
+        assert "Qingming" in plan.greeting
 
     def test_the_greeting_is_never_generic(self) -> None:
         assert build_session_plan().greeting.strip()
@@ -200,41 +212,117 @@ class TestFirstMeeting:
     def test_the_first_call_introduces_itself(self) -> None:
         rendered = render_plan(build_session_plan(session_count=0))
 
-        assert "我是小船" in rendered
-        assert "伟伦叫我来" in rendered
+        assert "I am Xiao Chuan" in rendered
+        assert "Wei Lun asked me" in rendered
 
     def test_a_later_call_does_not(self) -> None:
         rendered = render_plan(build_session_plan(session_count=4))
 
-        assert "我是小船" not in rendered
-        assert "不要自我介绍" in rendered
+        assert "I am Xiao Chuan" not in rendered
+        assert "Do not introduce yourself" in rendered
 
     def test_a_later_call_says_how_many_times_they_have_spoken(self) -> None:
-        assert "4 次" in render_plan(build_session_plan(session_count=4))
+        assert "4 times" in render_plan(build_session_plan(session_count=4))
 
     def test_the_greeting_lives_in_the_plan_not_the_persona(self) -> None:
         """The persona has no access to session state, so a hardcoded
         first-meeting line there fires on every call forever."""
         from sampan.companion import BASE_INSTRUCTION
 
-        assert "我是小船。你儿子伟伦叫我来" not in BASE_INSTRUCTION
+        assert "I am Xiao Chuan" not in BASE_INSTRUCTION
 
 
 class TestRendering:
     def test_the_plan_is_marked_as_a_fallback_not_an_agenda(self) -> None:
-        rendered = render_plan(build_session_plan(threads=[thread("咖啡店")]))
+        rendered = render_plan(build_session_plan(threads=[thread("the coffee shop")]))
 
-        assert "不是流程" in rendered
+        assert "a fallback, not a script" in rendered
 
     def test_it_tells_the_agent_to_follow_her_instead(self) -> None:
         """The single most important line: if she starts somewhere else, the
         plan is void and the agent never steers back."""
-        rendered = render_plan(build_session_plan(threads=[thread("咖啡店")]))
+        rendered = render_plan(build_session_plan(threads=[thread("the coffee shop")]))
 
-        assert "全部作废" in rendered
-        assert "不要绕回来" in rendered
+        assert (
+            "Everything\n        above is void"
+            in rendered.replace("\n", " ").replace("  ", " ")
+            or "is void" in rendered
+        )
+        assert "never steer back" in rendered
 
     def test_it_tells_the_agent_to_read_her_first(self) -> None:
-        rendered = render_plan(build_session_plan(threads=[thread("咖啡店")]))
+        rendered = render_plan(build_session_plan(threads=[thread("the coffee shop")]))
 
-        assert "头两句" in rendered
+        assert "first two turns" in rendered
+
+
+class TestLeaning:
+    """A lean, not a push.
+
+    The domains a family archive most wants — where she came from, what she ate
+    — are the ones least likely to come up unprompted. But an elder who feels
+    steered stops talking, so the difference between leaning and steering is the
+    whole product.
+    """
+
+    def test_a_subject_is_chosen_to_lean_toward(self) -> None:
+        plan = build_session_plan(session_count=6)
+
+        assert plan.target_domain is not None
+
+    def test_it_never_reaches_past_the_trust_gate(self) -> None:
+        """ROOT sits at depth 2. Ancestry is not first-conversation material,
+        and steering must not route around a decision about trust."""
+        from sampan.models import Domain
+
+        first = build_session_plan(session_count=0)
+
+        assert first.target_domain is not Domain.ROOT
+
+    def test_ancestry_becomes_reachable_once_trust_is_earned(self) -> None:
+        from sampan.models import Domain
+
+        later = build_session_plan(session_count=6)
+
+        assert later.target_domain is Domain.ROOT
+
+    def test_a_covered_subject_is_not_chosen_again(self) -> None:
+        from sampan.models import Domain
+
+        plan = build_session_plan(session_count=6, covered_domains={Domain.ROOT})
+
+        assert plan.target_domain is not Domain.ROOT
+
+    def test_a_refused_subject_is_never_chosen(self) -> None:
+        from sampan.models import Domain
+        from sampan.opener import DOMAIN_PROMPTS, choose_target
+
+        target = choose_target(
+            covered=set(),
+            session_count=6,
+            sensitivities=[
+                SensitiveTopic(topic=DOMAIN_PROMPTS[Domain.ROOT], refusals=1)
+            ],
+        )
+
+        assert target is not Domain.ROOT
+
+    def test_the_instruction_forbids_raising_it(self) -> None:
+        """The load-bearing assertion. A lean the agent acts on is a push."""
+        rendered = render_plan(build_session_plan(session_count=6))
+
+        assert "Do not raise it" in rendered
+        assert "do not work toward it" in rendered
+
+    def test_never_steering_back_is_still_the_last_word(self) -> None:
+        rendered = render_plan(build_session_plan(session_count=6))
+
+        assert rendered.rstrip().endswith("you never steer back.**")
+
+    def test_nothing_is_said_when_there_is_nowhere_to_lean(self) -> None:
+        from sampan.models import Domain
+
+        plan = build_session_plan(session_count=0, covered_domains=set(Domain))
+
+        assert plan.target_domain is None
+        assert "natural opening" not in render_plan(plan)

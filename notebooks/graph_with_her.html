@@ -1,0 +1,172 @@
+
+<!doctype html>
+<meta charset="utf-8">
+<title>Everything joined to everything, through her</title>
+<body style="margin:0;height:100vh;overflow:hidden;background:#EDE4D6;
+             font-family:Georgia,serif;display:flex;flex-direction:column">
+
+  <div style="font:13px Georgia,serif;color:#241E1A;padding:10px 14px 2px;flex:none">
+    <b>Everything joined to everything, through her</b>
+    <span style="color:#8A7F76">
+      &nbsp;scroll to zoom &middot; drag the background to pan &middot; drag a node
+      to move it &middot; hover an edge for what she said &middot; click a node to
+      isolate it &middot; double-click to reset
+    </span>
+  </div>
+  <div id="g2e88091a-legend" style="font:11px Georgia,serif;padding:4px 14px 6px;
+       flex:none"></div>
+
+  <!-- flex:1 gives the graph the rest of the window. user-select:none is what
+       makes dragging work at all: without it the browser starts selecting the
+       label text as soon as the pointer moves. -->
+  <svg id="g2e88091a-svg" style="flex:1;width:100%;display:block;
+       user-select:none;-webkit-user-select:none;touch-action:none;
+       cursor:grab"></svg>
+
+  <div id="g2e88091a-tip" style="font:12px Georgia,serif;color:#4A403B;flex:none;
+       min-height:3.2em;padding:6px 14px 10px;border-top:1px solid #EADFCC"></div>
+
+<script>
+(function () {
+  // A <script src> injected through innerHTML does not block, so the drawing
+  // code cannot assume d3 exists yet. Load it and draw on the callback.
+  function start() {
+    if (window.d3 && window.d3.forceSimulation) { draw(); return; }
+    const tag = document.createElement("script");
+    tag.src = "https://d3js.org/d3.v7.min.js";
+    tag.onload = draw;
+    tag.onerror = function () {
+      document.getElementById("g2e88091a-tip").innerHTML =
+        "Could not load D3 from its CDN — the graph needs a network connection.";
+    };
+    document.head.appendChild(tag);
+  }
+
+  function draw() {
+  const data = {"nodes": [{"id": "ent_mother", "name": "Tan Ah Tai", "detail": "Cooked at the back of the shop. 1922-1998. Passed away. Tapped rubber before daylight and ", "degree": 5, "colour": "#9C3B24"}, {"id": "ent_45eb2e38a90a", "name": "salted fish fried rice", "detail": "Cooked by her mother a few times a week in the line house. Mother's dish cooked with plent", "degree": 3, "colour": "#9C3B24"}, {"id": "ent_8d49330021e2", "name": "Ah Chwee", "detail": "Childhood neighbour who played at the river with her; still lives in Sungai Siput and walk", "degree": 2, "colour": "#9C3B24"}, {"id": "ent_sungai_siput", "name": "Sungai Siput", "detail": "Where the rubber estate she grew up on was. The estate no longer exists. Rubber estate are", "degree": 2, "colour": "#9C3B24"}, {"id": "ent_father", "name": "Lim Ah Hock", "detail": "Tapped rubber, later opened the coffee shop on Jalan Bandar, Ipoh. 1918-1981. Passed away.", "degree": 4, "colour": "#9C3B24"}, {"id": "ent_4d4c55ae7efb", "name": "That shop", "detail": "Father's coffee shop with living quarters upstairs, closed in 1969", "degree": 3, "colour": "#9C3B24"}, {"id": "ent_8877d8dc7685", "name": "charcoal toast", "detail": "Bread toasted over charcoal fire and spread with butter by her father.", "degree": 2, "colour": "#9C3B24"}, {"id": "ent_husband", "name": "Tan Eng Huat", "detail": "Lorry driver. 1942-2015. Passed away. Lorry driver who visited the shop every day and marr", "degree": 2, "colour": "#9C3B24"}, {"id": "ent_208f5b0e6ccc", "name": "upstairs", "detail": "Where she stayed after marriage", "degree": 2, "colour": "#9C3B24"}, {"id": "ent_c74f6bde9565", "name": "Singer", "detail": "Black sewing machine used by mother at night; broken but kept.", "degree": 2, "colour": "#9C3B24"}, {"id": "ent_grandfather", "name": "Lim Cheong Hin", "detail": "From Yongchun, Fujian. Landed at Penang in 1928. She never met him. Came by boat from Yong", "degree": 2, "colour": "#9C3B24"}, {"id": "ent_d0e1ca30a753", "name": "Penang", "detail": "Port where grandfather landed after arriving by boat from China.", "degree": 2, "colour": "#9C3B24"}, {"id": "ent_acd3effbaac1", "name": "bread", "detail": "Toasted over charcoal every morning at 5 AM and thrown away when no customers came", "degree": 2, "colour": "#9C3B24"}, {"id": "narrator", "name": "Ah Khim", "detail": "", "degree": 13, "colour": "#9C3B24"}], "links": [{"source": "ent_mother", "target": "ent_45eb2e38a90a", "statement": "Her mother cooked salted fish fried rice a few times a week.", "quote": "My mother cook salted fish fried rice, few times a week."}, {"source": "ent_8d49330021e2", "target": "ent_sungai_siput", "statement": "Ah Chwee still lives in Sungai Siput.", "quote": "Still there, still in Sungai Siput."}, {"source": "ent_father", "target": "ent_4d4c55ae7efb", "statement": "Her father opened and operated a coffee shop at Jalan Bandar in Ipoh.", "quote": "Later he saved a bit of money, nineteen fifty-eight he opened a coffee shop in Ipoh, at Jalan Bandar."}, {"source": "ent_father", "target": "ent_8877d8dc7685", "statement": "Her father prepared charcoal-toasted bread spread with butter at the coffee shop.", "quote": "My father toast the bread, charcoal fire one, spread butter \u2014 that smell\u2026 now you cannot get that kind already."}, {"source": "ent_mother", "target": "ent_4d4c55ae7efb", "statement": "Her mother cooked at the back of the coffee shop.", "quote": "My mother cook at the back."}, {"source": "ent_husband", "target": "ent_208f5b0e6ccc", "statement": "Her husband lived upstairs above the shop at Jalan Bandar for over ten years after marrying.", "quote": "Moved upstairs at Jalan Bandar. Above the shop. We stayed there more than ten years."}, {"source": "ent_mother", "target": "ent_45eb2e38a90a", "statement": "Her mother made salted fish fried rice.", "quote": "My mother's salted fish fried rice."}, {"source": "ent_mother", "target": "ent_c74f6bde9565", "statement": "Her mother owned a black Singer sewing machine to sew clothes for people at night.", "quote": "Singer one, black. Last time at night she sew clothes for people, earn a bit."}, {"source": "ent_grandfather", "target": "ent_d0e1ca30a753", "statement": "Her grandfather travelled by boat and landed at Penang.", "quote": "Came by boat, landed at Penang."}, {"source": "ent_father", "target": "ent_acd3effbaac1", "statement": "Her father toasted bread over charcoal at five in the morning at the shop.", "quote": "My father still got up at five every day, start the charcoal, toast the bread \u2014 nobody eat."}, {"source": "narrator", "target": "ent_208f5b0e6ccc", "statement": "she is connected to upstairs", "quote": ""}, {"source": "narrator", "target": "ent_45eb2e38a90a", "statement": "she is connected to salted fish fried rice", "quote": ""}, {"source": "narrator", "target": "ent_4d4c55ae7efb", "statement": "she is connected to That shop", "quote": ""}, {"source": "narrator", "target": "ent_8877d8dc7685", "statement": "she is connected to charcoal toast", "quote": ""}, {"source": "narrator", "target": "ent_8d49330021e2", "statement": "she is connected to Ah Chwee", "quote": ""}, {"source": "narrator", "target": "ent_acd3effbaac1", "statement": "she is connected to bread", "quote": ""}, {"source": "narrator", "target": "ent_c74f6bde9565", "statement": "she is connected to Singer", "quote": ""}, {"source": "narrator", "target": "ent_d0e1ca30a753", "statement": "she is connected to Penang", "quote": ""}, {"source": "narrator", "target": "ent_father", "statement": "she is connected to Lim Ah Hock", "quote": ""}, {"source": "narrator", "target": "ent_grandfather", "statement": "she is connected to Lim Cheong Hin", "quote": ""}, {"source": "narrator", "target": "ent_husband", "statement": "she is connected to Tan Eng Huat", "quote": ""}, {"source": "narrator", "target": "ent_mother", "statement": "she is connected to Tan Ah Tai", "quote": ""}, {"source": "narrator", "target": "ent_sungai_siput", "statement": "she is connected to Sungai Siput", "quote": ""}], "legend": [{"colour": "#9C3B24", "label": "upstairs, salted fish fried rice, That shop\u2026"}]};
+  const root = document.getElementById("g2e88091a-svg");
+  const tip = document.getElementById("g2e88091a-tip");
+  const svg = d3.select(root);
+
+  function size() {
+    const box = root.getBoundingClientRect();
+    return [box.width || 900, box.height || 600];
+  }
+  let [width, height] = size();
+
+  // Everything is drawn inside this group, so panning and zooming is a single
+  // transform on it rather than moving every node.
+  const view = svg.append("g");
+
+  const legend = d3.select("#g2e88091a-legend");
+  data.legend.forEach(function (entry) {
+    legend.append("span")
+      .style("margin-right", "16px")
+      .html('<span style="display:inline-block;width:9px;height:9px;'
+            + 'border-radius:9px;background:' + entry.colour
+            + ';margin-right:5px"></span>' + entry.label);
+  });
+
+  const link = view.append("g").selectAll("line").data(data.links).join("line")
+    .attr("stroke", "#C9BCA6").attr("stroke-width", 1.6)
+    .on("mouseover", function (event, d) {
+      d3.select(this).attr("stroke", "#9C3B24").attr("stroke-width", 3);
+      // Only claim she said something when there is a sentence to show. An
+      // edge without a quote is one this notebook constructed, not one the
+      // archive would ever assert.
+      tip.innerHTML = "<b>" + d.statement + "</b>"
+        + (d.quote
+            ? "<br><i>she said: &ldquo;" + d.quote + "&rdquo;</i>"
+            : "<br><i style='color:#8A7F76'>added to show the shape of the "
+              + "full archive &mdash; not something she said</i>");
+    })
+    .on("mouseout", function () {
+      d3.select(this).attr("stroke", "#C9BCA6").attr("stroke-width", 1.6);
+    });
+
+  const node = view.append("g").selectAll("circle").data(data.nodes).join("circle")
+    .attr("r", function (d) { return 6 + Math.min(d.degree, 8) * 1.7; })
+    .attr("fill", function (d) { return d.colour; })
+    .attr("stroke", "#FFFCF5").attr("stroke-width", 2)
+    .style("cursor", "pointer")
+    .on("mouseover", function (event, d) {
+      tip.innerHTML = "<b>" + d.name + "</b> &mdash; " + d.degree
+                    + " connection(s)" + (d.detail ? "<br>" + d.detail : "");
+    })
+    .on("click", function (event, d) {
+      event.stopPropagation();
+      const near = new Set([d.id]);
+      data.links.forEach(function (l) {
+        const a = l.source.id || l.source, b = l.target.id || l.target;
+        if (a === d.id) near.add(b);
+        if (b === d.id) near.add(a);
+      });
+      node.attr("opacity", function (n) { return near.has(n.id) ? 1 : 0.12; });
+      label.attr("opacity", function (n) { return near.has(n.id) ? 1 : 0.12; });
+      link.attr("opacity", function (l) {
+        const a = l.source.id || l.source, b = l.target.id || l.target;
+        return (a === d.id || b === d.id) ? 1 : 0.06;
+      });
+    })
+    .call(d3.drag()
+      .on("start", function (event, d) {
+        if (!event.active) sim.alphaTarget(0.3).restart();
+        d.fx = d.x; d.fy = d.y;
+        root.style.cursor = "grabbing";
+      })
+      .on("drag", function (event, d) { d.fx = event.x; d.fy = event.y; })
+      .on("end", function (event, d) {
+        if (!event.active) sim.alphaTarget(0);
+        // fx/fy are left set on purpose, so a node stays where it was put.
+        root.style.cursor = "grab";
+      }));
+
+  const label = view.append("g").selectAll("text").data(data.nodes).join("text")
+    .text(function (d) { return d.name; })
+    .attr("font-family", "Georgia, serif").attr("font-size", 11)
+    .attr("fill", "#241E1A").attr("text-anchor", "middle").attr("dy", -13)
+    .style("pointer-events", "none");
+
+  // Pan and zoom the whole canvas. d3.drag on the nodes stops propagation, so
+  // dragging a node never pans the background by accident.
+  const zoom = d3.zoom().scaleExtent([0.2, 4]).on("zoom", function (event) {
+    view.attr("transform", event.transform);
+  });
+  svg.call(zoom).on("dblclick.zoom", null);
+
+  svg.on("dblclick", function () {
+    data.nodes.forEach(function (n) { n.fx = null; n.fy = null; });
+    node.attr("opacity", 1); label.attr("opacity", 1); link.attr("opacity", 1);
+    tip.innerHTML = "";
+    svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity);
+    sim.alpha(0.6).restart();
+  });
+
+  const sim = d3.forceSimulation(data.nodes)
+    .force("link", d3.forceLink(data.links).id(function (d) { return d.id; })
+                     .distance(110).strength(0.45))
+    .force("charge", d3.forceManyBody().strength(-520))
+    .force("center", d3.forceCenter(width / 2, height / 2))
+    .force("collide", d3.forceCollide().radius(38))
+    .on("tick", function () {
+      link.attr("x1", function (d) { return d.source.x; })
+          .attr("y1", function (d) { return d.source.y; })
+          .attr("x2", function (d) { return d.target.x; })
+          .attr("y2", function (d) { return d.target.y; });
+      node.attr("cx", function (d) { return d.x; })
+          .attr("cy", function (d) { return d.y; });
+      label.attr("x", function (d) { return d.x; })
+           .attr("y", function (d) { return d.y; });
+    });
+
+  window.addEventListener("resize", function () {
+    const next = size();
+    width = next[0]; height = next[1];
+    sim.force("center", d3.forceCenter(width / 2, height / 2));
+    sim.alpha(0.3).restart();
+  });
+  }
+
+  start();
+})();
+</script>

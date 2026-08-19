@@ -10,3 +10,7 @@ __pycache__/
 
 google-cloud-sdk/
 .DS_Store
+
+# Front-end dependencies
+web/node_modules/
+web/src/node_modules/

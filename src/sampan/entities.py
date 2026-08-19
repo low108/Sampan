@@ -1,6 +1,7 @@
 """Entity resolution.
 
-She says 「我姐姐」 in session 1, 「阿姐」 in session 3 and 「林秀珠」 in session 8,
+She says "my sister" in session 1, "my elder sister" in session 3 and
+"Siew Choo" in session 8,
 and means one person. Getting that wrong shows up as a duplicated pin on the
 family map and as an agent that asks about someone it has already been told is
 dead.
@@ -82,7 +83,7 @@ def _match_by_alias(mention: EntityMention, pool: list[Entity]) -> Entity | None
 def _match_by_kin_role(mention: EntityMention, pool: list[Entity]) -> Entity | None:
     """Kin terms resolve against the family intake with high confidence.
 
-    Only unique matches count: two sisters mean 「我姐姐」 is ambiguous and
+    Only unique matches count: two sisters mean "my sister" is ambiguous and
     belongs in the tiebreaker.
     """
     if mention.type is not EntityType.PERSON:
@@ -95,7 +96,7 @@ def _match_by_kin_role(mention: EntityMention, pool: list[Entity]) -> Entity | N
 
 
 def _match_by_containment(mention: EntityMention, pool: list[Entity]) -> Entity | None:
-    """怡保 matches 怡保板底街. Only when exactly one candidate contains or is
+    """Ipoh matches Jalan Bandar, Ipoh. Only when exactly one candidate contains or is
     contained by the mention, and only for places."""
     if mention.type is not EntityType.PLACE:
         return None

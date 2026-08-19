@@ -1,10 +1,11 @@
 """What the family sends in: questions, and fixes.
 
 Both are feedback capture, and the second is the more interesting one. The
-agent learns from her silently, but it cannot learn that 「我姐姐」 is called
-林秀珠 unless someone tells it — and the person who knows is her son, reading
-the archive at his desk. A correction is therefore not an edit to one story; it
-is a fact entering the graph, and later stories get it right because of it.
+agent learns from her silently, but it cannot learn that "my sister" is
+called Lim Siew Choo unless someone tells it — and the person who knows is
+her son, reading the archive at his desk. A correction is therefore not an
+edit to one story; it is a fact entering the graph, and later stories get
+it right because of it.
 """
 
 from __future__ import annotations
@@ -65,9 +66,9 @@ def apply_correction(
                 "display_name": correction.value,
                 "precision": "exact",
                 "confidence": 1.0,
-                "note": f"由家人确认 ({correction.by})"
+                "note": f"confirmed by family ({correction.by})"
                 if correction.by
-                else "由家人确认",
+                else "confirmed by family",
             },
         )
         return CorrectionResult(applied=True)
@@ -78,7 +79,7 @@ def apply_correction(
 
     if correction.kind is CorrectionKind.ENTITY_NAME:
         # The name she used is kept as an alias. Her son may rename the entity
-        # to 林秀珠, but she will go on saying 「我姐姐」 and the archive has to
+        # to Lim Siew Choo, but she will go on saying "my sister" and the archive
         # keep understanding her.
         previous = target.canonical_name
         if previous and previous not in target.aliases:

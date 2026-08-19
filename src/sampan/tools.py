@@ -15,17 +15,18 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from sampan.affect import policy
+from sampan.facts import Fact
 from sampan.models import (
     AffectState,
     Ask,
     Entity,
     Preference,
     PreferenceObservation,
-    PreferenceType,
     SensitiveTopic,
     Thread,
 )
 from sampan.preferences import may_raise
+from sampan.retrieval import FactGraph, search_facts
 from sampan.threads import rank_for_opener
 
 
@@ -42,6 +43,16 @@ class CallMemory:
     sensitivities: list[SensitiveTopic] = field(default_factory=list)
     ask: Ask | None = None
     affect: AffectState = field(default_factory=AffectState)
+    # The edges of the graph, loaded before the call. Retrieval reads these.
+    facts: list[Fact] = field(default_factory=list)
+    # One subject the call may lean toward, carried from the session plan. It
+    # rides on tool responses because that is the only channel reaching the
+    # agent mid-call without her hearing it.
+    target_domain: str = ""
+    # Entities named so far in *this* conversation. They seed the graph
+    # traversal, which is how agent-initiated retrieval still reflects where
+    # the conversation already is -- nothing can be injected per turn.
+    mentioned: list[str] = field(default_factory=list)
 
     # Collected during the call, folded in afterwards.
     noted_preferences: list[PreferenceObservation] = field(default_factory=list)
@@ -68,6 +79,10 @@ def _with_guidance(memory: CallMemory, payload: dict[str, Any]) -> dict[str, Any
     knobs = policy(memory.affect)
     payload["_guidance"] = knobs.guidance
     payload["_turn_length"] = knobs.turn_length
+    if memory.target_domain:
+        # Phrased as an observation, never a request. The agent is told where
+        # she has not been, not where to take her.
+        payload["_not_yet_spoken_of"] = memory.target_domain
     return payload
 
 
@@ -75,9 +90,9 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
     """Bind the Companion's tools to one call."""
 
     def get_pending_ask() -> dict[str, Any]:
-        """看看有没有家人留话给阿嬷。开场的时候用。
+        """Check whether family left a question for her. Use at the start.
 
-        一定要讲出是谁问的。功劳是家人的,不是你的。
+        Always say who asked. The credit is theirs, not yours.
         """
         if memory.ask is None:
             return _with_guidance(memory, {"has_ask": False})
@@ -89,130 +104,91 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
                 "from_name": memory.ask.from_name,
                 "relation": memory.ask.relation,
                 "question": memory.ask.question,
-                "say_it_like": f"{memory.ask.from_name}问:{memory.ask.question}",
+                "say_it_like": f"{memory.ask.from_name} asked: {memory.ask.question}",
             },
         )
 
-    def get_open_threads() -> dict[str, Any]:
-        """上次讲到一半、还没讲完的事,按该先讲哪个排好。"""
-        ranked = [
-            {
-                "topic": t.topic,
-                "left_off_at": t.left_off_at,
-                "was_interrupted": t.interrupted,
-            }
-            for t in rank_for_opener(memory.threads)
-            if may_raise(t.topic, memory.sensitivities)
-        ]
-        return _with_guidance(memory, {"threads": ranked[:5]})
+    def remember(query: str) -> dict[str, Any]:
+        """Look up what is known about a person, place or thing she mentioned.
 
-    def recall(query: str) -> dict[str, Any]:
-        """查一查阿嬷以前讲过的人、地方、东西。
+        Use it when she refers to something she has spoken about before and you
+        need to know what was already said. If nothing comes back, say so --
+        do not pretend to remember.
 
         Args:
-            query: 要找的人名、地名或东西,例如「阿水」「板底街」。
+            query: the name to look for, e.g. "Ah Chwee", "Jalan Bandar".
         """
         needle = query.strip()
-        hits = [
-            {"name": e.canonical_name, "type": e.type.value, "detail": e.detail}
-            for e in memory.entities
-            if needle
-            and (
-                needle in e.canonical_name
-                or any(needle in alias for alias in e.aliases)
-                or needle in e.detail
+        if not needle:
+            return _with_guidance(
+                memory, {"known": [], "she_said": [], "unfinished": []}
             )
+
+        # Seeds are the thing asked about plus everyone already named in this
+        # call, so the same query answers differently depending on where the
+        # conversation has been.
+        matched = [
+            e.entity_id
+            for e in memory.entities
+            if e.merged_into is None and e.knows(needle)
+        ] or [
+            e.entity_id
+            for e in memory.entities
+            if e.merged_into is None and needle.lower() in e.canonical_name.lower()
         ]
-        # Extracted records lose sequence, context and affect, so the graph is
-        # only an index — her own words are the thing worth reaching.
+        seeds = list(dict.fromkeys([*matched, *memory.mentioned]))
+
+        facts = search_facts(
+            needle, FactGraph(facts=memory.facts, entities=memory.entities), seeds=seeds
+        )
+
+        # The graph is an index. Her own words are the thing worth reaching --
+        # extracted records lose sequence, context and affect.
         said = (
             memory.search_transcripts(needle)
-            if needle and memory.search_transcripts is not None
+            if memory.search_transcripts is not None
             else []
         )
-        return _with_guidance(memory, {"found": hits[:5], "she_said": said})
 
-    def note_preference(kind: str, value: str) -> dict[str, Any]:
-        """记下阿嬷喜欢怎样被对待。**不要讲出来**,记下就好。
-
-        Args:
-            kind: hearing / pace / session_length / best_time /
-                question_style / silence_tolerance / topic_favourite /
-                listen_talk_ratio 其中一个。
-            value: 短短一句,例如「左耳不好」。
-        """
-        try:
-            preference_type = PreferenceType(kind)
-        except ValueError:
-            return _with_guidance(memory, {"recorded": False, "reason": "unknown kind"})
-        memory.noted_preferences.append(
-            PreferenceObservation(type=preference_type, value=value, confidence=0.7)
-        )
-        return _with_guidance(memory, {"recorded": True})
-
-    def save_fragment(topic: str, detail: str) -> dict[str, Any]:
-        """把她刚讲的一小段先记下来,免得漏掉。
-
-        Args:
-            topic: 短短一个标题。
-            detail: 她讲了什么,用她的话。
-        """
-        memory.fragments.append({"topic": topic, "detail": detail})
-        return _with_guidance(memory, {"saved": True})
-
-    def mark_private(topic: str) -> dict[str, Any]:
-        """阿嬷说这件事不要给家里人看的时候用。
-
-        她讲了就照做,不要问为什么,也不要劝她。
-
-        Args:
-            topic: 她指的是哪一件事。
-        """
-        memory.private_marks.append(topic)
-        return _with_guidance(
-            memory, {"private": True, "tell_her": "好,这个我不写进去。"}
-        )
-
-    def what_do_you_remember(about: str = "") -> dict[str, Any]:
-        """阿嬷问「你记得我什么?」的时候用。老实讲,不要多讲也不要少讲。
-
-        她有权知道你记住了她什么。讲的时候用平常话,不要念清单。
-
-        Args:
-            about: 她specifically问哪一方面,例如「我姐姐」。整体就留空。
-        """
-        needle = about.strip()
-        people = [
-            e.canonical_name
-            for e in memory.entities
-            if e.type.value == "person" and (not needle or needle in e.canonical_name)
-        ]
-        places = [
-            e.canonical_name
-            for e in memory.entities
-            if e.type.value == "place" and (not needle or needle in e.canonical_name)
-        ]
         unfinished = [
-            t.topic for t in memory.threads if not needle or needle in t.topic
+            t.topic
+            for t in rank_for_opener(memory.threads)
+            if may_raise(t.topic, memory.sensitivities)
+            and (needle.lower() in t.topic.lower() or not facts)
         ]
+
+        if needle not in memory.mentioned:
+            memory.mentioned.append(needle)
+
         return _with_guidance(
             memory,
             {
-                "people": people[:8],
-                "places": places[:8],
-                "unfinished": unfinished[:5],
-                "how_you_talk_to_her": [p.value for p in memory.preferences],
-                "tell_her": ("照实讲。她想删掉哪一样,就用 forget_this,不要劝她留着。"),
+                "known": [{"fact": f.render(), "she_said": f.quote} for f in facts],
+                "she_said": said,
+                "unfinished": unfinished[:3],
             },
         )
 
-    def forget_this(subject: str) -> dict[str, Any]:
-        """阿嬷说「这个不要记」「把它忘掉」的时候用。
+    def mark_private(topic: str) -> dict[str, Any]:
+        """Use when she says something should not be shown to the family.
 
-        她讲了就照做。不要问为什么,不要劝她,也不要解释你为什么留着。
+        Do it. Do not ask why, and do not talk her out of it.
 
         Args:
-            subject: 她要你忘掉的那件事、那个人,用她的话。
+            topic: which thing she means.
+        """
+        memory.private_marks.append(topic)
+        return _with_guidance(
+            memory, {"private": True, "tell_her": "Alright, I won't write that down."}
+        )
+
+    def forget_this(subject: str) -> dict[str, Any]:
+        """Use when she says "don't keep that" or "forget it".
+
+        Do it. Do not ask why, do not argue, do not explain why you kept it.
+
+        Args:
+            subject: what she wants forgotten, in her words.
         """
         memory.forget_requests.append(subject)
         done = False
@@ -226,18 +202,24 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
             memory,
             {
                 "forgotten": done,
-                "tell_her": ("好,我把它拿掉了。" if done else "好,我记住不要再提。"),
+                "tell_her": (
+                    "Alright, I have taken it out."
+                    if done
+                    else "Alright, I won't bring it up again."
+                ),
             },
         )
 
     def flag_concern(kind: str, detail: str) -> dict[str, Any]:
-        """阿嬷讲到跌倒、胸口痛、喘不过气、或者活着没意思的时候用。
+        """Use when she mentions a fall, chest pain, breathlessness, or that life
+        is not worth living.
 
-        用了之后要老实告诉她你会让家人知道 —— 不要瞒着她。
+        Afterwards tell her honestly that you are letting her family know.
+        Never do it behind her back.
 
         Args:
             kind: fall / pain / breathing / hopelessness / confusion / other
-            detail: 她讲了什么。
+            detail: what she said.
         """
         memory.concerns.append({"kind": kind, "detail": detail})
         delivered = False
@@ -254,22 +236,23 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
             {
                 "family_notified": delivered,
                 "tell_her": (
-                    "阿嬷,这个我记下来了,让伟伦看到。"
+                    "Ah Ma, I have noted this down so Wei Lun will see it."
                     if delivered
-                    else "阿嬷,这个我记下来了。"
+                    else "Ah Ma, I have noted this down."
                 ),
                 "stay_on_the_line": True,
             },
         )
 
+    # Five, down from nine. `recall`, `get_open_threads` and
+    # `what_do_you_remember` are one `remember` call now; `note_preference` and
+    # `save_fragment` are gone because the Archivist infers both from the
+    # transcript afterwards, and it does so better than an agent noticing
+    # mid-conversation while trying to listen.
     return [
         get_pending_ask,
-        get_open_threads,
-        recall,
-        note_preference,
-        save_fragment,
+        remember,
         mark_private,
-        what_do_you_remember,
         forget_this,
         flag_concern,
     ]

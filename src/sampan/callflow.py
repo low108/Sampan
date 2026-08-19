@@ -10,10 +10,13 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 from sampan.archivist import StoryExtractor, ingest_conversation
 from sampan.companion import build_agent
 from sampan.config import Settings
+from sampan.contradiction import ContradictionJudge, reconcile
+from sampan.fact_extraction import FactExtractor, build_facts
 from sampan.opener import build_session_plan, render_plan
 from sampan.preferences import fold_preferences
 from sampan.repository import NarratorMemory, Repository
@@ -81,6 +84,9 @@ def prepare_call(
         preferences=stored.preferences,
         sensitivities=stored.sensitivities,
         ask=ask,
+        # Only what the archive currently believes. Superseded facts stay in
+        # the store because she said them, but the agent must not speak them.
+        facts=repository.load_facts(narrator_id),
     )
 
     def deliver_concern(kind: str, detail: str) -> None:
@@ -103,6 +109,8 @@ def prepare_call(
         session_count=stored.session_count,
         last_closure=stored.last_closure,
     )
+
+    memory.target_domain = plan.target_domain.value if plan.target_domain else ""
 
     agent = build_agent(
         settings,
@@ -129,27 +137,38 @@ def finish_call(
     transcript: Transcript,
     *,
     narrator_id: str,
+    fact_extractor: FactExtractor | None = None,
+    judge: ContradictionJudge | None = None,
+    tool_calls: list[dict[str, Any]] | None = None,
 ) -> NarratorMemory | None:
     """Fold a finished call back into stored memory.
 
     Returns the updated memory, or None if the call was too short to extract
     anything from.
     """
+    # Saved before the length check, like the transcript: a call too short to
+    # extract from is exactly the one you want the tool record for.
     repository.save_conversation(
         narrator_id,
         prepared.conversation_id,
         transcript.render(),
         turns=len(transcript),
+        tool_calls=tool_calls or [],
     )
 
     for subject in prepared.memory.private_marks:
         repository.mark_private(narrator_id, subject)
 
+    if len(transcript) < MIN_TURNS_TO_EXTRACT:
+        # The question is *not* consumed here. A call this short is a misdial,
+        # a wrong moment, or a phone put down -- she may have heard his question
+        # read out and had no chance to answer it. Burning it would tell Wei Lun
+        # it had been delivered and leave her never asked again.
+        return None
+
+    # Consumed only by a call that was long enough to be a real exchange.
     if prepared.memory.ask_delivered and prepared.memory.ask is not None:
         repository.mark_ask_delivered(narrator_id, prepared.memory.ask.ask_id)
-
-    if len(transcript) < MIN_TURNS_TO_EXTRACT:
-        return None
 
     outcome = ingest_conversation(
         transcript.render(),
@@ -184,4 +203,32 @@ def finish_call(
     repository.save_memory(updated)
     repository.save_entities(narrator_id, outcome.entities)
     repository.save_stories(narrator_id, prepared.conversation_id, outcome.stories)
+
+    # Facts are a second pass with its own schema, deliberately not another
+    # field on the story extraction: a schema is part of the prompt, and one
+    # carrying fields its instructions do not govern gets those fields filled.
+    # Optional, so a call still folds in cleanly without it.
+    if fact_extractor is not None:
+        rendered = transcript.render()
+        extracted = build_facts(
+            fact_extractor.extract(rendered, outcome.entities),
+            transcript=rendered,
+            known_entities=outcome.entities,
+            episode_id=prepared.conversation_id,
+        )
+        if judge is not None:
+            # A later telling retires an earlier assertion; it never deletes
+            # it, and where the disagreement is about her account rather than
+            # about the world, valid time is left alone. Disputes come back as
+            # questions for the next call, because which telling is right is
+            # hers to settle.
+            extracted, disputes = reconcile(
+                extracted, repository.load_facts(narrator_id), judge
+            )
+            for dispute in disputes:
+                repository.raise_concern(
+                    narrator_id, "contradiction", dispute, prepared.conversation_id
+                )
+        repository.save_facts(narrator_id, extracted)
+
     return updated

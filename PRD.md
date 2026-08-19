@@ -74,7 +74,7 @@ for reminiscence with a durable artifact as the by-product.
 
 ### Primary — the elder ("Ah Khim", 80, Ipoh)
 
-Speaks Mandarin, mixes in English and Malay words. Android phone; uses WhatsApp voice notes,
+Speaks Malaysian English, mixes in Malay words. Android phone; uses WhatsApp voice notes,
 avoids typing. Occasionally tired, hard of hearing on one side. Wants to be heard. Talks most
 freely about her childhood, food, and the people who are gone.
 **Will not log in, will not navigate menus, will not read small text.**
@@ -87,7 +87,7 @@ intake, curates and corrects the archive.
 
 ### Tertiary — the grandchild ("Xin Yi", 19)
 
-Doesn't read Chinese. Loves her grandmother, has nothing to talk to her about. Uses the map to
+Never learned the dialect her grandmother grew up in. Loves her, has nothing to talk to her about. Uses the map to
 find something to ask at the next family dinner.
 
 **Design consequence.** The elder is who the product is built *for*. The family is both the
@@ -145,14 +145,14 @@ Every arrow is P0.
 
 ### P0 — must ship by 1 Sept
 
-- Companion agent on Gemini Live API, Mandarin/English, with tools
+- Companion agent on Gemini Live API, Malaysian English, with tools
 - **Full prosodic affect monitor** (audio forked at WebSocket ingress)
 - Archivist: post-call extraction → stories + entities, one structured call
 - Memory: open threads, preferences, semantic facts, session opener logic
 - Family ask + 10-second voice note
 - Web frontend, two routes: `/talk` and `/family` (served locally)
 - Map with pins; timeline generated on demand per narrator
-- Bilingual letter per pinned story
+- Letter per pinned story
 - Firestore; backend on Cloud Run
 - Four synthetic seed sessions run through the real pipeline
 
@@ -205,8 +205,7 @@ asks arrive as a notification; tapping opens an in-app call screen (see §9.4 fo
 not a true incoming call).
 
 **Tab 2 — Map.** Her own stories, large cards, tappable pins, her own voice on playback. The
-agent also surfaces individual cards conversationally at the end of a good call: *"我记下来了,
-要不要我念给你听?"*
+agent also surfaces individual cards conversationally at the end of a good call: *"I wrote that down. Want me to read it back to you?"*
 
 **Tab 3 — Family.** Photos and names of family members. Tap a face to record a voice note back
 (P1). Same component as the child's ask, reversed.
@@ -230,7 +229,7 @@ contrast, no horizontal scrolling, no carousels, no hamburger menus. Full WCAG A
 ### 7.3 Call flow — P0
 
 1. **Open with the family voice note** if one is pending, attributed by name
-2. **Greet with one specific small thing** — the weather, a festival, *"上次聊完你有没有睡好?"*.
+2. **Greet with one specific small thing** — the weather, a festival, *"Did you sleep well after we talked last time?"*.
    Never a generic opener
 3. **Read affect silently over the first two turns.** Offer nothing yet
 4. **Gate on that reading.** Low energy → one light option or just listen. Ended sad last time →
@@ -257,7 +256,7 @@ Hardship, Loss and Regret require earned trust (3+ good sessions, or the elder r
 
 > **Only ask what a curious grandchild would ask. Never ask what only a database would want.**
 
-*"那是在哪里?"* and *"你那时候几岁?"* are things a real listener says. *"Can you specify the
+*"Where was that?"* and *"How old were you then?"* are things a real listener says. *"Can you specify the
 year?"* is not. **Budget: maximum two clarifying probes per call**, never in the first three
 minutes, never while engagement is high.
 
@@ -289,7 +288,7 @@ the monitor rather than replacing it.
 |---|---|
 | Prosodic | speech rate vs. personal baseline, volume drop, pitch flattening, tremor, sighs |
 | Temporal | response latency, intra-turn pauses, **turn-length trend**, silence frequency |
-| Lexical | closers ("好啦", "anyway"), deflection, "我讲过了", repetition |
+| Lexical | closers ("okay lah", "anyway"), deflection, "I told you already", repetition |
 | Interactional | barge-ins, non-answers, questions bounced back, refusal to elaborate |
 | Contextual | minutes elapsed, time of day, baseline, how the last 3 calls ended, anniversary proximity |
 
@@ -317,10 +316,10 @@ layer — "talking slowly" only means something relative to this person.
 | Withdrawing from a topic | Distinguish topic from call. Pivot once to a safe topic; withdraw again → close. Log to sensitivity list |
 | Sad / grieving | Do not cheer up, do not pivot away. Slow down, raise silence tolerance, reflect back. Sadness while engaged is not a problem to fix |
 | Not in the mood | Offer an out immediately. Drop the queued family ask rather than forcing it |
-| Frustrated at the agent | Stop asking. Acknowledge, don't defend. *"你讲,我听就好。"* Log as explicit negative signal |
+| Frustrated at the agent | Stop asking. Acknowledge, don't defend. *"You talk. I'll just listen."* Log as explicit negative signal |
 | Agitated | Never interrupt, never argue, never correct. Lower stimulation. Validate the feeling, not the claim. **Flag for care** — sudden agitation in elderly people can be pain, infection, or sundowning |
 | `confused` | **Validate, never reality-orient.** Don't correct the year, don't say "he passed away". Short concrete turns. Flag for care |
-| `looping` | Receive the repeated story as if it were the first time. Never say "你讲过了". Log count for the family only |
+| `looping` | Receive the repeated story as if it were the first time. Never say "you already told me that". Log count for the family only |
 | `distress` | Hard escalation. Alert family immediately, stay on the line, keep talking, do not hang up |
 
 **How the state reaches the agent (corrected 2026-08-16)**
@@ -354,7 +353,7 @@ Extraction is **entirely post-hoc**, run by the Archivist after the call ends.
 | Field | Required | Note |
 |---|---|---|
 | **WHERE** | ✅ | Place name; imprecise is fine, family corrects later |
-| **WHEN** | ✅ | Year *or* era — "结婚以前" is enough |
+| **WHEN** | ✅ | Year *or* era — "before I married" is enough |
 | WHO | | At least one named person |
 | WHAT | | An event with a beginning and end, not a generality |
 | **SENSE** | | One concrete sensory detail |
@@ -363,14 +362,14 @@ Extraction is **entirely post-hoc**, run by the Archivist after the call ends.
 **Pin at score ≥4, with WHERE and WHEN mandatory.** Below that it is a fragment: kept, linked
 to its thread, retried in a later session.
 
-**SENSE must not be dropped.** It is the difference between a fact and a story: *"我们很穷"*
-versus *"我们吃白饭配酱油,妈妈说她已经吃过了"*. It is the line the letter is built around.
+**SENSE must not be dropped.** It is the difference between a fact and a story: *"we were poor"*
+versus *"we ate white rice with soy sauce, and my mother said she had already eaten"*. It is the line the letter is built around.
 
 **Pin types:** `place` (map) · `person` (family tree facet) · `object` (heirloom card) ·
 `timeline` (wisdom, no location).
 
 **`missing_fields` closes the loop.** A fragment missing `when` generates next session's
-*"那间咖啡店 — 是你结婚以前还是以后?"* Extraction feeds the opener.
+*"That coffee shop — was it before you married, or after?"* Extraction feeds the opener.
 
 ### 7.7 Privacy — P0 subset
 
@@ -386,10 +385,10 @@ versus *"我们吃白饭配酱油,妈妈说她已经吃过了"*. It is the line 
 - **Unlocated tray (P0):** geocoding failures are first-class, not hidden. They surface as
   family correction tasks *and* as next-session clarifying questions. Region-level approximate
   pins are valid states
-- **Letters (P0):** short bilingual letter per pinned story, built around the SENSE detail,
+- **Letters (P0):** short letter per pinned story, built around the SENSE detail,
   quoting her verbatim
-- **Chapters (P1):** narrative arc clustering — *永春的村子 (–1949) · 过番 · 树胶园的日子
-  (1949–58) · 咖啡店 (1958–69) · 搬去城市*
+- **Chapters (P1):** narrative arc clustering — *The village in Yongchun (–1949) · The crossing · Rubber estate years
+  (1949–58) · The coffee shop (1958–69) · Moving to the city*
 - **Stats (P0, free):** stories collected, years spanned, places, **hours of her actual voice preserved**
 - **Postcards (P1):** Imagen illustration per pinned story
 
@@ -427,7 +426,7 @@ profiles/{user_id}                 # derived, regenerated, never hand-edited
 {
   "conversation_id": "...", "narrator_id": "...",
   "occurred_at": "...", "duration_sec": 840,
-  "summary_short": "讲了父亲在怡保的咖啡店,和1969年关店的事。",
+  "summary_short": "Talked about her father's coffee shop in Ipoh, and closing it in 1969.",
   "topics_covered": ["work", "home"],
   "affect_trace": { "opened": "warm", "closed": "fading", "peak_engagement_topic": "work" },
   "stories": [ /* StoryCandidate[] */ ],
@@ -445,24 +444,24 @@ profiles/{user_id}                 # derived, regenerated, never hand-edited
 
 ```json
 {
-  "title": "板底街的咖啡店",
+  "title": "The coffee shop on Jalan Bandar",
   "domain": "work",
   "narrative": "...",
   "verbatim_quotes": [{ "text": "...", "turn_id": 14 }],
   "when": {
-    "raw_phrase": "结婚以前",
+    "raw_phrase": "before I married",
     "start_year": 1958, "end_year": 1968,
     "precision": "relative",
     "anchor_ref": "anchor_marriage",
     "confidence": 0.7
   },
   "where": {
-    "raw_name": "板底街, 怡保", "aliases": ["Jalan Bandar, Ipoh"],
+    "raw_name": "Jalan Bandar, Ipoh", "aliases": ["Jalan Bandar", "the shop"],
     "geocode_status": "pending", "confidence": 0.8
   },
-  "who": [{ "surface_form": "我爸爸", "entity_ref": null, "role": "father", "confidence": 0.9 }],
+  "who": [{ "surface_form": "my father", "entity_ref": null, "role": "father", "confidence": 0.9 }],
   "what": "...",
-  "sense_detail": "五点钟炭火烤面包涂牛油的味道。",
+  "sense_detail": "The smell of bread toasted over charcoal at five in the morning, with butter.",
   "why_it_matters": "...",
   "emotion": { "valence": -0.2, "labels": ["pride", "loss"] },
   "pin_type": "place",
@@ -480,13 +479,13 @@ profiles/{user_id}                 # derived, regenerated, never hand-edited
 {
   "entity_id": "...", "family_id": "...",
   "type": "person",
-  "canonical_name": "林秀珠",
-  "names": { "zh": "林秀珠", "en": "Lim Siew Choo" },
-  "aliases": ["我姐姐", "阿姨"],
+  "canonical_name": "Lim Siew Choo",
+  "names": { "en": "Lim Siew Choo" },
+  "aliases": ["my sister", "Ah Choo"],
   "person": { "relation_to_narrator": "sister", "birth_year": 1941, "death_year": 2019, "living": false },
   "place":  { "geo": { "lat": 4.597, "lng": 101.09, "confidence": 0.6 },
               "admin": { "country": "MY", "state": "Perak", "town": "Ipoh" }, "kind": "shophouse" },
-  "food":   { "dish": "咖椰面包", "who_made_it": "entity_father", "occasion": "每天早上" },
+  "food":   { "dish": "kaya toast", "who_made_it": "entity_father", "occasion": "every morning" },
   "story_refs": [], "mention_count": 7,
   "first_mentioned_in": "conv_003",
   "confirmed_by_family": false
@@ -622,7 +621,7 @@ Android wrapper. It is stated in the write-up rather than glossed.
 | `save_fragment(...)` | Mid-call capture | P0 |
 | `mark_private(story_ref)` | Elder-initiated privacy, by voice | P0 |
 | `flag_concern(type, severity)` | Care escalation | P0 |
-| `get_local_context()` | Weather, festivals (CNY, 清明, 中秋, 中元) | P1 |
+| `get_local_context()` | Weather, festivals (Chinese New Year, Qingming, Mid-Autumn, Hungry Ghost) | P1 |
 
 ---
 
@@ -767,4 +766,4 @@ than transcribed from footage.
 
 ---
 
-*Sampan — 一叶舢板,载着一辈子的故事。*
+*Sampan — one small boat, carrying a lifetime of stories.*

@@ -89,7 +89,7 @@ def build_cards(
     """Story cards, minus anything she asked to keep off the family's view.
 
     Filtering happens here rather than at each caller, because a story that
-    escapes into one view has escaped — and 「好,这个我不写进去」 was a promise,
+    escapes into one view has escaped — and "I won't write that down" was a promise,
     not a preference.
     """
     cards = [_card(raw) for raw in raw_stories]

@@ -1,11 +1,12 @@
 """Anchor events, and resolving relative time against them.
 
-Elders speak in relative time far more often than in years: 结婚以前,
-店关了以后, 大水那年. Storing only her phrase makes a timeline unsortable;
+Elders speak in relative time far more often than in years: "before I
+married", "after the shop closed", "the year of the big flood". Storing only
+her phrase makes a timeline unsortable;
 storing only a guessed year loses how she actually said it. So both are kept,
 and anchors are what turn one into the other.
 
-Once 结婚 is known to be 1968, every 结婚以前 in the archive acquires an upper
+Once the marriage is known to be 1968, every "before I married" acquires an upper
 bound — including, eventually, ones recorded before the anchor was known.
 Retroactive re-resolution is deferred (PRD P2); this module resolves forward.
 """
@@ -14,24 +15,27 @@ from __future__ import annotations
 
 from sampan.models import Anchor, AnchorCandidate, Precision, When
 
-# Direction markers, longest first so 之前 is not shadowed by 前.
-_BEFORE = ("以前", "之前", "前", "还没", "未")
-_AFTER = ("以后", "之后", "后", "过后")
-_SAME = ("那年", "当时", "那时", "那一年")
+# Direction markers. Order of checking matters and is not the same as it was
+# in Chinese: "the year before the shop closed" contains "the year", so a
+# same-year marker checked first would swallow it. Before and after are
+# therefore tested first, and only then the same-year phrases.
+_BEFORE = ("before", "prior to", "not yet", "up to", "until")
+_AFTER = ("after", "since then", "following", "once")
+_SAME = ("that year", "the year", "at that time", "back then", "in that")
 
 
 def direction(phrase: str) -> str | None:
     """Which side of the anchor she means. None when the phrase gives no clue."""
-    text = phrase.strip()
-    for marker in _SAME:
-        if marker in text:
-            return "same"
-    for marker in _AFTER:
-        if marker in text:
-            return "after"
+    text = " ".join(phrase.strip().lower().split())
     for marker in _BEFORE:
         if marker in text:
             return "before"
+    for marker in _AFTER:
+        if marker in text:
+            return "after"
+    for marker in _SAME:
+        if marker in text:
+            return "same"
     return None
 
 

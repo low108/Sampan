@@ -26,7 +26,7 @@ grandchildren.
 
 ## What it does
 
-An AI companion called **小船** ("little boat") talks with family elders and listens to their
+An AI companion called **Xiao Chuan** ("little boat") talks with family elders and listens to their
 life stories. Afterwards it turns each story into a record with a place, a time, the people in
 it, and one concrete sensory detail — then pins it to a shared family map.
 
@@ -80,32 +80,32 @@ it arrives.
 Do not invent prettier data. This is one grandmother, four conversations, eleven stories.
 
 ```
-「板底街的咖啡店」                          1958
-sensory detail : 炭火烤的面包涂牛油的味道
-place          : 板底街 Jalan Bandar, Ipoh  (street precision)
-people         : 我爸爸
+"The coffee shop on Jalan Bandar"          1958
+sensory detail : bread toasted over charcoal, with butter
+place          : Jalan Bandar, Ipoh  (street precision)
+people         : my father
 still missing  : why it mattered
 
-「关店的原因」                              1969
-sensory detail : 关店那天他给我一杯阿华田
-place          : 爸爸的咖啡店 → linked to 板底街
-people         : 我爸爸
+"The last cup of Milo"                     1969
+sensory detail : the day he closed, he gave me a cup of Milo
+place          : father's shop -> linked to Jalan Bandar
+people         : my father
 
-「胶园工寮里的白饭配酱油」                   1952–1956
-sensory detail : 白饭配酱油
-place          : line house → linked to 双溪镇树胶园  (town precision, provisional)
-people         : 我妈妈, 我姐姐
+"White rice with soy sauce in the line house"   1952-1956
+sensory detail : white rice with soy sauce
+place          : line house -> linked to the estate, Sungai Siput  (town precision, provisional)
+people         : my mother, my sister
 
-「妈妈的黑色Singer缝纫机」                   no year known
-sensory detail : 咔嗒咔嗒的声音
-place          : 家里  (cannot be located at all)
-people         : 我妈妈
+"Mother's black Singer sewing machine"     no year known
+sensory detail : the clatter of it
+place          : home  (cannot be located at all)
+people         : my mother
 
-「阿公坐船南来槟城」                         no year known
-place          : 福建永春 Yongchun, Fujian  (region precision, provisional)
+"Grandfather came south by boat to Penang" no year known
+place          : Yongchun, Fujian  (region precision, provisional)
 ```
 
-Story titles are in Chinese. Sensory details are in her own words. Years are often a range,
+Sensory details are in her own words, verbatim. Years are often a range,
 and frequently have only one open end — *"before I married"* means *sometime before 1968*.
 
 ---
@@ -122,15 +122,16 @@ station where the wedding photo was taken — are within a few hundred metres of
 any usable zoom they overlap.
 
 **Certainty.** Places carry a precision: `exact`, `street`, `town`, `region`, `unknown`. A
-town-level pin is often **wrong** — 「双溪镇」 resolved to a town ninety kilometres from the
+town-level pin is often **wrong** — *Sungai Siput* resolved to a town ninety kilometres from the
 one she meant. A plausible wrong pin is worse than a visibly uncertain one, because **nobody
 corrects what looks right.** Design a visual language for certain / provisional / unplaceable.
 
 **Linked places.** Some pins were placed by joining a relational name to somewhere she named
-in a *different* conversation — 「爸爸的咖啡店」 sits on 板底街 because she said so six weeks
-earlier. These carry the sentence that placed them:
+in a *different* conversation — *"my father's shop"* sits on Jalan Bandar because she said so
+six weeks earlier. These carry the sentence that placed them:
 
-> 「后来他存了一点钱,一九五八年在怡保开了一间咖啡店,在板底街。」
+> "Later he saved a bit of money, nineteen fifty-eight he opened a coffee shop in Ipoh, at
+> Jalan Bandar."
 
 A pin that can show *why it is there, in her own words* is a nicer artifact than a coordinate.
 Design for it.
@@ -139,13 +140,23 @@ Design for it.
 
 ## Absence — smaller than it looks, not solvable by hiding
 
-Two of eleven stories have no place at all: 「妈妈的咸鱼炒饭」 and 「妈妈的黑色Singer缝纫机」,
-both located only as 「家里」 — *home*. She never said which house, across four conversations,
-and the system deliberately refuses to guess.
+Two of eleven stories have no place at all: *"Mother's salted fish fried rice"* and *"Mother's
+black Singer sewing machine"*, both located only as *home*. She never said which house, across
+four conversations, and the system deliberately refuses to guess.
 
-Both score 6/6 on completeness. The sewing machine's sensory detail is 「咔嗒咔嗒的声音」 — the
+Both score 6/6 on completeness. The sewing machine's sensory detail is *the clatter of it* — the
 sound of her mother sewing for money at night, which she fell asleep to. It is one of the best
 things in the archive and it cannot go on a map.
+
+**Update, after the archive was rebuilt in English.** Both of these now *do* get placed. She
+described the house itself in an earlier session — "that house is one long row, one room one
+room, they call it line house" — and the linker joined *home* to the line house on the strength
+of that sentence. The refusal to guess is intact; there simply turned out to be evidence.
+
+So the unplaceable state currently has no story in it. **Design it anyway.** It is not
+hypothetical: it is one sentence away, it is the state that keeps the map honest, and an
+archive that never shows it is an archive quietly pretending it knows everything. The empty
+tray is a fact about this grandmother, not a property of the system.
 
 Design where it lives. It must be **fully present on the person's page**, and the map should
 **acknowledge it rather than omit it**. Do not place it approximately. The family correcting

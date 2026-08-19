@@ -2,7 +2,7 @@
 
 Everything below `Repository` is scoped to one person because that is how
 memory works — the agent remembers *her*. But the map is the opposite: it is
-the one place where a family sees itself as a family, and 板底街 has to hold
+the one place where a family sees itself as a family, and Jalan Bandar has to hold
 her father's coffee shop and her son's creaking staircase at the same time.
 
 So this module aggregates across narrators, and nothing else does.
@@ -87,7 +87,7 @@ def to_pins(
     """Turn stories into map pins.
 
     One pin per *story*, not per place: the component clusters co-located pins
-    itself, and 板底街 holding four stories should read as four things that
+    itself, and Jalan Bandar holding four stories should read as four things that
     happened there rather than one dot with a number.
     """
     by_name = {p.raw_name: p for p in places}
@@ -115,7 +115,7 @@ def to_pins(
 def unplaced(cards: list[StoryCard], places: list[Place]) -> list[StoryCard]:
     """Stories that cannot go on the map.
 
-    Returned, never hidden: two of Ah Khim's best say only 「家里」, and a map
+    Returned, never hidden: two of Ah Khim's best say only "home", and a map
     that silently drops them is a worse record of her life than one that admits
     it does not know where she lived.
     """

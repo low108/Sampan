@@ -74,11 +74,11 @@ class TestHysteresis:
                 energy=Energy.FADING,
                 engagement=Engagement.ENGAGED,
                 affect=Affect.NEUTRAL,
-                signals=["句子越来越短"],
+                signals=["sentences getting shorter"],
             ),
         )
 
-        assert any("句子越来越短" in entry for entry in state.transitions)
+        assert any("sentences getting shorter" in entry for entry in state.transitions)
 
 
 class TestEnergyIsMonotonic:
@@ -129,34 +129,34 @@ class TestPolicy:
         knobs = policy(AffectState(flags=[AffectFlag.DISTRESS]))
 
         assert knobs.care_flag == "distress"
-        assert "不要挂断" in knobs.guidance
+        assert "Do not hang up" in knobs.guidance
 
     def test_confusion_is_validated_never_corrected(self) -> None:
         """Reality-orienting a confused elder is the opposite of the standard
         of care."""
         knobs = policy(AffectState(flags=[AffectFlag.CONFUSED]))
 
-        assert "不要纠正" in knobs.guidance
-        assert "不要告诉她谁已经走了" in knobs.guidance
+        assert "Do not correct her" in knobs.guidance
+        assert "someone has died" in knobs.guidance
 
     def test_a_repeated_story_is_received_as_new(self) -> None:
         knobs = policy(AffectState(flags=[AffectFlag.LOOPING]))
 
-        assert "你讲过了" in knobs.guidance
-        assert "当作第一次听" in knobs.guidance
+        assert "already told you" in knobs.guidance
+        assert "first time" in knobs.guidance
 
     def test_agitation_is_never_argued_with(self) -> None:
         knobs = policy(AffectState(affect=Affect.AGITATED))
 
         assert knobs.question_type is QuestionStyle.NONE
-        assert "不要打断" in knobs.guidance
+        assert "Do not interrupt" in knobs.guidance
 
     def test_depletion_closes_the_call_without_extracting(self) -> None:
         knobs = policy(AffectState(energy=Energy.DEPLETED))
 
         assert knobs.topic_action is TopicAction.CLOSE
         assert knobs.question_type is QuestionStyle.NONE
-        assert "提早结束是好事" in knobs.guidance
+        assert "Ending early is a success" in knobs.guidance
 
     def test_sadness_is_not_cheered_up_or_pivoted_away_from(self) -> None:
         """Sadness while engaged is not a problem to fix. It is often the
@@ -164,23 +164,25 @@ class TestPolicy:
         knobs = policy(AffectState(affect=Affect.SAD))
 
         assert knobs.topic_action is TopicAction.HOLD
-        assert "不要转开话题" in knobs.guidance
-        assert "留很久的白" in knobs.silence_tolerance
+        assert "do not change the subject" in knobs.guidance
+        assert "long silences" in knobs.silence_tolerance
 
     def test_withdrawal_is_read_as_about_the_topic_first(self) -> None:
         knobs = policy(AffectState(engagement=Engagement.WITHDRAWING))
 
         assert knobs.topic_action is TopicAction.PIVOT
-        assert "不一定是想收线" in knobs.guidance
+        assert "not the same as wanting" in knobs.guidance
 
     def test_fading_shortens_the_agent_before_it_shortens_her(self) -> None:
         knobs = policy(AffectState(energy=Energy.FADING))
 
-        assert "先把你自己的话变短" in knobs.guidance
+        assert "Shorten your own turns first" in knobs.guidance
         assert knobs.topic_action is TopicAction.CLOSE
 
     def test_fading_names_the_unfinished_thread_on_the_way_out(self) -> None:
-        assert "下次的邀请" in policy(AffectState(energy=Energy.FADING)).guidance
+        assert (
+            "invitation to return" in policy(AffectState(energy=Energy.FADING)).guidance
+        )
 
     def test_excitement_gets_out_of_the_way(self) -> None:
         """Her highest-yield state. Interrupting it is the worst thing the
@@ -189,7 +191,7 @@ class TestPolicy:
 
         assert knobs.topic_action is TopicAction.DEEPEN
         assert knobs.question_type is QuestionStyle.NONE
-        assert "不要打断" in knobs.guidance
+        assert "Do not interrupt" in knobs.guidance
 
     def test_a_good_state_deepens(self) -> None:
         knobs = policy(AffectState())
@@ -214,7 +216,7 @@ class TestAxesInCombination:
         )
 
         assert knobs.topic_action is TopicAction.HOLD
-        assert "不要转开话题" in knobs.guidance
+        assert "do not change the subject" in knobs.guidance
 
     def test_sad_while_shutting_down_lets_it_go(self) -> None:
         knobs = policy(
@@ -226,7 +228,7 @@ class TestAxesInCombination:
         )
 
         assert knobs.topic_action is TopicAction.PIVOT
-        assert "讲不下去" in knobs.guidance
+        assert "cannot carry this subject" in knobs.guidance
 
     def test_the_two_sad_states_are_treated_differently(self) -> None:
         """Regression: sadness used to be checked before engagement, so both
@@ -244,7 +246,7 @@ class TestAxesInCombination:
             knobs = policy(AffectState(engagement=engagement, affect=Affect.SAD))
 
             assert knobs.question_type is QuestionStyle.NONE
-            assert "安慰" in knobs.guidance
+            assert "console" in knobs.guidance or "not to dwell" in knobs.guidance
 
 
 class TestPrecedence:
@@ -267,7 +269,7 @@ class TestInstructionBlock:
     def test_carries_the_guidance(self) -> None:
         block = describe_for_instruction(AffectState(energy=Energy.FADING))
 
-        assert "先把你自己的话变短" in block
+        assert "Shorten your own turns first" in block
 
     @pytest.mark.parametrize(
         "state",

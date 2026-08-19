@@ -18,9 +18,14 @@
   const JS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
   const JS_HASH = 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH';
 
-  const INK = '#2A2320';
-  const RED = '#9C3B24';
-  const SAND = '#F4EDE1';
+  /* The map speaks the same three marks as the rest of the app, and only
+     three: she named it, the system guessed it, several stories are here.
+     Cream is "she named it", so clusters take the lime to stay unambiguous —
+     the one place lime is not "something of hers is new". */
+  const INK = '#0E0F0C';
+  const CREAM = '#FCFBF9';
+  const LIME = '#E7FE54';
+  const SANS = "'Archivo', system-ui, sans-serif";
 
   function loadLeaflet() {
     if (window.__sampanLeaflet) return window.__sampanLeaflet;
@@ -52,30 +57,35 @@
   function compass(from, to) {
     const dy = to[0] - from[0], dx = to[1] - from[1];
     const ang = (Math.atan2(dx, dy) * 180) / Math.PI;
-    const dirs = [['北', 'N'], ['东北', 'NE'], ['东', 'E'], ['东南', 'SE'], ['南', 'S'], ['西南', 'SW'], ['西', 'W'], ['西北', 'NW']];
+    const dirs = [['north', 'N'], ['north-east', 'NE'], ['east', 'E'],
+                  ['south-east', 'SE'], ['south', 'S'], ['south-west', 'SW'],
+                  ['west', 'W'], ['north-west', 'NW']];
     return dirs[Math.round(((ang + 360) % 360) / 45) % 8];
   }
 
+  const isGuess = (p) => p.precision !== 'exact' && p.precision !== 'street';
+
+  /* Filled and solid where she said the street; hollow and dashed where the
+     system guessed. A plausible wrong pin is worse than an obviously
+     uncertain one, because nobody corrects what looks right. */
   function dot(p, selected) {
-    const certain = p.precision === 'exact' || p.precision === 'street';
-    const size = selected ? 30 : 24;
-    const ring = selected ? `box-shadow:0 0 0 6px rgba(156,59,36,.18),0 3px 8px rgba(0,0,0,.35);` : `box-shadow:0 3px 8px rgba(0,0,0,.32);`;
-    const core = certain
-      ? `background:${RED};border:3px solid ${SAND};`
-      : `background:${SAND};border:3px dashed ${RED};`;
-    const badge = p.linked
-      ? `<span style="position:absolute;top:-12px;right:-14px;background:${INK};color:${SAND};font:700 13px/1 'Noto Serif SC',serif;padding:3px 4px 4px;border-radius:6px;">「」</span>`
+    const guess = isGuess(p);
+    const size = guess ? 26 : 22;
+    const core = guess
+      ? `border:2px dashed ${CREAM};background:rgba(252,251,249,.10);`
+      : `background:${CREAM};box-shadow:0 0 0 ${selected ? 7 : 4}px rgba(252,251,249,.22);`;
+    const ring = guess && selected
+      ? `outline:2px solid rgba(252,251,249,.5);outline-offset:5px;`
       : '';
-    const mark = !certain
-      ? `<span style="position:absolute;top:-13px;left:-13px;background:${SAND};color:${RED};border:2px solid ${RED};width:20px;height:20px;border-radius:50%;font:700 13px/16px 'Noto Sans SC',sans-serif;text-align:center;">?</span>`
-      : '';
-    return `<div style="position:relative;width:${size}px;height:${size}px;border-radius:50%;${core}${ring}box-sizing:border-box;">${badge}${mark}</div>`;
+    return `<div style="width:${size}px;height:${size}px;border-radius:50%;${core}${ring}box-sizing:border-box;"></div>`;
   }
 
+  function dotSize(p) { return isGuess(p) ? 26 : 22; }
+
   function labelHtml(text) {
-    return `<div style="position:absolute;left:26px;top:-4px;white-space:nowrap;background:${SAND};color:${INK};
-      font:600 17px/1.2 'Noto Serif SC',serif;padding:7px 11px;border-radius:9px;border:1.5px solid rgba(42,35,32,.18);
-      box-shadow:0 3px 10px rgba(0,0,0,.22);">${text}</div>`;
+    return `<div style="position:absolute;left:22px;top:-6px;white-space:nowrap;background:${CREAM};color:${INK};
+      font:600 14px/1.2 ${SANS};letter-spacing:-.01em;padding:8px 12px;border-radius:999px;
+      box-shadow:0 4px 14px rgba(0,0,0,.34);">${text}</div>`;
   }
 
   class SampanMap extends HTMLElement {
@@ -87,7 +97,7 @@
       this.style.inset = '0';
       this.style.width = '100%';
       this.style.height = '100%';
-      this.style.background = '#E8E0D2';
+      this.style.background = INK;
       const host = document.createElement('div');
       host.style.cssText = 'position:absolute;inset:0;';
       this.appendChild(host);
@@ -107,24 +117,60 @@
         tap: true, maxZoom: 18, minZoom: 3
       });
       this._map = map;
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors', maxZoom: 19
+      /* CARTO's unlabelled dark basemap: the pins are the only bright things
+         on it, which is the whole point of the frame. */
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap contributors © CARTO',
+        subdomains: 'abcd', maxZoom: 19
       }).addTo(map);
       map.attributionControl.setPrefix('');
-      L.control.zoom({ position: 'bottomright' }).addTo(map);
+      /* No zoom buttons: the legend already says drag to move and scroll to
+         zoom, and Leaflet's white chrome is the one thing on this screen that
+         would not be either a pin or her. */
       map.on('click', () => {
         if (this._expanded) { this._expanded = null; this._draw(); }
         this.dispatchEvent(new CustomEvent('sampan-blank', { bubbles: true, composed: true }));
       });
       map.on('zoomend moveend', () => { this._draw(); this._reportOffscreen(); });
+      /* A Leaflet map with no centre or zoom throws on every subsequent call,
+       * and resetView() sets neither when there are no pins yet. Whether that
+       * happened came down to whether Leaflet was still downloading when the
+       * first pins arrived: on a cold load it raced ahead, on a cached load it
+       * initialised first and the map stayed viewless. Perak, wide enough to
+       * hold the whole archive, until the real bounds are known. */
+      map.setView([4.6, 101.1], 6);
       this.resetView();
       this._draw();
-      const bump = () => { map.invalidateSize(); this.resetView(); this._draw(); this._reportOffscreen(); };
+      /* Re-measure, then again on the next frame: the map screen releases the
+       * phone column on wide viewports, and whether React adds that class
+       * before or after Leaflet finishes downloading varies run to run. The
+       * second pass costs nothing and covers the ordering where the container
+       * grows in the same tick as the first measurement. */
+      const bump = () => {
+        map.invalidateSize({ pan: false });
+        this.resetView();
+        this._draw();
+        this._reportOffscreen();
+        requestAnimationFrame(() => {
+          if (!this._map) return;
+          map.invalidateSize({ pan: false });
+          this._draw();
+        });
+      };
+      window.addEventListener('resize', bump);
+      this._onResize = bump;
       if (window.ResizeObserver) {
-        let last = 0;
+        /* Width matters as much as height. Watching only the height was
+         * enough while the app was a fixed phone column; once the map screen
+         * started releasing that column on wide viewports, going wide changed
+         * the width alone, Leaflet never re-measured, and it went on painting
+         * tiles into the old narrow box with bare page either side. */
+        let lastW = 0, lastH = 0;
         this._ro = new ResizeObserver(() => {
-          const h = this.clientHeight;
-          if (h > 0 && h !== last) { last = h; bump(); }
+          const w = this.clientWidth, h = this.clientHeight;
+          if ((w > 0 || h > 0) && (w !== lastW || h !== lastH)) {
+            lastW = w; lastH = h; bump();
+          }
         });
         this._ro.observe(this);
       }
@@ -132,7 +178,10 @@
       setTimeout(bump, 900);
     }
 
-    disconnectedCallback() { if (this._ro) this._ro.disconnect(); }
+    disconnectedCallback() {
+      if (this._ro) this._ro.disconnect();
+      if (this._onResize) window.removeEventListener('resize', this._onResize);
+    }
 
     _visible() {
       const sc = this._scope;
@@ -166,7 +215,19 @@
       this._map.fitBounds(b, { padding: [64, 96], maxZoom: 13 });
     }
 
-    _clear() { this._layers.forEach((l) => this._map.removeLayer(l)); this._layers = []; }
+    _clear() {
+      /* Take the list first. _draw() is re-entrant -- fitBounds() fires
+       * 'moveend' synchronously, whose handler calls _draw() again while the
+       * outer one is still running -- so a list read during removal can be
+       * removed twice, and Leaflet throws reading parentNode of a path it has
+       * already detached. Every layer then stays recorded but absent, which is
+       * how the map ended up reporting 7 layers and drawing none. */
+      const layers = this._layers;
+      this._layers = [];
+      layers.forEach((l) => {
+        try { this._map.removeLayer(l); } catch (e) { /* already detached */ }
+      });
+    }
     _add(l) { l.addTo(this._map); this._layers.push(l); }
 
     _marker(latlng, html, size, onClick, zIndex) {
@@ -180,16 +241,27 @@
 
     _draw() {
       if (!this._map) return;
+      /* Re-entrancy guard: the nested call would otherwise clear the layers the
+       * outer call is in the middle of adding. The outer call finishes the
+       * drawing; the inner one would only repeat it. */
+      if (this._drawing) return;
+      this._drawing = true;
+      try { this._drawInner(); } finally { this._drawing = false; }
+    }
+
+    _drawInner() {
       const L = this._L, map = this._map;
       this._clear();
       const pins = this._visible();
 
-      // uncertainty halos
+      /* The guess drawn at its own scale: a soft dashed radius, so the
+         uncertainty is legible as area rather than asserted as a point. */
       pins.forEach((p) => {
         if (p.precision === 'town' || p.precision === 'region') {
           this._add(L.circle([p.lat, p.lng], {
-            radius: p.precision === 'region' ? 60000 : 9000,
-            color: RED, weight: 1.5, dashArray: '5 6', opacity: 0.5, fillColor: RED, fillOpacity: 0.07, interactive: false
+            radius: p.precision === 'region' ? 52000 : 9000,
+            color: CREAM, weight: 1, dashArray: '4 6', opacity: 0.45,
+            fillColor: CREAM, fillOpacity: 0.06, interactive: false
           }));
         }
       });
@@ -206,8 +278,9 @@
         if (g.items.length === 1) {
           const p = g.items[0];
           const sel = this._selected === p.id;
+          const s = dotSize(p);
           const html = `<div style="position:relative">${dot(p, sel)}${sel ? labelHtml(p.title) : ''}</div>`;
-          this._marker([p.lat, p.lng], html, [sel ? 30 : 24, sel ? 30 : 24],
+          this._marker([p.lat, p.lng], html, [s, s],
             () => this.dispatchEvent(new CustomEvent('sampan-pin', { detail: { id: p.id }, bubbles: true, composed: true })),
             sel ? 900 : 0);
           return;
@@ -220,20 +293,20 @@
             const ang = (-90 + (360 / g.items.length) * i) * Math.PI / 180;
             const pt = L.point(g.pt.x + Math.cos(ang) * 84, g.pt.y + Math.sin(ang) * 84);
             const ll = map.layerPointToLatLng(pt);
-            this._add(L.polyline([center, ll], { color: INK, weight: 1.5, opacity: 0.45, dashArray: '3 5', interactive: false }));
+            this._add(L.polyline([center, ll], { color: CREAM, weight: 1, opacity: 0.4, dashArray: '3 5', interactive: false }));
             const html = `<div style="position:relative">${dot(p, this._selected === p.id)}${labelHtml(p.title)}</div>`;
-            this._marker(ll, html, [26, 26],
+            this._marker(ll, html, [dotSize(p), dotSize(p)],
               () => this.dispatchEvent(new CustomEvent('sampan-pin', { detail: { id: p.id }, bubbles: true, composed: true })), 800);
           });
-          this._add(L.circleMarker(center, { radius: 5, color: INK, weight: 2, fillColor: SAND, fillOpacity: 1, interactive: false }));
+          this._add(L.circleMarker(center, { radius: 4, color: CREAM, weight: 1.5, fillColor: INK, fillOpacity: 1, interactive: false }));
         } else {
+          /* Just the number. At region scale eight stories are one lime
+             disc; tapping it lists every one so none is unreachable. */
           const n = g.items.length;
-          const html = `<div style="width:58px;height:58px;border-radius:50%;background:${RED};border:4px solid ${SAND};
-            box-shadow:0 4px 12px rgba(0,0,0,.34);display:flex;flex-direction:column;align-items:center;justify-content:center;
-            color:${SAND};font-family:'Noto Serif SC',serif;box-sizing:border-box;">
-            <span style="font-size:24px;font-weight:700;line-height:1">${n}</span>
-            <span style="font-size:11px;opacity:.85;line-height:1.1">个故事</span></div>`;
-          this._marker(center, html, [58, 58], () => {
+          const html = `<div style="width:46px;height:46px;border-radius:50%;background:${LIME};
+            box-shadow:0 6px 18px rgba(0,0,0,.38);display:flex;align-items:center;justify-content:center;
+            color:${INK};font:700 18px/1 ${SANS};letter-spacing:-.02em;box-sizing:border-box;">${n}</div>`;
+          this._marker(center, html, [46, 46], () => {
             this._expanded = ids; this._draw();
             this.dispatchEvent(new CustomEvent('sampan-cluster', { detail: { ids: g.items.map((i) => i.id) }, bubbles: true, composed: true }));
           }, 500);

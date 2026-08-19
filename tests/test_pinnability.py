@@ -24,21 +24,21 @@ from sampan.models import (
 
 def story(
     *,
-    where: str = "双溪镇",
-    raw_phrase: str = "我六七岁的时候",
+    where: str = "Sungai Siput",
+    raw_phrase: str = "when I was six or seven",
     who: bool = True,
-    what: str = "我们去河边抓鱼",
-    sense: str = "他掉下去,全身湿",
-    why: str = "那是我最记得的童年",
+    what: str = "I went catching fish in the river with Ah Chwee",
+    sense: str = "he fell in and got soaked",
+    why: str = "it was the last year before I had to start working",
 ) -> StoryCandidate:
     """A complete story, with fields removable one at a time."""
     return StoryCandidate(
-        title="河边抓鱼",
+        title="catching fish at the river",
         domain=Domain.PLAY,
-        narrative="那条河水很浅,我们去抓鱼……",
+        narrative="That river, we went every afternoon after school……",
         when=When(raw_phrase=raw_phrase, precision=Precision.RELATIVE, confidence=0.7),
         where=Where(raw_name=where, confidence=0.8),
-        who=[PersonMention(surface_form="阿水", role="neighbour", confidence=0.9)]
+        who=[PersonMention(surface_form="Ah Chwee", role="neighbour", confidence=0.9)]
         if who
         else [],
         what=what,
@@ -89,14 +89,14 @@ class TestMandatoryFields:
 class TestMissingFields:
     def test_names_what_a_later_session_should_ask_about(self) -> None:
         """A fragment missing `when` becomes next session's
-        「那间咖啡店 — 是你结婚以前还是以后?」"""
+        「the coffee shop — before I married?」"""
         scored = assess(story(raw_phrase="", why=""))
 
         assert set(scored.missing_fields) == {"when", "why"}
 
     def test_an_era_counts_as_a_when(self) -> None:
         """'During the Emergency' is a time. Elders rarely give years."""
-        scored = assess(story(raw_phrase="紧急状态那时候"))
+        scored = assess(story(raw_phrase="during the Emergency"))
 
         assert "when" not in scored.missing_fields
         assert scored.status == StoryStatus.PINNABLE

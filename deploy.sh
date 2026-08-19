@@ -48,7 +48,7 @@ echo
 echo "Ticket 1 acceptance — Firestore round trip:"
 echo "  curl -s -X POST ${URL}/debug/smoke \\"
 echo "    -H 'X-Sampan-Key: \$SAMPAN_API_KEY' -H 'Content-Type: application/json' \\"
-echo "    -d '{\"note\":\"板底街的咖啡店\"}'"
+echo "    -d '{\"note\":\"the coffee shop on Jalan Bandar\"}'"
 echo
 echo "Ticket 1 acceptance — auth rejects:"
 echo "  curl -s -o /dev/null -w '%{http_code}\\n' -X POST ${URL}/debug/smoke \\"

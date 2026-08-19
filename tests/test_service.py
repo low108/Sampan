@@ -93,14 +93,14 @@ class TestSmokeRoundTrip:
     def test_writes_a_document_and_reads_it_back(self, client: TestClient) -> None:
         response = client.post(
             "/debug/smoke",
-            json={"note": "板底街的咖啡店"},
+            json={"note": "the coffee shop on Jalan Bandar"},
             headers={API_KEY_HEADER: GOOD_KEY},
         )
 
         assert response.status_code == 200
         body = response.json()
         assert body["round_trip_ok"] is True
-        assert body["read_back"]["note"] == "板底街的咖啡店"
+        assert body["read_back"]["note"] == "the coffee shop on Jalan Bandar"
 
     def test_the_document_persists_beyond_the_request(
         self, client: TestClient, store: InMemoryDocumentStore
@@ -179,20 +179,91 @@ class TestStaticPages:
             encoding="utf-8"
         )
 
-        assert "COPY static" in dockerfile
+        # Built in the image from web/ rather than copied from the working
+        # tree, so a stale local build cannot ship.
+        assert "COPY --from=web /static ./static" in dockerfile
+        assert "npm run build" in dockerfile
 
-    def test_every_page_the_pages_reference_exists(self) -> None:
-        """A missing worklet or manifest fails silently in the browser."""
+    def test_every_asset_the_page_references_exists(self) -> None:
+        """A missing script or stylesheet fails silently in the browser.
+
+        The referenced names are read out of index.html rather than listed
+        here, because the bundler content-hashes them: a hardcoded list goes
+        stale on the next build and starts testing the wrong thing.
+        """
+        import re
+
         from sampan.app import find_static_dir
 
         static = find_static_dir()
         assert static is not None
-        for name in (
-            "index.html",
-            "app.js",
-            "app.css",
-            "sampan-map.js",
-            "worklet.js",
-            "manifest.json",
-        ):
-            assert (static / name).is_file(), name
+        index = (static / "index.html").read_text(encoding="utf-8")
+
+        referenced = re.findall(r'(?:src|href)="(/[^"]+)"', index)
+        assert referenced, "index.html references nothing at all"
+        for ref in referenced:
+            assert (static / ref.lstrip("/")).is_file(), ref
+
+    def test_the_audio_worklet_is_present(self) -> None:
+        """Loaded by URL at the moment she taps record, not from index.html, so
+        nothing references it until the microphone is already open."""
+        from sampan.app import find_static_dir
+
+        static = find_static_dir()
+        assert static is not None
+        assert (static / "worklet.js").is_file()
+
+
+class TestPendingAsk:
+    """What the bell is for.
+
+    "Wei Lun asked you something" is the notification the whole product is
+    built around: she taps it and the recording opens with his question
+    already loaded. The endpoint behind it had no test, and shipped without
+    ever sending the question.
+    """
+
+    def _leave_a_question(self, client: TestClient) -> None:
+        client.post(
+            "/api/family/ah_khim/ask",
+            headers={API_KEY_HEADER: GOOD_KEY},
+            json={
+                "from_name": "Wei Lun",
+                "question": "Did Ah Gong leave anything behind?",
+            },
+        )
+
+    def _pending(self, client: TestClient) -> dict:
+        return client.get(
+            "/api/talk/ah_khim/pending", headers={API_KEY_HEADER: GOOD_KEY}
+        ).json()
+
+    def test_nothing_waiting_when_nobody_has_asked(self, client: TestClient) -> None:
+        assert self._pending(client)["waiting"] is False
+
+    def test_it_carries_the_question_itself(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Her name for him and his question. Without the question she is told
+        that someone was thinking of her and not what they wanted to know."""
+        monkeypatch.setattr("sampan.app.is_quiet", lambda _settings: False)
+        self._leave_a_question(client)
+
+        body = self._pending(client)
+
+        assert body["waiting"] is True
+        assert body["from_name"] == "Wei Lun"
+        assert body["question"] == "Did Ah Gong leave anything behind?"
+
+    def test_a_question_waits_until_morning(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Queued instantly, delivered when she is awake. The app has to be able
+        to say why it is holding one, or tapping the bell looks broken."""
+        monkeypatch.setattr("sampan.app.is_quiet", lambda _settings: True)
+        self._leave_a_question(client)
+
+        body = self._pending(client)
+
+        assert body["waiting"] is False
+        assert body["quiet_hours"] is True

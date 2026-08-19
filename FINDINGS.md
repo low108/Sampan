@@ -44,8 +44,7 @@ decision procedure in the prompt, in priority order, ending with a hard rule: *i
 a real location, never choose `timeline`.*
 
 Same run, same fix: asking for "a sensory detail" produced a list of three. Asking for
-**one** produced 「煤油灯下一碗白饭配酱油」 — a bowl of rice and soy sauce under a kerosene
-lamp. The constraint is what makes it a story instead of an inventory.
+**one** produced *"a bowl of white rice with soy sauce under the kerosene lamp"*. The constraint is what makes it a story instead of an inventory.
 
 **Lesson:** structured output guarantees the *shape*, never the *judgement*. Any field whose
 value is a decision rather than a transcription needs the decision procedure written out.
@@ -54,21 +53,21 @@ value is a decision rather than a transcription needs the decision procedure wri
 
 **2026-08-16, ticket 4.**
 
-`sense_detail` is the field the whole product leans on — the difference between 「我们很穷」
-and 「我们吃白饭配酱油,妈妈说她已经吃过了」. Asking for "one concrete sensory detail" got it
+`sense_detail` is the field the whole product leans on — the difference between *"we were poor"*
+and *"we ate white rice with soy sauce, and my mother said she had already eaten"*. Asking for "one concrete sensory detail" got it
 filled every single time, which looked like success until the values were read:
 
-> `sense_detail: '从福建永春坐船在槟城上岸的迁徙画面'`
-> *("the scene of migrating from Yongchun and landing at Penang")*
+> `sense_detail: 'the scene of the migration from Yongchun, Fujian, landing at Penang by boat'`
 
 She never described a boat, the sea, or anything she perceived. The model restated the story's
-own facts and appended 「的画面」 — *the scene of*. A fact wearing a sensory costume. It passed
+own facts and prefixed *"the scene of"*. A fact wearing a sensory costume. It passed
 every structural check: non-empty, one item, on topic.
 
 What fixed it was demanding **quotability** rather than describing the quality wanted: it must
 be something she said, pointable to a line in the transcript, plus worked examples of the
-failure mode, plus explicit permission to leave it empty. After that, 阿公坐船到槟城 returned
-her own 「坐船来的,槟城上岸」, and 一九六九年咖啡店结业 correctly returned **nothing at all**.
+failure mode, plus explicit permission to leave it empty. After that, *grandfather came by boat to Penang* returned
+her own *"came by boat, landed at Penang"*, and *the coffee shop closed in 1969* correctly
+returned **nothing at all**.
 
 **Lesson:** a field a model can satisfy by rephrasing its own output will be satisfied that
 way. Anchor such fields to the source text, and say plainly that empty is an acceptable answer
@@ -84,8 +83,8 @@ reads them, acts on them, and **never speaks them**. Every tool therefore return
 and `_turn_length` alongside its actual payload.
 
 Verified with the agent set to a `depleted` state: it called `get_pending_ask`, received
-「提早结束是好事」 in the response, and said only 「阿嬷,伟伦问阿公有没有留下什么东西?」 —
-no leak, where the injected-turn approach had read its own stage directions aloud.
+*"ending early is a good thing"* in the response, and said only *"Ah Ma, Wei Lun asks whether
+Ah Gong left anything behind"* — no leak, where the injected-turn approach had read its own stage directions aloud.
 
 Two smaller things from the same ticket:
 
@@ -95,8 +94,9 @@ carried on talking. Listing them, with a line on *when* to reach for each, was w
 start using them.
 
 **A tool's docstring is its prompt.** ADK builds the declaration from the signature and
-docstring, so these are written in Chinese, addressed to the agent, in the register the rest
-of the instruction uses — 「查不到就不要装懂」 sits in `recall`'s docstring, not in a comment.
+docstring, so these are written addressed to the agent, in the register the rest of the
+instruction uses — *"if you cannot find it, do not pretend you know"* sits in `recall`'s
+docstring, not in a comment.
 
 ## A live session cannot be steered mid-call
 
@@ -110,8 +110,8 @@ verified by running them:
 
 | How | What happened |
 |---|---|
-| `role="user"`, fenced with 「不要念出来」 | Agent read the fence out loud: 「[系统提示,不是阿嬷讲的话。」 |
-| `role="system"` | Agent acknowledged it aloud: 「好的,明白了。准备收尾。」 |
+| `role="user"`, fenced with *"do not read this aloud"* | Agent read the fence out loud: *"[system prompt, not something Ah Ma said."* |
+| `role="system"` | Agent acknowledged it aloud: *"Alright, understood. Preparing to wrap up."* |
 | `role="model"` | Turn-taking broke; it stopped answering her entirely |
 
 The first is the worst outcome available: an eighty-year-old hears the machine read its own
@@ -138,7 +138,7 @@ different delivery, put that to the test:
 | Delivery | energy | engagement | affect |
 |---|---|---|---|
 | loud, fast, laughing | fresh | engaged | excited |
-| slow, trailing off, 「都过去了」 | fading | **withdrawing** | sad |
+| slow, trailing off, *"all in the past already"* | fading | **withdrawing** | sad |
 | slow, grieving, telling the Milo story | fresh | **engaged** | sad |
 
 The model heard the sigh, the pace, and the lexical closers, and separated the last two
@@ -162,8 +162,8 @@ anything.
 
 The Companion's base instruction carried its own opening line, guarded in prose:
 
-> 第一次见面这样开场:「阿嬷,我是小船。你儿子伟伦叫我来陪你聊天…」
-> *("On the first meeting, open like this: …")*
+> On the first meeting, open like this: "Ah Ma, I am Xiao Chuan. Your son Wei Lun asked me to
+> come and keep you company…"
 
 On a session-5 call — full memory loaded, the interrupted thread ranked, the family ask
 attributed — the agent opened by **introducing itself from scratch**. The condition read as a
@@ -173,8 +173,8 @@ an agent that had never met her.
 
 Moving the greeting out of the persona and into the rendered session plan fixed it: the plan
 knows `session_count`, so it either supplies the introduction or says *"you have spoken 4
-times, do not introduce yourself."* Session 1 now introduces; session 5 opens 「阿嬷,您好」
-and, one turn later, 「伟伦想知道,阿公有没留下什么东西?」
+times, do not introduce yourself."* Session 1 now introduces; session 5 opens *"Ah Ma, hello"*
+and, one turn later, *"Wei Lun wants to know whether Ah Gong left anything behind."*
 
 **Lesson:** a persona is static text and cannot evaluate a condition about state it does not
 have. Any instruction of the form *"if X, say Y"* must be resolved by the code that knows X,
@@ -186,10 +186,11 @@ and only the resolved branch handed to the model.
 
 Three times in one ticket the agent looked broken and was not:
 
-- Fed 「阿嬷,我是小船。你今天早上吃了没有?」 — *the agent's own line* — as a **user** turn, it
+- Fed *"Ah Ma, I am Xiao Chuan. Have you eaten this morning?"* — *the agent's own line* — as a
+  **user** turn, it
   replied in the grandmother's voice. Correct: it was answering the person who said that.
-- Fed 「喂?小船啊?」 — literally *"is that Xiao Chuan?"* — it identified itself. Correct.
-- Fed a single 「喂」 and expected the full opener; the plan says read her first two turns
+- Fed *"Hello? Is that Xiao Chuan?"* — it identified itself. Correct.
+- Fed a single *"hello?"* and expected the full opener; the plan says read her first two turns
   before offering anything, so greeting and waiting was the specified behaviour.
 
 Only the first-meeting problem was real. With a conversational agent the prompt is part of
@@ -264,7 +265,8 @@ cleanly, while letting any other RuntimeError through.
 
 Sensitive topics and open threads are both keyed by a short label the model writes. Left to
 itself it invents a fresh one every call: she refused to discuss why the coffee shop closed,
-which came back as 关店的原因 in session 2 and 阿公的店关门 in session 4.
+which came back as *the reason the shop closed* in session 2 and *grandfather's shop shutting*
+in session 4.
 
 No string matching can reconcile those. They share no substring, and semantically-similar
 matching needs embeddings — expensive, and still guessy. The consequence was concrete and
@@ -274,7 +276,7 @@ engagement landed on a differently-named topic, the subject stayed marked
 to reopen.
 
 The fix was to stop matching after the fact and pass the labels already in use into the
-prompt, with an instruction to reuse them. Topic count fell from 10 to 8, 关店的原因
+prompt, with an instruction to reuse them. Topic count fell from 10 to 8, *the reason the shop closed*
 correctly accumulated `refusals=1, engagements=1`, and `do_not_raise` flipped back to false.
 
 **Lesson:** when a model generates the keys that later join your data, it is not enough to
@@ -286,7 +288,7 @@ model-authored identifier.
 
 **2026-08-16, ticket 6.**
 
-The first cut of sensitivity treated a refusal as an absorbing state: she says 「不要讲这个」
+The first cut of sensitivity treated a refusal as an absorbing state: she says *"don't talk about this"*
 once and the agent never raises it again. That is right for her sister, and wrong for the
 shop closing — she declined it in session 2 and then told the whole story herself in session
 4 when her son asked.
@@ -306,8 +308,8 @@ produced zero, and the reflex was to loosen the pinning rule until the number ma
 The number was invented when the document was written, with no run behind it. With WHERE and
 WHEN mandatory at a threshold of four, and her transcripts nearly always carrying both, almost
 every story legitimately pins — and the extraction-feeds-the-next-question loop works anyway,
-because `missing_fields` is populated on *pinned* stories too. 一九六九年咖啡店结业 pins at
-4/6 with `["sense", "why"]`: it reaches the map *and* supplies a later question. Strictly
+because `missing_fields` is populated on *pinned* stories too. *The coffee shop closing in
+1969* pins at 4/6 with `["sense", "why"]`: it reaches the map *and* supplies a later question. Strictly
 better than withholding it.
 
 The document was corrected to match the pipeline. **Planning documents written before any code
@@ -318,9 +320,9 @@ guide to which is which.
 
 **2026-08-16, ticket 2.**
 
-She says 「六七岁吧」 in one turn and 「我是一九四六年生的」 several turns later. The model
-resolved the first against the second and returned `start_year: 1952, end_year: 1953` while
-preserving `raw_phrase: '六七岁吧'`.
+She says *"six, seven maybe"* in one turn and *"I was born nineteen forty-six"* several turns
+later. The model resolved the first against the second and returned `start_year: 1952,
+end_year: 1953` while preserving `raw_phrase: 'six, seven maybe'`.
 
 That is the two-fields-for-time design paying off on the very first run, and it is the
 mechanism the whole "session 20 has a sharper timeline than session 3" claim rests on.
@@ -447,25 +449,26 @@ months stale — including, in practice, a lot of AI-generated GCP config.
 **2026-08-16, tickets 8 and 17.**
 
 A conventional geocoder is the wrong tool for this archive — the places that matter most are
-a village named the way her father said it, an estate that stopped existing decades ago,
-「板底街」 rather than Jalan Bandar. So resolution is a model call that must state its own
-precision, and it does that well: 板底街 came back as Jalan Bandar Timah at street precision,
-怡保火车站 as exact, 福建永春 as a region, and three places it could not place at all landed
-in the tray with honest notes (「胶园工人排屋统称，无具体地理位置」).
+a village named the way her father said it, an estate that stopped existing decades ago, "the
+old town street" rather than an address. So resolution is a model call that must state its own
+precision, and it does that well: *Jalan Bandar* came back as Jalan Bandar Timah at street
+precision, *Ipoh railway station* as exact, *Yongchun, Fujian* as a region, and three places it
+could not place at all landed in the tray with honest notes (*"a general term for estate
+labourers' row housing; no specific location"*).
 
-But **双溪镇 resolved to Sungkai** — a real town in Perak, ninety kilometres from the one she
+But **Sungai Siput resolved to Sungkai** — a real town in Perak, ninety kilometres from the one she
 meant. Plausible, specific, and wrong, which is the failure mode I had predicted for a
 geocoder and then reproduced.
 
 The fix is not a better prompt. Anything coarser than street precision is now marked
-`needs_confirmation` and rendered as a hollow pin under 「待确认」, because **a plausible wrong
+`needs_confirmation` and rendered as a hollow pin under *needs confirming*, because **a plausible wrong
 pin is worse than an obviously missing one — nobody corrects what looks right.** The tray was
 always designed to be visible; this extends the same reasoning to pins that merely look
 confident.
 
-Related: the ambiguity was partly self-inflicted. The persona bible calls her hometown 双溪镇,
-which is not what Malaysian Chinese actually call Sungai Siput. An invented name inherited an
-invented ambiguity — worth remembering when fixtures stand in for real data.
+Related: the ambiguity was partly self-inflicted. The persona bible named her hometown in a form no
+Malaysian Chinese actually uses for Sungai Siput. An invented name inherited an invented
+ambiguity — worth remembering when fixtures stand in for real data.
 
 ---
 
@@ -474,7 +477,7 @@ invented ambiguity — worth remembering when fixtures stand in for real data.
 **2026-08-16, audit.**
 
 `flag_concern` — the tool for falls, chest pain, breathlessness, hopelessness — returned
-`family_notified: True` and told her 「阿嬷,这个我会跟伟伦讲一声」. Nothing was sent anywhere.
+`family_notified: True` and told her *"Ah Ma, I'll let Wei Lun know about this."* Nothing was sent anywhere.
 It appended to an in-memory list that the Archivist did not even read.
 
 Every other gap found in the same audit was a missing feature. This one was the agent stating
@@ -483,7 +486,7 @@ believed matters most, and it had been sitting there since the tools were writte
 
 It now writes to Firestore the moment it is called — not at the end of the call, because a
 fall should not wait for her to hang up — and the family view carries open concerns on every
-tab rather than behind one. And when delivery fails, the agent says only 「这个我记下来了」 and
+tab rather than behind one. And when delivery fails, the agent says only *"I've written this down"* and
 `family_notified` is false. There are tests for both the failure and the nothing-wired-up case,
 because the honest sentence is the one that has to survive.
 
@@ -495,13 +498,13 @@ leave unimplemented.
 
 **2026-08-16, journey view.**
 
-The journey view sorts her stops by year. 阿公坐船南来 has no year — 「二十几年吧,我也不清楚」
-was correctly left unresolved — so it sorted last, putting the origin of the family's migration
+The journey view sorts her stops by year. *Grandfather came south by boat* has no year —
+*"the twenties something lah, I also not sure"* was correctly left unresolved — so it sorted last, putting the origin of the family's migration
 *after* her 1969, below a sea-crossing marker that then fired twice.
 
 The tempting fix was to infer it: China precedes Malaysia, a grandfather precedes his
 granddaughter, so put it first. All true, and all guessed. Undated stops are now shown under
-「年份还没讲」 instead, the same way unplaceable ones sit in a tray.
+*"year not said yet"* instead, the same way unplaceable ones sit in a tray.
 
 Same shape as the pin problem: a plausible wrong position is worse than an admitted gap,
 because the gap is the thing that gets the next call to ask her about it.
@@ -516,12 +519,12 @@ The argument against a conventional map was that her pins are one dot in Fujian 
 four inside ninety kilometres of each other in Perak — illegible at any single scale. So the
 SVG map got a Perak inset.
 
-At inset scale, three of those four pins landed on **the same coordinate**: 板底街, the room
-above the shop, and the railway station where the wedding photo was taken are a few hundred
+At inset scale, three of those four pins landed on **the same coordinate**: Jalan Bandar, the
+room above the shop, and the railway station where the wedding photo was taken are a few hundred
 metres apart. Three labels, one dot. The fix that solved the problem at ocean scale simply
 moved it down one level.
 
-They are now drawn as one marker named 「板底街 +2」, sized by story count, with all three
+They are now drawn as one marker named *"Jalan Bandar +2"*, sized by story count, with all three
 names in the tooltip — which is arguably truer to the life anyway: the shop, the room above
 it and the station are one place to her, and only a projection insists otherwise.
 
@@ -565,20 +568,20 @@ the microphone button doing nothing and no error anywhere.
 Four of eleven stories could not be put on the map — and they were the four
 *best* stories, every one scoring 6/6, including the emotional peak of the whole
 demo: the day her father closed the coffee shop and poured her a cup of Ovaltine
-they could not normally afford, 「他讲，喝了就没有了」.
+they could not normally afford — *"he said, once you drink it, it's gone."*
 
 The reason was mundane. She names places by **relationship, not address**:
-「爸爸的咖啡店」, 「家里」. A geocoder can do nothing with "my father's coffee
+*"my father's shop"*, *"home"*. A geocoder can do nothing with "my father's coffee
 shop", so all four sat in the unlocated tray while the map showed her lesser
 stories.
 
 But she had already said where the shop was — six weeks earlier, in a different
-session: 「一九五八年在怡保开了一间咖啡店,在板底街」. And 板底街 *was* placed, at
-street precision. The two names had simply never been joined.
+session: *"nineteen fifty-eight he opened a coffee shop in Ipoh, at Jalan Bandar."* And Jalan
+Bandar *was* placed, at street precision. The two names had simply never been joined.
 
 Linking them requires the same discipline as everything else here: each link
 must carry **her own sentence** as evidence, and links without one are dropped.
-That placed 「爸爸的咖啡店」 and 「line house」 — and correctly refused 「家里」,
+That placed *"my father's shop"* and *"line house"* — and correctly refused *"home"*,
 because she never once said which house. Pins went 5 → 7, unlocated 3 → 1.
 
 **Lesson:** before treating a gap as missing data, check whether it is
@@ -593,7 +596,7 @@ match.
 **2026-08-16, building the family chat agent.**
 
 `mark_private` appended to a list on an in-memory object and told her
-「好,这个我不写进去」 — *"alright, I won't write this down."* The list was
+*"alright, I won't write this one down."* The list was
 discarded when the call ended. Nothing filtered anything, anywhere: the feed,
 the map and the new chat agent all served every story regardless.
 
@@ -616,3 +619,121 @@ the archive are ones the teller *chose* to tell — she described the shop closi
 when her son asked, and he described regretting the five-minute phone calls.
 Burying those behind an approval workflow that does not exist yet would be a
 worse record of the family than marking them and treading carefully.
+
+## A required field will be filled with something that looks like an answer
+
+Three times now, in three different places, a model asked for a specific kind
+of value supplied something with the right shape and no content:
+
+- `sense_detail` came back as a paraphrase of the story rather than a detail
+  she actually gave.
+- `flag_concern` and `mark_private` returned reassuring confirmations while
+  persisting nothing.
+- `linked_evidence` — the sentence proving that "my father's shop" is the shop
+  on Jalan Bandar — came back as *"Identified as being in the vicinity of
+  Sungai Siput"*. That is not something she said. It is the model narrating its
+  own reasoning into a field that asked for a quotation.
+
+The prompt was not the weak point. It said, in capitals, that every link needs
+evidence, gave a worked GOOD and BAD example, and stated that leaving the field
+blank was fine. It still got reasoning back, because a field that must be
+non-empty will be made non-empty, and a plausible-sounding justification is the
+cheapest way to do that.
+
+The check that mattered was three lines and no cleverness: the evidence must
+appear in the transcript. Case and whitespace are normalised because the model
+re-punctuates freely, and very short fragments are rejected because almost any
+few words can be found somewhere in a long transcript. A claim about the source
+can be tested against the source.
+
+### The worse half: a field the prompt never mentioned
+
+The evidence check was already there, and two forged links reached the map
+anyway — because they never went through the linker.
+
+`Place` carries the geocoding fields *and* `linked_from` / `linked_evidence`.
+The place resolver used `Place` directly as its `response_schema`. The
+resolution prompt never mentions linking; it asks only for coordinates and an
+honest precision. But the schema offered the fields, so the model filled them,
+and those values were written straight to the pin. The verification path
+existed, was tested, worked — and the geocoder simply routed around it.
+
+Both stages returning "a place" made sharing one type feel like good design. It
+meant the stage with no evidence requirement could emit evidence. The fix was
+to give the resolver its own schema containing only what its prompt governs,
+and construct `Place` from it.
+
+Generated structured output is not filled in like a form, where blank fields
+stay blank. Every field offered is a field that will be answered. **The schema
+is part of the prompt** — anything in it that the instructions do not govern is
+an ungoverned instruction.
+
+The visible result: before, nine of nine stories were placed and the tray was
+empty, which read as a system doing well. Two of those pins rested on sentences
+she never said.
+
+## A filter that quietly excludes nobody is worse than no filter
+
+**2026-08-18, the temporal-graph revamp.**
+
+Clustering her entities into chapters collapsed her estate childhood and her
+shop years into one. The cause was structural and, once seen, obvious: nearly
+every fact in her archive has her as its subject, so she neighbours everyone,
+and label propagation joins everything through her. **She belongs to every
+chapter of her life, which is exactly why she cannot be used to tell them
+apart.**
+
+The fix — exclude the narrator — took three attempts, and the first two are the
+finding.
+
+**By name.** The narrator entity is called `Ah Khim`. The household record says
+`Lim Siew Khim`. The profile's `display_name` was empty string. So the exclusion
+set was empty, the code ran, the chapters came out, and nothing anywhere said
+that the filter had matched nothing. It looked exactly like a working filter.
+Only checking the member list of the output — and noticing her still in it —
+surfaced it.
+
+**By threshold.** "Connected to more than half the graph" also excluded nobody:
+28 entities exist but only 17 appear in any fact, so the denominator was wrong.
+Lowering it to "at least half" would have thrown out the coffee shop, which is
+a chapter rather than a hub.
+
+**By dominance.** She has degree 8; the next entity has 3. She is an *outlier*,
+not a busy node, and that is what the rule should say. A single node whose
+degree is at least twice the runner-up, and the script now prints who it
+removed — because the previous two failures were both silent.
+
+**Lesson:** any filter that can legitimately select nothing must say when it
+selects nothing. Both failures produced plausible output, and a name comparison
+between two different naming conventions failed in the one direction that leaves
+no trace.
+
+## In a small corpus, IDF cannot protect you from a common word
+
+Retrieval returned a fact about **Ah Chwee** when asked about **Ah Seng** —
+someone the archive has never heard of. The shared token was `ah`, an honorific
+half the family carries. BM25's inverse document frequency is supposed to
+discount exactly this, and across a few dozen sentences it has no room to: with
+a handful of documents, every term looks rare.
+
+Query terms under three characters are now dropped. The general point is that
+IR defaults assume a corpus, and a personal archive is not one for years.
+
+What makes this the worst class of bug in the product: nothing throws. The agent
+tells an eighty-year-old something confident and wrong about a person she asked
+after, in a voice she has come to trust.
+
+## An interval with only one end reads as a date
+
+A fact whose valid time has an end but no beginning — which is precisely what a
+state change leaves behind, when a later fact closes an earlier one — rendered
+as a bare `1968`. Indistinguishable from a fact that *happened* in 1968.
+
+It travelled: the renderer fed the community summariser, which wrote *"she grew
+up on a rubber estate in Sungai Siput during her childhood in 1968"*. A year she
+never gave, in a sentence about her childhood, produced by a system whose entire
+design principle is not inventing dates.
+
+Now `until 1968`, and `from 1969` for the open other end. **Lesson:** a
+half-open interval is not a point, and any formatter that flattens one into the
+other will eventually be read aloud to someone.

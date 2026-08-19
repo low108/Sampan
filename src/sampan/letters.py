@@ -6,7 +6,8 @@ inherited by people who cannot open it.
 
 The letter is built around `sense_detail`. That constraint is the whole reason
 the field is defended so hard upstream — a letter assembled from facts reads
-like a database row, and one built around 「煤油灯下一碗白饭配酱油」 reads like
+like a database row, and one built around "a bowl of white rice with soy
+sauce under a kerosene lamp" reads like
 her.
 """
 
@@ -20,29 +21,31 @@ from sampan.config import Settings
 from sampan.family import StoryCard
 
 LETTER_PROMPT = """\
-下面是一位老人家亲口讲的一段回忆,已经整理成资料。
-请写成一封短短的信,给她的家人看。
+Below is a memory an elderly woman told in her own words, organised into a
+record. Write it as a short letter for her family to read.
 
-规矩:
-- **用第一人称,用她的口气**,像她自己在讲给孙女听
-- 一百二十字以内。短比长好
-- **一定要围绕那个感官细节来写**。那一句是这封信的心
-- 只能用资料里有的东西。**不要加她没讲过的情节、感受或场景**
-- 不要写「我记得」「那些年」这种套话开头
-- 不要总结,不要给道理,不要感叹人生
+Rules:
+- **First person, in her voice**, as though she were telling her granddaughter.
+- Under 120 words. Short is better than long.
+- **Build it around the sensory detail.** That line is the heart of the letter.
+- Use only what is in the record. **Do not add events, feelings or scenes she
+  did not describe.**
+- Do not open with "I remember" or "in those days".
+- Do not summarise, do not draw a lesson, do not reflect on life.
 
-english: 同样的一封信,翻成英文给看不懂中文的孙辈看。
-不要逐字直译,要读起来像一封信,但意思不可以跑掉。
+english: the same letter in English, for grandchildren who cannot read Chinese.
+Not a word-for-word translation — it should read as a letter — but nothing may
+change meaning.
 
-title_en: 英文标题,短。
+title_en: a short English title.
 
-资料:
-标题:{title}
-时间:{when}({years})
-地点:{where}
-人物:{people}
-感官细节:{sense}
-她讲的内容:{narrative}
+The record:
+title: {title}
+when: {when} ({years})
+where: {where}
+people: {people}
+sensory detail: {sense}
+what she said: {narrative}
 """
 
 
@@ -77,16 +80,18 @@ class GeminiLetterWriter:
     def write(self, card: StoryCard) -> Letter:
         from google.genai import types
 
-        years = f"{card.year_from or ''}–{card.year_to or ''}".strip("–") or "年份不详"
+        years = (
+            f"{card.year_from or ''}–{card.year_to or ''}".strip("–") or "year unknown"
+        )
         response = self._client.models.generate_content(
             model=self._settings.archivist_model,
             contents=LETTER_PROMPT.format(
                 title=card.title,
-                when=card.when_said or "没讲清楚",
+                when=card.when_said or "not clearly said",
                 years=years,
-                where=card.where_said or "没讲清楚",
-                people="、".join(card.people) or "没提到",
-                sense=card.sense_detail or "(她没讲到具体细节)",
+                where=card.where_said or "not clearly said",
+                people=", ".join(card.people) or "none mentioned",
+                sense=card.sense_detail or "(she gave no concrete detail)",
                 narrative=card.narrative,
             ),
             config=types.GenerateContentConfig(

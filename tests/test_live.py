@@ -112,15 +112,15 @@ class TestEncodingEvents:
     def test_transcripts_are_labelled_by_speaker(self) -> None:
         event = SimpleNamespace(
             content=None,
-            input_transcription=SimpleNamespace(text="我小时候在树胶园"),
-            output_transcription=SimpleNamespace(text="然后呢?"),
+            input_transcription=SimpleNamespace(text="I grew up on the rubber estate"),
+            output_transcription=SimpleNamespace(text="and then?"),
         )
 
         message = encode_event(event)
 
         assert message == {
-            "user_transcript": "我小时候在树胶园",
-            "agent_transcript": "然后呢?",
+            "user_transcript": "I grew up on the rubber estate",
+            "agent_transcript": "and then?",
         }
 
     def test_barge_in_is_forwarded_so_the_client_can_stop_playing(self) -> None:
@@ -211,17 +211,20 @@ class TestPump:
 
 class TestInstruction:
     def test_names_itself_honestly_and_credits_the_family(self) -> None:
+        """The persona no longer names a specific relative — who asked comes
+        from the session plan, so a family with no Wei Lun still works."""
         instruction = build_instruction()
 
-        assert "小船" in instruction
-        assert "不是人" in instruction
-        assert "伟伦" in instruction
+        assert "Xiao Chuan" in instruction
+        assert "not a person" in instruction
+        assert "say who asked" in instruction
+        assert "The credit is theirs" in instruction
 
     def test_forbids_telling_her_she_has_repeated_herself(self) -> None:
-        assert "你讲过了" in build_instruction()
+        assert "already told you" in build_instruction()
 
     def test_caps_clarifying_questions(self) -> None:
-        assert "最多问两个" in build_instruction()
+        assert "At most two such questions" in build_instruction()
 
     def test_an_unseeded_agent_carries_no_learned_layer(self) -> None:
         assert "---" not in build_instruction()
@@ -233,25 +236,137 @@ class TestInstruction:
         later = build_instruction(
             preferences=[
                 Preference(
-                    type=PreferenceType.HEARING, value="左耳不好", confidence=0.9
+                    type=PreferenceType.HEARING,
+                    value="left ear is weak",
+                    confidence=0.9,
                 )
             ],
             sensitivities=fold_sensitivities(
                 [],
-                [TopicSignal(topic="姐姐", kind=AvoidanceKind.REFUSED)],
+                [TopicSignal(topic="sister", kind=AvoidanceKind.REFUSED)],
                 conversation_id="conv_003",
             ),
         )
 
         assert later != first
-        assert "左耳不好" in later
-        assert "姐姐" in later
+        assert "left ear is weak" in later
+        assert "sister" in later
 
     def test_a_subject_she_reopened_is_not_carried_as_forbidden(self) -> None:
         instruction = build_instruction(
             sensitivities=[
-                SensitiveTopic(topic="关店的原因", refusals=1, engagements=1)
+                SensitiveTopic(topic="why the shop closed", refusals=1, engagements=1)
             ]
         )
 
-        assert "关店的原因" not in instruction
+        assert "why the shop closed" not in instruction
+
+
+class TestToolLogging:
+    """What the agent reached for, kept with the call.
+
+    The transcript records what it said; without this there is no record of
+    what it looked up before saying it, and a wrong answer mid-call is
+    unfalsifiable afterwards — a bad lookup and a good lookup badly used are
+    indistinguishable. Names alone were not enough: they cannot tell
+    `remember("Ah Seng")` from `remember("the coffee shop")`.
+    """
+
+    @staticmethod
+    def _part(**kw):
+        base = dict(
+            inline_data=None, text=None, function_call=None, function_response=None
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def _event(self, part):
+        return SimpleNamespace(content=SimpleNamespace(parts=[part]))
+
+    def test_a_call_carries_the_arguments_it_was_made_with(self) -> None:
+        event = self._event(
+            self._part(
+                function_call=SimpleNamespace(
+                    name="remember", args={"query": "Ah Seng"}
+                )
+            )
+        )
+
+        message = encode_event(event)
+
+        assert message == {
+            "tools": [{"name": "remember", "args": {"query": "Ah Seng"}}]
+        }
+
+    def test_a_result_is_summarised_rather_than_stored_whole(self) -> None:
+        event = self._event(
+            self._part(
+                function_response=SimpleNamespace(
+                    name="get_pending_ask",
+                    # The guidance channel rides back on every tool response
+                    # and is not part of what the agent looked up.
+                    response={
+                        "has_ask": True,
+                        "from_name": "Wei Lun",
+                        "_guidance": "keep turns short",
+                        "_turn_length": 2,
+                    },
+                )
+            )
+        )
+
+        message = encode_event(event)
+
+        assert message is not None
+        assert message["tool_results"] == [
+            {
+                "name": "get_pending_ask",
+                "result": {"has_ask": True, "from_name": "Wei Lun"},
+            }
+        ]
+
+    def test_an_unrecognised_result_records_its_shape_not_an_empty_object(self) -> None:
+        """Logging `{}` would read as "the tool returned nothing", a different
+        and far more alarming claim than "nothing was recognised"."""
+        from sampan.live import _summarise
+
+        summary = _summarise({"stories": [1, 2], "_guidance": "x"})
+
+        assert summary == {"keys": ["stories"]}
+
+    def test_the_log_keeps_both_halves_in_order_against_the_transcript(self) -> None:
+        from sampan.live import ToolLog
+
+        log = ToolLog()
+        events = [
+            self._event(
+                self._part(
+                    function_call=SimpleNamespace(name="get_pending_ask", args={})
+                )
+            ),
+            self._event(
+                self._part(
+                    function_response=SimpleNamespace(
+                        name="get_pending_ask", response={"has_ask": False}
+                    )
+                )
+            ),
+        ]
+        for turn, event in enumerate(events):
+            message = encode_event(event)
+            assert message is not None
+            log.observe(message, turn=turn)
+
+        assert [(c["turn"], c["phase"]) for c in log.as_records()] == [
+            (0, "call"),
+            (1, "result"),
+        ]
+        assert log.names() == ["get_pending_ask"]
+
+    def test_a_message_with_no_tools_leaves_the_log_alone(self) -> None:
+        from sampan.live import ToolLog
+
+        log = ToolLog()
+        log.observe({"user_transcript": "I grew up on the estate"}, turn=1)
+
+        assert log.as_records() == []

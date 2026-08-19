@@ -26,35 +26,37 @@ from sampan.family import StoryCard
 from sampan.models import Entity
 
 ANSWER_PROMPT = """\
-你在帮一个家庭了解他们的长辈。下面是这位长辈亲口讲过的事,整理出来的。
+You are helping a family understand an elder of theirs. Below is what she has
+told, in her own words, organised into records.
 
-回答家人的问题,规矩如下:
+Answer the family's question by these rules:
 
-1. **只讲她讲过的。** 她没讲过的,就说她没讲过。不要用你对那个年代、
-   那个地方的常识去补。宁可答不出来。
+1. **Only from what she said.** If she never said it, say so. Do not fill the
+   gap with what you know about the period or the place. Better to have no
+   answer.
 
-2. 尽量**用她自己的话**。她的原话比任何转述都好。
+2. Use **her own words** wherever you can. They beat any paraphrase.
 
-3. 答完之后,如果这件事她其实**没讲清楚**,就在 follow_up 提一个问题 ——
-   下次小船打给她的时候可以替家人问。这是这个功能最有用的地方:
-   把「不知道」变成「下次问她」。
+3. After answering, if she never actually made this clear, put a question in
+   `follow_up` — something Xiao Chuan can ask her on the next call. This is the
+   most useful thing here: turning "we don't know" into "we'll ask her".
 
-4. 用问的人的语言回答。他用中文问就中文答,用英文问就英文答。
-   answer_en 一律填英文版,给看不懂中文的孙辈。
+4. Answer in the language they asked in. `answer_en` is always the English
+   version, for grandchildren who need it.
 
-5. 简短。两三句就好,不要写作文。
+5. Keep it short. Two or three sentences, not an essay.
 
 ---
-她是谁:{who}
+Who she is: {who}
 
-她讲过的事:
+What she has told:
 {stories}
 
-她提到过的人和地方:
+People and places she has mentioned:
 {entities}
 ---
 
-家人问:{question}
+The family asks: {question}
 """
 
 
@@ -79,19 +81,19 @@ class AboutHer(Protocol):
 def _render_stories(cards: list[StoryCard]) -> str:
     lines = []
     for card in cards:
-        when = card.when_said or "(没讲时间)"
+        when = card.when_said or "(no time given)"
         years = (
             f"{card.year_from or ''}–{card.year_to or ''}".strip("–")
             if (card.year_from or card.year_to)
-            else "年份不详"
+            else "year unknown"
         )
         lines.append(
             f"[{card.story_id}] {card.title} · {when} ({years}) · "
-            f"{card.where_said or '没讲地点'}\n"
-            f"  人:{'、'.join(card.people) or '没提到'}\n"
-            f"  她的话:{card.sense_detail or '(没有)'}\n"
-            f"  经过:{card.narrative}\n"
-            f"  还没讲到:{'、'.join(card.missing_fields) or '(都讲了)'}"
+            f"{card.where_said or 'no place given'}\n"
+            f"  people: {', '.join(card.people) or 'none mentioned'}\n"
+            f"  her words: {card.sense_detail or '(none)'}\n"
+            f"  what happened: {card.narrative}\n"
+            f"  not yet told: {', '.join(card.missing_fields) or '(all told)'}"
         )
     return "\n\n".join(lines)
 
@@ -100,7 +102,7 @@ def _render_entities(entities: list[Entity]) -> str:
     return "\n".join(
         f"- {e.canonical_name} ({e.type.value}"
         + (f", {e.role}" if e.role else "")
-        + f"): {e.detail or '没有更多'}"
+        + f"): {e.detail or 'nothing more'}"
         for e in entities
         if not e.merged_into
     )
@@ -138,7 +140,7 @@ class GeminiAboutHer:
 
         if not self._cards:
             return Answer(
-                answer="她还没讲过什么。打个电话给她吧。",
+                answer="She hasn't told us anything yet. Give her a call.",
                 answer_en="She hasn't told us anything yet. Give her a call.",
                 she_never_said=True,
             )

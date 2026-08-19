@@ -57,20 +57,20 @@ DOMAIN_DEPTH: dict[Domain, int] = {
 }
 
 DOMAIN_PROMPTS: dict[Domain, str] = {
-    Domain.TASTE: "以前最喜欢吃的东西",
-    Domain.PLAY: "小时候玩的",
-    Domain.WORK: "以前做过的工",
-    Domain.HOME: "以前住过的厝",
-    Domain.PEOPLE: "从前的邻居朋友",
-    Domain.EVENTS: "以前的婚礼、节日",
-    Domain.TRADITION: "以前过节的规矩",
-    Domain.OBJECTS: "家里留下来的老东西",
-    Domain.SKILLS: "她会煮的、会做的",
-    Domain.LOVE: "她跟阿公是怎么认识的",
-    Domain.ROOT: "祖辈从中国来的事",
-    Domain.JOURNEY: "从乡下搬到城市的事",
-    Domain.HARDSHIP: "以前苦的日子",
-    Domain.WISDOM: "她想跟孙辈讲的话",
+    Domain.TASTE: "what she liked to eat",
+    Domain.PLAY: "what she played as a child",
+    Domain.WORK: "the work she used to do",
+    Domain.HOME: "the houses she has lived in",
+    Domain.PEOPLE: "the neighbours and friends of those days",
+    Domain.EVENTS: "weddings and festivals",
+    Domain.TRADITION: "how festivals were kept",
+    Domain.OBJECTS: "old things still in the house",
+    Domain.SKILLS: "what she can cook and make",
+    Domain.LOVE: "how she and Ah Gong met",
+    Domain.ROOT: "the family coming over from China",
+    Domain.JOURNEY: "moving from the kampung to the town",
+    Domain.HARDSHIP: "the hard years",
+    Domain.WISDOM: "what she wants her grandchildren to know",
 }
 
 
@@ -86,23 +86,25 @@ def unlocked_depth(session_count: int) -> int:
 
 
 FESTIVALS: dict[tuple[int, int], tuple[str, Domain]] = {
-    (4, 4): ("清明", Domain.ROOT),
-    (4, 5): ("清明", Domain.ROOT),
-    (8, 15): ("中元", Domain.TRADITION),
-    (9, 17): ("中秋", Domain.TRADITION),
-    (1, 29): ("新年", Domain.TRADITION),
+    # Qingming is the ancestor-remembrance festival, which is exactly when an
+    # agent collecting ancestral stories should be calling.
+    (4, 4): ("Qingming", Domain.ROOT),
+    (4, 5): ("Qingming", Domain.ROOT),
+    (8, 15): ("Hungry Ghost", Domain.TRADITION),
+    (9, 17): ("Mid-Autumn", Domain.TRADITION),
+    (1, 29): ("Chinese New Year", Domain.TRADITION),
 }
 
 
 def _greeting(last_closure: ClosureReason | None, festival: str | None) -> str:
     """Open with one specific small thing, never a generic hello."""
     if festival:
-        return f"提一下快到{festival}了,问她以前怎么过"
+        return f"mention that {festival} is coming, ask how she used to keep it"
     if last_closure is ClosureReason.FATIGUE:
-        return "问她上次聊完有没有睡好"
+        return "ask whether she slept well after last time"
     if last_closure is ClosureReason.INTERRUPTED:
-        return "问她上次那位邻居的事"
-    return "问她今天早上吃了什么"
+        return "ask about the neighbour who came to the door last time"
+    return "ask what she had this morning"
 
 
 def _thread_candidates(
@@ -118,11 +120,12 @@ def _thread_candidates(
                     kind=CandidateKind.THREAD,
                     label=thread.topic,
                     say=(
-                        f"上次讲{thread.topic}讲到一半就断了。"
-                        f"她还没讲到:{thread.left_off_at or thread.topic}"
+                        f"Last time {thread.topic} was cut off halfway. "
+                        f"She had not yet reached: "
+                        f"{thread.left_off_at or thread.topic}"
                     ),
                     score=SCORE_INTERRUPTED,
-                    reason="上次被打断,她还想讲",
+                    reason="cut off last time; she still wants to tell it",
                 )
             )
         else:
@@ -131,11 +134,11 @@ def _thread_candidates(
                     kind=CandidateKind.THREAD,
                     label=thread.topic,
                     say=(
-                        f"{thread.topic} —— 还没讲完的是:"
+                        f"{thread.topic} — still unfinished: "
                         f"{thread.left_off_at or thread.topic}"
                     ),
                     score=SCORE_THREAD + min(thread.touch_count, 3),
-                    reason="讲过但还没讲完",
+                    reason="raised before, not finished",
                 )
             )
     return candidates
@@ -147,14 +150,45 @@ def _ask_candidate(
     """A family question, always with the asker's name in it."""
     if ask is None or not may_raise(ask.question, sensitivities):
         return None
-    who = f"{ask.from_name}" + (f"({ask.relation})" if ask.relation else "")
+    who = f"{ask.from_name}" + (f" ({ask.relation})" if ask.relation else "")
     return Candidate(
         kind=CandidateKind.ASK,
         label=ask.question,
-        say=f"{who}问:{ask.question}",
+        say=f"{who} asked: {ask.question}",
         score=SCORE_ASK,
-        reason=f"{ask.from_name}留了话给她",
+        reason=f"{ask.from_name} left her a question",
     )
+
+
+def choose_target(
+    covered: set[Domain],
+    session_count: int,
+    sensitivities: list[SensitiveTopic],
+    preferred: tuple[Domain, ...] = (Domain.ROOT, Domain.TASTE),
+) -> Domain | None:
+    """One subject to lean toward, if the conversation opens toward it.
+
+    Chosen only from domains trust has unlocked and she has not covered. The
+    depth gate is doing real work here: ROOT sits at level 2, so ancestry is
+    not reachable until the third call. That was a decision about trust, not an
+    accident, and steering must not route around it.
+
+    A refused subject is not merely deprioritised, it is never eligible.
+    """
+    depth = unlocked_depth(session_count)
+    eligible = [
+        domain
+        for domain, level in DOMAIN_DEPTH.items()
+        if level <= depth
+        and domain not in covered
+        and may_raise(DOMAIN_PROMPTS[domain], sensitivities)
+    ]
+    if not eligible:
+        return None
+    for wanted in preferred:
+        if wanted in eligible:
+            return wanted
+    return min(eligible, key=lambda d: (DOMAIN_DEPTH[d], d.value))
 
 
 def _domain_candidate(
@@ -174,9 +208,9 @@ def _domain_candidate(
     return Candidate(
         kind=CandidateKind.DOMAIN,
         label=domain.value,
-        say=f"还没聊过的:{DOMAIN_PROMPTS[domain]}",
+        say=f"not talked about yet: {DOMAIN_PROMPTS[domain]}",
         score=SCORE_DOMAIN,
-        reason=f"还没聊过,深浅够得上(第{session_count + 1}次)",
+        reason=f"never covered, and deep enough by call {session_count + 1}",
     )
 
 
@@ -207,9 +241,9 @@ def build_session_plan(
             Candidate(
                 kind=CandidateKind.DATE,
                 label=festival_entry[0],
-                say=f"快到{festival_entry[0]}了,问她以前怎么过",
+                say=(f"{festival_entry[0]} is coming — ask how she used to keep it"),
                 score=SCORE_DATE,
-                reason="快到节日了",
+                reason="a festival is close",
             )
         )
     if (domain := _domain_candidate(covered, session_count, sensitivities)) is not None:
@@ -231,6 +265,7 @@ def build_session_plan(
         offers=offers,
         light_offer=light,
         considered=ranked,
+        target_domain=choose_target(covered, session_count, sensitivities),
     )
 
 
@@ -239,33 +274,51 @@ def render_plan(plan: SessionPlan) -> str:
     lines = []
     if plan.session_count == 0:
         lines.append(
-            "这是第一次见面。开场这样讲:"
-            "「阿嬷,我是小船。你儿子伟伦叫我来陪你聊天,把你的故事写下来给家里人。」"
+            "This is the first meeting. Open like this: "
+            '"Ah Ma, I am Xiao Chuan. Your son Wei Lun asked me to keep you '
+            'company, and to write your stories down for the family."'
         )
     else:
         lines.append(
-            f"你跟阿嬷已经聊过 {plan.session_count} 次了。"
-            "**不要自我介绍,也不要讲你是谁**,直接像熟人一样接下去讲。"
+            f"You have spoken with Ah Ma {plan.session_count} times already. "
+            "**Do not introduce yourself and do not say who you are.** "
+            "Pick up like someone she knows."
         )
     lines.append("")
-    lines.append("这次聊天的开场(**只是备案,不是流程**):")
-    lines.append(f"1. 先打招呼,{plan.greeting}。")
+    lines.append("How to open this call (**a fallback, not a script**):")
+    lines.append(f"1. Greet her, and {plan.greeting}.")
 
     if plan.ask is not None:
         who = plan.ask.from_name
         lines.append(
-            f"2. 放{who}的语音,然后讲明是{who}问的 ——「{who}问……」。"
-            f"功劳是{who}的,不是你的。"
+            f"2. Play {who}'s recording, then say plainly that {who} asked "
+            f'— "{who} was asking…". The credit is {who}\'s, not yours.'
         )
 
-    lines.append("3. 听她头两句,先判断她今天有没有精神。")
-    lines.append("   - 没什么精神:只提一个轻松的,或者干脆让她自己讲。")
+    lines.append("3. Listen to her first two turns and judge how she is today.")
+    lines.append("   - Low: offer one light thing, or simply let her talk.")
     if plan.light_offer is not None:
-        lines.append(f"     轻松的:{plan.light_offer.say}")
-    lines.append("   - 有精神:最多给她两个选择,不要像在念菜单:")
+        lines.append(f"     The light one: {plan.light_offer.say}")
+    lines.append("   - Fine: offer at most two, and never as a menu:")
     for offer in plan.offers:
-        lines.append(f"     · {offer.say}")
+        lines.append(f"     - {offer.say}")
+
+    if plan.target_domain is not None:
+        # Deliberately placed above the never-steer-back rule, so the rule is
+        # the last thing read. A lean is an ear, not an agenda: if the opening
+        # does not arrive, nothing happens and nothing is lost.
+        lines.append("")
+        lines.append(
+            "If a natural opening appears — and only then — you would like to "
+            f"hear about {DOMAIN_PROMPTS[plan.target_domain]}. "
+            "**Do not raise it, do not work toward it, and do not return to "
+            "it if she moves away.** It is somewhere she has not been, not "
+            "somewhere she must go."
+        )
 
     lines.append("")
-    lines.append("**她要是自己讲起别的,就跟着她走,上面这些全部作废,不要绕回来。**")
+    lines.append(
+        "**If she starts talking about something else, follow her. Everything "
+        "above is void, and you never steer back.**"
+    )
     return "\n".join(lines)

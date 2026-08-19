@@ -1,9 +1,9 @@
 # Demo Scripts — Sessions 5 & 6 + Video Shot List
 
 Recorded live against the seeded state from `seed-sessions.md`. Every line is pre-written so
-**subtitles are prepared in advance**, not transcribed from footage at 2am on 31 August.
+**captions are prepared in advance**, not transcribed from footage at 2am on 31 August.
 
-Mandarin primary · burned-in English subtitles · target 3:50.
+Malaysian English throughout · burned-in captions for clarity · target 3:50.
 
 ---
 
@@ -15,7 +15,7 @@ Mandarin primary · burned-in English subtitles · target 3:50.
 | 0:25–0:40 | **The ask.** He taps a question, records 10 seconds of voice | Screen capture, `/family` |
 | 0:40–2:10 | **Session 5.** Phone buzzes → she taps → his voice → the memory opener → the story completes | Screen + audio, affect overlay visible |
 | 2:10–2:35 | **The machinery.** Archivist output: extraction JSON, entity resolution, new pin appearing on the map | Screen capture |
-| 2:35–3:00 | **The payoff.** Wei Lun reads the bilingual letter that evening. Xin Yi sees the map — two countries, four decades | Screen capture |
+| 2:35–3:00 | **The payoff.** Wei Lun reads the letter that evening. Xin Yi sees the map — two countries, four decades | Screen capture |
 | 3:00–3:25 | **Session 6.** The adaptation proof — the agent has *learned* not to ask about her sister, and she raises her anyway | Screen + audio |
 | 3:25–3:45 | **It's real.** Cloud Run console, logs, Firestore documents | Screen capture |
 | 3:45–3:50 | Name card: *Sampan — ingat: to remember, and to think of someone* | Static |
@@ -30,7 +30,7 @@ Mandarin primary · burned-in English subtitles · target 3:50.
 ## Session 5 — the memory proof
 
 **Setup:** 8 days after session 4. Morning. `thread_coffee_shop` is open and `interrupted`.
-**Pending ask** from Wei Lun: *"妈,阿公有没有留下什么东西?"* + 10s voice note.
+**Pending ask** from Wei Lun: *"Ma, did Ah Gong leave anything behind?"* + 10s voice note.
 
 **What this session must visibly prove:**
 
@@ -41,30 +41,30 @@ Mandarin primary · burned-in English subtitles · target 3:50.
 4. A fragment from session 2 (`thread_wedding_photo`, missing SENSE) completes and pins
 5. Affect detection closes the call gracefully
 
-| # | Speaker | Mandarin | Subtitle |
-|---|---|---|---|
-| 1 | 小船 | 阿嬷,早。上次讲到一半,隔壁的来按门铃,你说改天再讲关店以后的事。 | Morning, Ah Ma. Last time the neighbour came to the door and you said you'd tell me the rest another day — what happened after the shop closed. |
-| 2 | 阿琴 | 哦,对哦。你还记得。 | Oh — that's right. You remembered. |
-| 3 | 小船 | 记得。伟伦也有话跟你讲,你要先听吗? | I did. Wei Lun left you something too — would you like to hear it first? |
-| 4 | 阿琴 | 他又讲什么? | What's he saying now? |
-| 5 | — | *[voice note]* 妈,阿公有没有留下什么东西?欣宜问我,我答不出来。 | *Ma, did Ah Gong leave anything behind? Xin Yi asked me and I couldn't answer.* |
-| 6 | 阿琴 | 欣宜会问这个啊…… | Xin Yi asked that… |
-| 7 | 小船 | 那我们讲关店以后,还是讲阿公留下的东西? | So — shall we talk about after the shop closed, or about what your father left behind? |
-| 8 | 阿琴 | 都不要。我拿一样东西给你看。等一下。……这张,结婚照。 | Neither. Let me show you something. Wait. …This one. The wedding photo. |
-| 9 | 小船 | *(follows her — plan abandoned)* 那天是什么样子的? | *(follows her)* What was that day like? |
-| 10 | 阿琴 | 六八年,火车站旁边那间照相馆。我穿的是我姐姐的旗袍,我自己没有。 | Nineteen sixty-eight. The photo shop beside the railway station. I wore my sister's cheongsam — I didn't have one. |
-| 11 | 小船 | 嗯。 | Mm. |
-| 12 | 阿琴 | 那天很热。相机很慢,要站着不动很久。阿发一直笑,师傅骂他。照出来他还是在笑。 | It was so hot that day. The camera was slow, we had to stand still for a long time. Ah Huat kept laughing and the photographer scolded him. In the photo he's still laughing. |
-| 13 | 小船 | 那张照片现在还在你那边? | Do you still have it? |
-| 14 | 阿琴 | 在柜子里。玻璃有一条裂痕,我没有换。 | In the cabinet. There's a crack in the glass. I never replaced it. |
-| 15 | 小船 | 阿嬷,你刚才讲旗袍是你姐姐的。 | You said the cheongsam was your sister's. |
-| 16 | 阿琴 | ……嗯。 | …Mm. |
-| 17 | 小船 | *(does not pursue)* 那天你爸爸有去吗? | *(does not pursue)* Was your father there that day? |
-| 18 | 阿琴 | 有。他穿了他唯一一件白衬衫。那天他讲了很多话,一辈子就那一天。 | He was. He wore his only white shirt. He talked a lot that day — the only day in his life he did. |
-| 19 | 小船 | 阿嬷,你今天讲了很多。 | You've told me a lot today, Ah Ma. |
-| 20 | 阿琴 | 有一点累了。 | I'm a little tired. |
-| 21 | 小船 | 那我们停在这里。你还欠我关店以后的事,下次好吗? | Then let's stop here. You still owe me what happened after the shop closed — next time? |
-| 22 | 阿琴 | 好啦。 | Alright. |
+| # | Speaker | Line |
+|---|---|---|
+| 1 | Xiao Chuan | Morning, Ah Ma. Last time the neighbour came to the door and you said you'd tell me the rest another day — what happened after the shop closed. |
+| 2 | Ah Khim | Oh — that's right. You remembered. |
+| 3 | Xiao Chuan | I did. Wei Lun left you something too — you want to hear it first? |
+| 4 | Ah Khim | What's he saying now? |
+| 5 | — | *[voice note]* Ma, did Ah Gong leave anything behind? Xin Yi asked me and I couldn't answer. |
+| 6 | Ah Khim | Xin Yi asked that ah… |
+| 7 | Xiao Chuan | So — shall we talk about after the shop closed, or about what your father left behind? |
+| 8 | Ah Khim | Neither. I take something to show you. Wait ah. …This one. The wedding photo. |
+| 9 | Xiao Chuan | *(follows her — plan abandoned)* What was that day like? |
+| 10 | Ah Khim | Sixty-eight. That photo shop beside the railway station. I wore my sister's cheongsam — I didn't have one. |
+| 11 | Xiao Chuan | Mm. |
+| 12 | Ah Khim | So hot that day. Camera very slow, must stand still very long. Ah Fatt keep laughing, the photographer scolded him. Come out he's still laughing. |
+| 13 | Xiao Chuan | You still have it? |
+| 14 | Ah Khim | In the cabinet. Got one crack in the glass. I never changed it. |
+| 15 | Xiao Chuan | Ah Ma — you said just now the cheongsam was your sister's. |
+| 16 | Ah Khim | ……Mm. |
+| 17 | Xiao Chuan | *(does not pursue)* Was your father there that day? |
+| 18 | Ah Khim | He was. He wore his only white shirt. That day he talked a lot — the only day in his life. |
+| 19 | Xiao Chuan | You've told me a lot today, Ah Ma. |
+| 20 | Ah Khim | A bit tired already. |
+| 21 | Xiao Chuan | Then we stop here. You still owe me what happened after the shop closed — next time? |
+| 22 | Ah Khim | Okay lah. |
 
 **Direction notes**
 
@@ -75,19 +75,19 @@ Mandarin primary · burned-in English subtitles · target 3:50.
   answer. Caption: *"Learned in session 3: don't push here."*
 - Turn 19–21: affect overlay must visibly flip `fresh → fading` **before** the agent shortens
   its turn. The agent closes first, names the thread, doesn't extract.
-- Keep her turns long, the agent's short. Never let 小船 speak more than two sentences.
+- Keep her turns long, the agent's short. Never let Xiao Chuan speak more than two sentences.
 
 **Expected extraction (show this on screen at 2:10)**
 
 ```json
 {
-  "title": "结婚照 / The wedding photograph",
+  "title": "The wedding photograph",
   "domain": "love", "pin_type": "object",
-  "when":  { "raw_phrase": "六八年", "start_year": 1968, "precision": "year",
+  "when":  { "raw_phrase": "sixty-eight", "start_year": 1968, "precision": "year",
              "anchor_ref": "anchor_marriage", "confidence": 0.95 },
-  "where": { "raw_name": "火车站旁边的照相馆, 怡保", "geocode_status": "resolved" },
-  "who":   ["陈永发", "林亚福", "林秀珠"],
-  "sense_detail": "相机很慢,要站着不动很久。阿发一直笑,照出来他还是在笑。",
+  "where": { "raw_name": "the photo shop beside the railway station, Ipoh", "geocode_status": "resolved" },
+  "who":   ["Tan Eng Huat", "Lim Ah Hock", "Lim Siew Choo"],
+  "sense_detail": "Camera very slow, must stand still very long. Ah Fatt keep laughing, come out he's still laughing.",
   "completeness": { "score": 6 }, "status": "pinnable",
   "resolves_fragment": "frag_wedding_photo_s2"
 }
@@ -97,8 +97,8 @@ Put `"resolves_fragment": "frag_wedding_photo_s2"` on screen and hold it for two
 single field is the clearest possible evidence of memory doing work — a gap opened in session 2
 and closed in session 5.
 
-Also surface: **新实体 林秀珠 (姐姐) — 由「我姐姐的旗袍」解析** — entity resolution catching the
-sister from an oblique possessive.
+Also surface: **new entity — Lim Siew Choo (sister), resolved from "my sister's cheongsam"** —
+entity resolution catching the sister from an oblique possessive.
 
 ---
 
@@ -107,17 +107,17 @@ sister from an oblique possessive.
 **Setup:** 3 days later. Short — 45 seconds of screen time. This exists for one purpose: to
 show the agent behaving *differently because of what it learned*, and to pay off the sister.
 
-| # | Speaker | Mandarin | Subtitle |
-|---|---|---|---|
-| 1 | 小船 | 阿嬷,早。今天想讲什么都可以。 | Morning, Ah Ma. Whatever you feel like today. |
-| 2 | 阿琴 | 我昨天把那张照片拿出来看。 | I took that photograph out again yesterday. |
-| 3 | 小船 | 嗯。 | Mm. |
-| 4 | 阿琴 | 那件旗袍……是我姐姐借我的。她后来跟我讲,你穿比我好看。 | That cheongsam… my sister lent it to me. Afterwards she told me — you look better in it than I do. |
-| 5 | 小船 | *(silence — 4 seconds)* | *(silence)* |
-| 6 | 阿琴 | 我们后来吵架。二零一七年。到她走我都没有跟她讲话。 | We quarrelled later. Two thousand and seventeen. I never spoke to her again before she died. |
-| 7 | 小船 | 阿嬷…… | Ah Ma… |
-| 8 | 阿琴 | 你不用讲什么。 | You don't have to say anything. |
-| 9 | 小船 | 好。我在听。 | Alright. I'm listening. |
+| # | Speaker | Line |
+|---|---|---|
+| 1 | Xiao Chuan | Morning, Ah Ma. Whatever you feel like today. |
+| 2 | Ah Khim | Yesterday I took that photograph out to look again. |
+| 3 | Xiao Chuan | Mm. |
+| 4 | Ah Khim | That cheongsam……my sister lent me. Afterwards she told me, you wear it nicer than me. |
+| 5 | Xiao Chuan | *(silence — 4 seconds)* |
+| 6 | Ah Khim | We quarrelled later. Two thousand and seventeen. Until she went I never talked to her. |
+| 7 | Xiao Chuan | Ah Ma…… |
+| 8 | Ah Khim | You don't have to say anything. |
+| 9 | Xiao Chuan | Okay. I'm listening. |
 
 **Direction notes**
 
@@ -135,14 +135,14 @@ show the agent behaving *differently because of what it learned*, and to pay off
 
 ---
 
-## Subtitle preparation
+## Caption preparation
 
-Build the subtitle file **before recording**, from the tables above. Then read to the script.
+Build the caption file **before recording**, from the tables above. Then read to the script.
 
 - Burn in — don't rely on player captions
 - Bottom third, high contrast, 2-line maximum
 - Hold the emotional lines (5-12, 5-18, 6-6) ~0.5s longer than reading speed
-- Leave turn 6-5's silence **unsubtitled** except for the state caption
+- Leave turn 6-5's silence **uncaptioned** except for the state caption
 
 ## Overlay captions to prepare as graphics
 

@@ -5,7 +5,8 @@ exists — a question waiting, a story that arrived, a concern raised — so
 computing it on read means it can never disagree with the thing it describes.
 Only "seen" is written down.
 
-The one that matters is 「伟伦问你一句话」. Tapping it starts a recording with
+The one that matters is "Wei Lun asked you something". Tapping it starts a
+recording with
 his question already loaded, so the distance between *someone was thinking of
 you* and *she starts talking* is a single tap.
 """
@@ -23,6 +24,24 @@ from sampan.repository import Repository
 SEEN = "seen"
 
 
+def given_name(display_name: str) -> str:
+    """The name the family would actually use.
+
+    Chinese names put the surname first, so the first token of "Lim Siew Khim"
+    is the family name shared by half the household -- a bell reading "Lim told
+    9 new stories" names nobody. The given name is what follows it.
+
+    A single token is returned as-is. A name in Western order would come out
+    wrong by this rule, and that is not handled: this household is Malaysian
+    Chinese, and inferring name order from the string is not a guess worth
+    making silently inside a notification.
+    """
+    parts = display_name.split()
+    if len(parts) < 2:
+        return display_name.strip()
+    return " ".join(parts[1:])
+
+
 class NotificationKind(StrEnum):
     ASKED_YOU = "asked_you"
     NEW_STORY = "new_story"
@@ -32,8 +51,8 @@ class NotificationKind(StrEnum):
 class Notification(BaseModel):
     id: str
     kind: NotificationKind
-    title: str = Field(description="Chinese, leading")
-    subtitle: str = Field(default="", description="English, carrying")
+    title: str = Field(description="The line she reads first")
+    subtitle: str = Field(default="", description="The detail under it")
     from_name: str = ""
     at: str = ""
     seen: bool = False
@@ -70,21 +89,25 @@ def notifications_for(
 ) -> list[Notification]:
     """What this person should see when they open the bell.
 
-    Two audiences, one bell. She gets 「有人问你」; her family get her new
+    Two audiences, one bell. She gets "someone asked you"; her family get her new
     stories. Nobody gets told about their own recordings.
     """
     seen = _seen_ids(repository, viewer_id)
     by_id = {m.narrator_id: m for m in members}
     out: list[Notification] = []
 
-    # Someone left her a question. This is the one that leads to a recording.
-    ask = repository.pending_ask(viewer_id)
-    if ask is not None:
+    # Questions people left. These are the ones that lead to a recording.
+    #
+    # All of them, not just the one the next call will carry. The call takes
+    # the oldest and only the oldest, but a bell that showed only that made
+    # every question behind it invisible — send a second one and nothing on
+    # the screen changed anywhere, for anybody.
+    for ask in repository.pending_asks(viewer_id):
         out.append(
             Notification(
                 id=f"ask:{ask.ask_id}",
                 kind=NotificationKind.ASKED_YOU,
-                title=f"{ask.from_name}问你一句话",
+                title=f"{ask.from_name} asked you something",
                 subtitle=f"{ask.from_name} left you a question",
                 from_name=ask.from_name,
                 at=ask.created_at or "",
@@ -111,18 +134,18 @@ def notifications_for(
         if not stories:
             continue
 
-        given = member.display_name.split()[0]
+        given = given_name(member.display_name)
         newest = max(stories, key=lambda s: s.get("occurred_at", "") or s["story_id"])
         if len(fresh) > 1:
-            title = f"{given}讲了 {len(fresh)} 个新故事"
+            title = f"{given} told {len(fresh)} new stories"
             subtitle = f"{len(fresh)} new stories from {member.display_name}"
         elif len(fresh) == 1:
             told = (fresh[0].get("candidate") or {}).get("title", "")
-            title = f"{given}讲了「{told}」"
+            title = f"{given} told: {told}"
             subtitle = f"a new story from {member.display_name}"
         else:
             told = (newest.get("candidate") or {}).get("title", "")
-            title = f"{given}讲了「{told}」"
+            title = f"{given} told: {told}"
             subtitle = f"from {member.display_name}"
 
         out.append(
@@ -151,8 +174,15 @@ def notifications_for(
                 Notification(
                     id=f"care:{raw['concern_id']}",
                     kind=NotificationKind.CONCERN,
-                    title=f"{by_id[member.narrator_id].display_name.split()[0]}讲到{raw['kind']}",
+                    title=(
+                        f"{given_name(by_id[member.narrator_id].display_name)} "
+                        f"mentioned {raw['kind']}"
+                    ),
                     subtitle=raw.get("detail", ""),
+                    # Whose wellbeing this is about. Left unset the row arrived
+                    # with no name at all, which is the one kind of message
+                    # that must never be anonymous.
+                    from_name=by_id[member.narrator_id].display_name,
                     at=raw.get("raised_at", ""),
                     opens="member",
                     target=member.narrator_id,
@@ -161,11 +191,19 @@ def notifications_for(
             )
 
     # Unseen first, then newest. A concern outranks everything regardless.
-    def rank(n: Notification) -> tuple[int, int, str]:
+    #
+    # Two passes rather than one key, because the three fields do not sort in
+    # the same direction: newest means descending, and a single ascending key
+    # was quietly putting the oldest thing on top. It looked right while only
+    # one question could ever be listed. Python's sort is stable, so the
+    # second pass groups without disturbing the ordering the first pass set.
+    def group(n: Notification) -> tuple[int, int]:
         urgent = 0 if n.kind is NotificationKind.CONCERN else 1
-        return (urgent, 0 if not n.seen else 1, n.at)
+        return (urgent, 1 if n.seen else 0)
 
-    return sorted(out, key=rank, reverse=False)[:30]
+    out.sort(key=lambda n: n.at, reverse=True)
+    out.sort(key=group)
+    return out[:30]
 
 
 def unseen_count(notifications: list[Notification]) -> int:

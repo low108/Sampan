@@ -57,7 +57,7 @@ entirely offline and it is the part that makes the demo real.
 **Day 5 — 19 Aug**
 - [ ] Geocoding + the **unlocated tray** (Sungai Siput estate must land there)
 - [ ] Profile recomputation
-- [ ] Bilingual letter generation
+- [ ] Letter generation
 - [ ] Pub/Sub trigger → Cloud Run job wiring
 
 **Day 6 — 20 Aug** — **🚩 GATE 1**
@@ -150,7 +150,7 @@ replaceable.
 > that is a perfectly respectable thing to write in a README.
 
 **Day 16 — 30 Aug**
-- [ ] Edit to 3:50. Burn in subtitles prepared from `demo-scripts.md`
+- [ ] Edit to 3:50. Burn in captions prepared from `demo-scripts.md`
 - [ ] Overlay captions (the 8 listed in the demo script)
 - [ ] Architecture diagram
 - [ ] README with spin-up instructions — **judges check this even when they don't run it**

@@ -1,7 +1,7 @@
 """Family corrections — the other half of feedback capture.
 
-The agent learns from her silently. It cannot learn that 「我姐姐」 is called
-林秀珠 unless her son says so, and he is the one reading the archive.
+The agent learns from her silently. It cannot learn that "my sister" is called
+Lim Siew Choo unless her son says so, and he is the one reading the archive.
 """
 
 from __future__ import annotations
@@ -46,13 +46,15 @@ def repository() -> Repository:
     repo.save_entities(
         NARRATOR,
         [
-            person("e_sister", "我姐姐", role="elder_sister", detail="煮得比较像"),
-            person("e_ahsui", "阿水", role="neighbour", provisional=True),
-            person("e_ahsui2", "王亚水", role="neighbour", provisional=True),
+            person(
+                "e_sister", "my sister", role="sister", detail="cooks it more like hers"
+            ),
+            person("e_ahsui", "Ah Chwee", role="neighbour", provisional=True),
+            person("e_ahsui2", "Ong Ah Chwee", role="neighbour", provisional=True),
             Entity(
                 entity_id="e_father",
                 type=EntityType.PERSON,
-                canonical_name="林亚福",
+                canonical_name="Lim Ah Hock",
                 role="father",
                 provisional=False,
                 confirmed_by_family=True,
@@ -74,32 +76,36 @@ class TestRenaming:
             repository,
             NARRATOR,
             Correction(
-                kind=CorrectionKind.ENTITY_NAME, target="e_sister", value="林秀珠"
+                kind=CorrectionKind.ENTITY_NAME,
+                target="e_sister",
+                value="Lim Siew Choo",
             ),
         )
 
-        assert entities_by_id(repository)["e_sister"].canonical_name == "林秀珠"
+        assert entities_by_id(repository)["e_sister"].canonical_name == "Lim Siew Choo"
 
     def test_the_name_she_uses_survives_as_an_alias(
         self, repository: Repository
     ) -> None:
-        """She will go on saying 「我姐姐」. The archive must keep resolving it."""
+        """She will go on saying "my sister". The archive must keep resolving it."""
         apply_correction(
             repository,
             NARRATOR,
             Correction(
-                kind=CorrectionKind.ENTITY_NAME, target="e_sister", value="林秀珠"
+                kind=CorrectionKind.ENTITY_NAME,
+                target="e_sister",
+                value="Lim Siew Choo",
             ),
         )
 
-        assert entities_by_id(repository)["e_sister"].knows("我姐姐")
+        assert entities_by_id(repository)["e_sister"].knows("my sister")
 
     def test_a_correction_confirms_the_entity(self, repository: Repository) -> None:
         apply_correction(
             repository,
             NARRATOR,
             Correction(
-                kind=CorrectionKind.ENTITY_NAME, target="e_ahsui", value="王亚水"
+                kind=CorrectionKind.ENTITY_NAME, target="e_ahsui", value="Ong Ah Chwee"
             ),
         )
 
@@ -132,8 +138,8 @@ class TestMerging:
         )
 
         survivor = entities_by_id(repository)["e_ahsui"]
-        assert survivor.knows("阿水")
-        assert survivor.knows("王亚水")
+        assert survivor.knows("Ah Chwee")
+        assert survivor.knows("Ong Ah Chwee")
 
     def test_the_duplicate_is_tombstoned_not_deleted(
         self, repository: Repository
@@ -181,8 +187,8 @@ class TestWhatNeedsAttention:
         pending = needs_confirmation(repository.load_entities(NARRATOR))
 
         names = {e.canonical_name for e in pending}
-        assert "林亚福" not in names
-        assert "阿水" in names
+        assert "Lim Ah Hock" not in names
+        assert "Ah Chwee" in names
 
     def test_a_merged_entity_stops_being_offered(self, repository: Repository) -> None:
         apply_correction(
@@ -194,7 +200,7 @@ class TestWhatNeedsAttention:
         )
 
         pending = needs_confirmation(repository.load_entities(NARRATOR))
-        assert "王亚水" not in {e.canonical_name for e in pending}
+        assert "Ong Ah Chwee" not in {e.canonical_name for e in pending}
 
     def test_two_people_with_one_role_are_surfaced_not_merged(
         self, repository: Repository
@@ -212,20 +218,20 @@ class TestPlaces:
     def test_a_confirmed_place_is_trusted_afterwards(
         self, repository: Repository
     ) -> None:
-        """双溪镇 resolved to the wrong town. Once her son fixes it, the map
+        """Sungai Siput resolved to the wrong town. Once her son fixes it, the map
         should stop guessing."""
         apply_correction(
             repository,
             NARRATOR,
             Correction(
                 kind=CorrectionKind.PLACE,
-                target="双溪镇",
+                target="Sungai Siput",
                 value="Sungai Siput, Perak",
-                by="伟伦",
+                by="Wei Lun",
             ),
         )
 
-        cached = repository._store.get("_places", "双溪镇")  # noqa: SLF001
+        cached = repository._store.get("_places", "Sungai Siput")  # noqa: SLF001
         assert cached is not None
         assert cached["precision"] == "exact"
-        assert "伟伦" in cached["note"]
+        assert "Wei Lun" in cached["note"]

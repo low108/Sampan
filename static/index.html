@@ -1,32 +1,22 @@
 <!doctype html>
-<html lang="zh">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>小船 Sampan</title>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#9C3B24">
-<link rel="icon" href="icon.svg">
+<title>Sampan</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#F2F0EB">
+<link rel="icon" href="/icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css">
-<style>
-  /* The unplaced bar: absence given a permanent, tappable place on the map. */
-  .unplaced-bar {
-    position: absolute; left: .8rem; right: .8rem; bottom: .8rem; z-index: 5;
-    min-height: 3.4rem; border: none; border-radius: .8rem; cursor: pointer;
-    background: rgba(255,252,245,.94); color: var(--ink);
-    font-family: var(--sans); font-size: 1.05rem; text-align: left;
-    padding: .7rem 1rem; box-shadow: 0 3px 14px rgba(36,30,26,.16);
-    backdrop-filter: blur(6px);
-  }
-  .unplaced-bar .en { display: block; }
-</style>
+<!-- Archivo carries titles and UI, DM Mono the letterspaced labels. Body and
+     every quote of hers are Georgia, which is already on the device: her words
+     must render even if the network drops the webfonts. -->
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/index-CWSe6smC.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DJXPRYhL.css">
 </head>
 <body>
 <div id="app"></div>
-<script src="sampan-map.js"></script>
-<script src="app.js"></script>
 </body>
 </html>

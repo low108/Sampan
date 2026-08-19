@@ -12,17 +12,41 @@ Built for the **All Things Agentic Hackathon** — Collaborative Partner track.
 
 ## Status
 
-The data spine is complete and the voice loop works end to end.
+All 20 tickets are done. The system runs end to end on Cloud Run against Firestore, seeded
+with four conversations for one narrator and two for another.
 
-- **Archivist** (tickets 2-6): transcript → scored stories, entity graph, threads with the
-  interrupted/tired distinction, anchors resolving relative time, and the learned preference
-  layer. Gate 1 passes: 36 integration tests over four chained sessions against the real model.
-- **Companion** (ticket 10): browser mic → Cloud Run WebSocket → ADK → Live API → native audio
-  back, with the affect-monitor audio fork in place.
+- **Archivist** — transcript to scored stories, entity graph, threads carrying the
+  interrupted/tired distinction, anchors resolving her relative time expressions, and the
+  learned preference layer.
+- **Companion** — browser mic to Cloud Run WebSocket to ADK to the Live API and native audio
+  back, with the affect monitor forked off the same audio.
+- **Family archive** — map, timeline, letters, asks, corrections, and a bell that opens a
+  recording with the asker's question already loaded.
+- **Places** — relational names ("my father's shop") joined to places she named in other
+  sessions, each link carrying the sentence that justifies it.
 
-Next: Companion tools, the session opener, and the affect monitor.
+**Memory v2** (`docs/spec-temporal-graph.md`) adds bi-temporal fact edges after
+Zep/Graphiti, Zep-style retrieval behind a single `remember` tool, contradiction
+routed to the correct time axis, a topic *lean* that never becomes a push, and
+communities as her chapters.
+
+**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 382
+unit tests. Everything is in English, including the seeds and the UI.
+
+Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
 
 ## Documents
+
+- **[`docs/spec-temporal-graph.md`](docs/spec-temporal-graph.md)** — the memory revamp:
+  bi-temporal fact edges after Zep/Graphiti, Zep-style retrieval behind one tool,
+  communities as her chapters, and the contradiction rules. Supersedes the memory
+  sections of `spec-p0.md`.
+
+- **[`notebooks/knowledge_base_flow.ipynb`](notebooks/knowledge_base_flow.ipynb)** — the
+  memory design walked end to end against the real code: the pre-set intake, what is
+  committed into the model's context when recording starts, the two channels that reach
+  it mid-call, and exactly what the Archivist changes when recording stops. Executed, with
+  outputs.
 
 | File | What it is |
 |---|---|
@@ -60,7 +84,7 @@ curl -s localhost:8080/health
 
 curl -s -X POST localhost:8080/debug/smoke \
   -H "X-Sampan-Key: $SAMPAN_API_KEY" -H 'Content-Type: application/json' \
-  -d '{"note":"板底街的咖啡店"}'
+  -d '{"note":"the coffee shop on Jalan Bandar"}'
 ```
 
 ### Tests, lint, types
