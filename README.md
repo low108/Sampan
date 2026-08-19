@@ -30,12 +30,18 @@ Zep/Graphiti, Zep-style retrieval behind a single `remember` tool, contradiction
 routed to the correct time axis, a topic *lean* that never becomes a push, and
 communities as her chapters.
 
-**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 382
+**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 399
 unit tests. Everything is in English, including the seeds and the UI.
 
 Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
 
 ## Documents
+
+- **[`docs/system-analysis.md`](docs/system-analysis.md)** — the backend design record:
+  architecture, data model, the four seams, seventeen numbered decisions with the
+  alternative each one rejected, a degradation matrix, and ten accepted risks. Read this
+  before changing anything structural. Every claim in it is verified against source or
+  labelled as unverified.
 
 - **[`docs/spec-temporal-graph.md`](docs/spec-temporal-graph.md)** — the memory revamp:
   bi-temporal fact edges after Zep/Graphiti, Zep-style retrieval behind one tool,
@@ -51,6 +57,7 @@ Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
 | File | What it is |
 |---|---|
 | `PRD.md` | The product requirements, tiered P0/P1/P2 |
+| `docs/system-analysis.md` | Backend design record: why it is shaped this way, and what that cost |
 | `docs/spec-p0.md` | Engineering spec for the P0 tier, with test seams |
 | `docs/build-plan.md` | 17-day schedule with three go/no-go gates |
 | `docs/persona-bible.md` | The invented family the demo is built around |
