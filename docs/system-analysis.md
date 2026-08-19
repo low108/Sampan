@@ -12,6 +12,7 @@ shaped this way and what that shape cost.
 
 | Rev | Date | Change | Supersedes |
 |---|---|---|---|
+| 2 | 2026-08-20 | Closes R11 by building the read side of `forgotten` (D18). Extraction now filters stories, threads and facts against every subject she has asked to drop. | — |
 | 1 | 2026-08-20 | First issue. Covers the service as of `d1652a19`, after the memory v2 revamp, the front-end redesign, and the ask-queue and tool-log fixes. Auditing the collection inventory for §7.3 found R11, a write-only `forgotten` collection. | — |
 
 Verification basis for this revision: names, routes, collections and constants were read from
@@ -44,8 +45,9 @@ non-optional in the model rather than a nullable convenience field (§7.3).
 
 **Her words are the artefact.** Extraction may summarise, rank and connect, but the verbatim
 sentence is what the product protects. Facts carry the quote that justifies them and are
-refused without it (§8.3, D7). Her control over that record is only half built: `mark_private`
-is honoured end to end, `forget_this` is recorded and never read (R11).
+refused without it (§8.3, D7). Her control over that record is honoured end to end in both
+directions: `mark_private` hides a story from the family and keeps it, `forget_this` stops it
+being rebuilt (D18).
 
 **Uncertainty is drawn, never asserted.** A place the system guessed is stored and rendered
 differently from a place she named. A year nobody said is not written down (D9).
@@ -245,7 +247,7 @@ do opposite things.
 | Collection | Doc id | Docs | Written by | Read by | Purpose |
 |---|---|---|---|---|---|
 | `private__<id>` | `priv_<hash>` | 1 | `mark_private`, from the `mark_private` tool | `private_subjects` → `build_cards`, `household` | She asked for something to stay off the family's view. The story is **kept** and hidden from readers. The agent says "I won't write that down"; that sentence has to survive the call, so it is stored rather than held in call memory |
-| `forgotten__<id>` | `forget_<hash>` | 1 | `forget`, from the `forget_this` tool | **Nothing — see R11** | She asked for something to be dropped. A tombstone rather than a delete, so the request itself survives and a later extraction pass cannot rebuild what she asked to lose. **The read side was never built**, so the tombstone currently prevents nothing |
+| `forgotten__<id>` | `forget_<hash>` | 1 | `forget`, from the `forget_this` tool | `forgotten` → seam 1, and the fact pass | She asked for something to be dropped. A tombstone rather than a delete, so the request itself survives and a later extraction pass cannot rebuild what she asked to lose. Read at every `finish_call` and applied to stories, threads and facts (D18) |
 
 #### Caches and probes
 
@@ -497,7 +499,7 @@ and returns data, so the model can be replaced by a fake without a network.
 
 ### 9.2 Test inventory
 
-459 tests total: **399 unit** (default), **60 integration** (`-m integration`, deselected by
+465 tests total: **405 unit** (default), **60 integration** (`-m integration`, deselected by
 `addopts = "-q -m 'not integration'"`). Largest suites:
 
 | File | Tests | File | Tests |
@@ -521,6 +523,8 @@ that memory accumulates across calls in production rather than in a fixture.
 | An answered question releasing the front of the queue | `test_notifications.py` |
 | A call below four turns | `test_callflow.py` — transcript kept, ask not consumed |
 | A quote not present in the transcript | `test_facts.py` — refused |
+| A forgotten subject reappearing on a later call | `test_callflow.py::TestForgetting` — stories, threads and facts all dropped |
+| Forgetting a subject without losing its sensitivity | `test_callflow.py::TestForgetting` |
 | Query terms shorter than three characters | `test_retrieval.py` |
 | Quiet-hours window crossing midnight | `test_quiet.py` |
 | A tool result carrying the guidance channel | `test_live.py` — stripped from the log |
@@ -557,8 +561,9 @@ mid-story and presents as a Live API bug.
 | D15 | Tool calls logged from `relay`, not from `pump` | Logging inside the pump is closer to the source. It also creates two things to keep correct: what was sent and what was recorded. Capturing the encoded message means the log is exactly what the browser was told |
 | D16 | Tool results summarised, unrecognised ones recorded by shape | Storing responses whole is lossless. It also stores the guidance channel on every entry and can store a dozen facts per `remember`. Recording `{}` for an unrecognised response was rejected separately: it reads as *the tool returned nothing*, a different and more alarming claim than *nothing was recognised* |
 | D17 | Extraction in-process on a worker thread, not Pub/Sub | Pub/Sub is the right answer at any real volume and gives retries for free. It also adds a topic, a subscription, a second deployable and an at-least-once contract to a system with one narrator. Accepted cost: a crash between hang-up and write loses that call's extraction (R1) |
+| D18 | Forgetting drops stories, threads and facts — and deliberately **keeps** entities and sensitivities | Dropping everything derived from the subject is the intuitive reading of "forget it". It is also dangerous: a sensitivity is what steers the agent *away* from a painful subject, so removing it alongside the story deletes the story and the reason not to ask again. Entities stay because other stories reference them, and forgetting a story is not forgetting that a person exists |
 
-No decision has been superseded or withdrawn as of revision 1.
+No decision has been superseded or withdrawn as of revision 2.
 
 ---
 
@@ -632,4 +637,4 @@ No external template was imposed. Sections omitted from the default structure an
 | R8 | φ_cos absent from retrieval (D11) | Recall depends on lexical overlap and graph proximity. A question phrased with no shared vocabulary will miss | Accepted at current corpus size |
 | R9 | `remember` and `flag_concern` log field names, not values | The tool log proves *that* the agent looked something up, not *what came back* | Open — see B2 |
 | R10 | Single Firestore database, no backup configured | Deleting the database loses the archive | Accepted for a hackathon; unacceptable for the product this pretends to be |
-| R11 | `forgotten__<id>` is **write-only**. `Repository.forgotten()` has no callers anywhere in `src/`, `tests/` or `scripts/` | When she says "forget that", the tombstone is written and then consulted by nothing. Extraction is not filtered by it, so a later pass can rebuild exactly what she asked to lose — and the agent has already told her it would not. The stated rationale for the tombstone design is sound; the read side was never built | **Open — defect, not a limitation.** Found by auditing this document's collection list at rev 1 |
+| ~~R11~~ | `forgotten__<id>` was write-only: `Repository.forgotten()` had no callers, so a subject she asked to drop was rebuilt by the next extraction pass — after the agent had told her it would not | — | **Closed at rev 2** (D18). Found by auditing this document's collection list at rev 1 |

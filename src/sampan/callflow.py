@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from sampan.archivist import StoryExtractor, ingest_conversation
+from sampan.archivist import StoryExtractor, ingest_conversation, mentions
 from sampan.companion import build_agent
 from sampan.config import Settings
 from sampan.contradiction import ContradictionJudge, reconcile
@@ -170,6 +170,11 @@ def finish_call(
     if prepared.memory.ask_delivered and prepared.memory.ask is not None:
         repository.mark_ask_delivered(narrator_id, prepared.memory.ask.ask_id)
 
+    # Everything she has ever asked to drop, including anything said on this
+    # call -- `forget_this` writes through immediately, so the tombstone is
+    # already here by the time extraction runs.
+    forgotten = repository.forgotten(narrator_id)
+
     outcome = ingest_conversation(
         transcript.render(),
         extractor,
@@ -178,6 +183,7 @@ def finish_call(
         known_anchors=prepared.stored.anchors,
         known_preferences=prepared.stored.preferences,
         known_sensitivities=prepared.stored.sensitivities,
+        forgotten=forgotten,
         conversation_id=prepared.conversation_id,
     )
 
@@ -216,6 +222,14 @@ def finish_call(
             known_entities=outcome.entities,
             episode_id=prepared.conversation_id,
         )
+        # Facts are extracted from the raw transcript, so they rebuild a
+        # forgotten subject even when its story has already been dropped. The
+        # quote is what to match on: it is the sentence she actually said.
+        extracted = [
+            fact
+            for fact in extracted
+            if not any(mentions(fact.quote, subject) for subject in forgotten)
+        ]
         if judge is not None:
             # A later telling retires an earlier assertion; it never deletes
             # it, and where the disagreement is about her account rather than

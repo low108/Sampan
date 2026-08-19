@@ -302,6 +302,59 @@ class GeminiStoryExtractor:
         return parsed
 
 
+def mentions(text: str, subject: str) -> bool:
+    """Whether a piece of extracted text is about a subject she named.
+
+    Case-insensitive substring, matching how `build_cards` filters private
+    subjects. Deliberately blunt: she said "forget that" in her own words, and
+    over-matching costs a story nobody will miss while under-matching breaks a
+    promise the agent already made out loud.
+    """
+    subject = subject.strip().casefold()
+    return bool(subject) and subject in text.casefold()
+
+
+def _forget(outcome: ConversationOutcome, subjects: list[str]) -> ConversationOutcome:
+    """Drop what she asked to lose, before any of it reaches the store.
+
+    Stories and threads only.
+
+    Threads are the sharp end: a thread is what the *next* call opens on, so a
+    forgotten subject surviving as one means the agent raises the very thing it
+    was told to drop, in the next sentence it says to her.
+
+    Entities are kept, because other stories reference them and forgetting a
+    story is not forgetting that a person exists. Sensitivities are kept
+    deliberately, and this is the counter-intuitive one: a sensitivity derived
+    from a painful subject is what steers the agent *away* from it. Dropping it
+    alongside the story would make forgetting actively dangerous (D18).
+    """
+    if not subjects:
+        return outcome
+    return outcome.model_copy(
+        update={
+            "stories": [
+                story
+                for story in outcome.stories
+                if not any(
+                    mentions(story.candidate.title, subject)
+                    or mentions(story.candidate.narrative, subject)
+                    for subject in subjects
+                )
+            ],
+            "threads": [
+                thread
+                for thread in outcome.threads
+                if not any(
+                    mentions(thread.topic, subject)
+                    or mentions(thread.left_off_at, subject)
+                    for subject in subjects
+                )
+            ],
+        }
+    )
+
+
 def ingest_conversation(
     transcript: str,
     extractor: StoryExtractor,
@@ -311,6 +364,7 @@ def ingest_conversation(
     known_anchors: list[Anchor] | None = None,
     known_preferences: list[Preference] | None = None,
     known_sensitivities: list[SensitiveTopic] | None = None,
+    forgotten: list[str] | None = None,
     conversation_id: str = "conv_unknown",
     tiebreaker: Tiebreaker | None = None,
 ) -> ConversationOutcome:
@@ -322,6 +376,11 @@ def ingest_conversation(
     `known_entities` is the family's graph so far, seeded at setup by the
     child-completed intake. Passing it is what turns "my sister" into a reference
     rather than a fourth duplicate sister.
+
+    `forgotten` is every subject she has ever asked to drop, on this call or any
+    earlier one. It is applied here rather than at the call site because this is
+    the seam everything derived passes through, and a story that escapes into
+    one caller has escaped.
     """
     known_labels = [t.topic for t in (known_threads or [])] + [
         t.topic for t in (known_sensitivities or [])
@@ -339,7 +398,7 @@ def ingest_conversation(
     for candidate in extracted.stories:
         candidate.when = apply_anchors(candidate.when, anchors)
 
-    return ConversationOutcome(
+    outcome = ConversationOutcome(
         stories=[assess(c) for c in extracted.stories],
         entities=resolution.entities,
         resolutions=resolution.resolutions,
@@ -362,3 +421,4 @@ def ingest_conversation(
             conversation_id=conversation_id,
         ),
     )
+    return _forget(outcome, forgotten or [])
