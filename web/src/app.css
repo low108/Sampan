@@ -1,5 +1,10 @@
-/* Sampan — design system.
-   Palette, type and rules taken from the approved prototype.
+/* Sampan — design system, second pass.
+   Tokens and rules taken from "Sampan Redesign.dc.html".
+
+   Two scales live here, and mixing them is the one mistake that breaks the
+   product. The family's scale is editorial: 10.5px letterspaced mono labels,
+   tight Archivo titles, Georgia body. Hers starts at 22px and never uses mono
+   for anything she has to read. Everything under `.teller` switches scale.
 
    Six principles it encodes, in case they get edited away later:
      No senior mode.
@@ -7,60 +12,140 @@
      Depth is optional, not hidden.
      Uncertainty is drawn, not written.
      Correction lives inside the thing.
-     Absence is a place on the page. */
+     Absence is a place on the page.
+
+   And one rule about the lime: it means SOMETHING OF THEIRS IS NEW — a story
+   that just arrived, or a question waiting for someone. If it appears anywhere
+   else it stops meaning that. The map cluster is the single sanctioned
+   exception: on the dark map cream is already the "named it" fill, so
+   clusters need their own colour to stay unambiguous. */
 
 :root {
-  --ink:        #241E1A;
-  --ink-soft:   #4A403B;
-  --ink-faint:  #8A7F76;
-  --red:        #9C3B24;
-  --green:      #2F5D50;
-  --paper:      #EDE4D6;
-  --card:       #FFFCF5;
-  --card-warm:  #F6F0E6;
-  --line:       #EADFCC;
-  --line-soft:  #EFE6D6;
+  --bg:        #F2F0EB;
+  --cream:     #FCFBF9;
+  --ink:       #1A1A1A;
+  --ink-2:     #0E0F0C;
+  --body:      #3A3530;
+  --muted:     #9A9588;
+  --lime:      #E7FE54;
+  --lime-press:#D6ED44;
+  --klein:     #002FA7;
+  --line:      rgba(26, 26, 26, .12);
+  --line-cream:rgba(252, 251, 249, .16);
 
-  --serif: 'Noto Serif', Georgia, serif;
-  --sans:  'Noto Sans', system-ui, -apple-system, sans-serif;
+  --sans:  'Archivo', system-ui, -apple-system, sans-serif;
+  --mono:  'DM Mono', ui-monospace, 'SF Mono', monospace;
+  --serif: Georgia, 'Times New Roman', serif;
 
-  /* The elder floor. Nothing in the app goes below these. */
-  --body:   22px;
-  --target: 64px;
+  --radius:   26px;
+  --radius-s: 18px;
+
+  /* The family's floor. */
+  --target: 44px;
+  /* The teller's. Nothing on a recording screen goes below these two. */
+  --teller-body:   22px;
+  --teller-target: 72px;
+
+  --lift: 0 26px 60px rgba(26, 26, 26, .12);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 html, body {
   margin: 0; height: 100%;
-  background: var(--paper); color: var(--ink);
-  font-family: var(--sans); font-size: var(--body); line-height: 1.6;
+  background: var(--bg); color: var(--ink);
+  font-family: var(--sans); font-size: 16px; line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
 }
 
+/* One shell for every screen.
+ *
+ * This used to release the phone column only on the map and the chapters
+ * grid, which made moving between the three tabs feel like moving between
+ * three different products: a full-bleed dark map, then a narrow cream
+ * column, then another. The column is a phone-width fallback now, not a
+ * layout — above 900px every family screen is the wide one, and each opens
+ * on the same full-bleed hero so the transitions read as one place. */
 #app { display: flex; flex-direction: column; height: 100%; max-width: 30rem;
-       margin: 0 auto; background: var(--paper); position: relative; }
+       margin: 0 auto; background: var(--bg); position: relative; }
+@media (min-width: 900px) { #app { max-width: none; } }
+
+/* The hero. Every screen that is not the map opens on one, in the map's own
+   ink, so the eye lands in the same place each time. */
+.hero {
+  flex: none; background: var(--ink-2); color: var(--cream);
+  padding: 40px 22px 36px; display: flex; flex-direction: column; gap: 12px;
+}
+.hero .lbl { color: rgba(252, 251, 249, .7); }
+.hero .ttl { color: var(--cream); }
+.hero .prose { color: rgba(252, 251, 249, .78); max-width: 56ch; }
+@media (min-width: 900px) { .hero { padding: 64px 40px 56px; } }
+
+/* Full-bleed page padding, and a readable column for the things inside it
+   that are prose rather than grid. */
+.page { padding: 22px; }
+@media (min-width: 900px) { .page { padding: 36px 40px 64px; } }
+.col { max-width: 46rem; }
+
+/* ── the signature label ─────────────────────────────────────
+   Mono, 10.5px, uppercase, 1.5px of tracking. It appears on nav, tags,
+   section headings, counts and metadata, and never on a recording screen. */
+.lbl {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.5px;
+  text-transform: uppercase; line-height: 1.4; color: var(--ink);
+}
+.lbl.dim { color: var(--muted); }
+.lbl.on-dark { color: var(--cream); }
+
+.ttl { font-family: var(--sans); font-weight: 700; letter-spacing: -.02em;
+       line-height: 1.12; margin: 0; }
+.ttl.s  { font-size: 19px; font-weight: 600; letter-spacing: -.01em; }
+.ttl.m  { font-size: 24px; }
+.ttl.l  { font-size: 31px; }
+.ttl.xl { font-size: 36px; letter-spacing: -.025em; }
+
+/* Georgia, generous leading. Everything meant for reading rather than
+   scanning, and every word of a teller's without exception. */
+.prose { font-family: var(--serif); font-size: 16px; line-height: 1.65;
+         color: var(--body); margin: 0; }
+.prose.big { font-size: 18px; }
 
 /* ── top bar ─────────────────────────────────────────────── */
 .top {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: .9rem 1.1rem .7rem; flex: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 20px 22px 16px; flex: none; border-bottom: 1px solid var(--line);
+  background: var(--cream);
 }
-.top h1 { font-family: var(--serif); font-size: 1.5rem; font-weight: 600; margin: 0; }
-.top h1 small { font-family: var(--sans); font-size: .8rem; color: var(--ink-faint);
-                font-weight: 400; margin-left: .4rem; }
+.top .brand { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
+.top .brand h1 { margin: 0; font-size: 10.5px; font-family: var(--mono);
+                 letter-spacing: 1.5px; text-transform: uppercase; font-weight: 400; }
+.top .brand .who { font-size: 19px; font-weight: 600; letter-spacing: -.01em;
+                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.bell {
-  position: relative; width: 3rem; height: 3rem; border: none; background: none;
-  font-size: 1.6rem; cursor: pointer; color: var(--ink);
-  display: grid; place-items: center;
+.back {
+  border: 1px solid var(--line); background: none; cursor: pointer;
+  width: 38px; height: 38px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-size: 18px; color: var(--ink);
+  padding: 0 2px 3px 0;
 }
-.bell b {
-  position: absolute; top: .35rem; right: .35rem; min-width: 1.35rem; height: 1.35rem;
-  border-radius: 1rem; background: var(--red); color: #fff;
-  font-size: .8rem; font-weight: 600; display: grid; place-items: center; padding: 0 .3rem;
+
+/* The bell is the bridge made visible, so it is a labelled control, not a
+   glyph. When something new is waiting it is the one lime thing here. */
+.headbar { display: flex; align-items: center; gap: 10px; flex: none; }
+
+/* Who you are, and what is waiting for you: the two controls that make the
+   two-sided product legible. Same shape, so they read as one pair. */
+.bell, .asme {
+  position: relative; height: 38px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: none; cursor: pointer;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--ink); flex: none;
+  display: inline-flex; align-items: center; gap: 8px;
 }
+.bell[data-new='true'] { background: var(--lime); border-color: var(--lime); }
+.bell b { font-family: var(--sans); font-weight: 700; font-size: 11px;
+          letter-spacing: 0; }
 
 /* ── main ────────────────────────────────────────────────── */
 /* min-height:0 is load-bearing: without it a flex item refuses to shrink below
@@ -69,89 +154,145 @@ html, body {
 main { flex: 1 1 auto; min-height: 0; position: relative;
        overflow-y: auto; -webkit-overflow-scrolling: touch; }
 main.nopad { overflow: hidden; }
-.pad { padding: 0 1.1rem 2rem; }
+.pad { padding: 22px 22px 40px; }
+
+.head { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; }
+.rule { height: 1px; background: var(--line); border: 0; margin: 0; }
 
 /* ── bottom tabs ─────────────────────────────────────────── */
 nav.tabs {
   flex: none; display: grid; grid-template-columns: repeat(3, 1fr);
-  background: var(--card); border-top: 1px solid var(--line);
+  background: var(--cream); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
 }
 nav.tabs button {
-  min-height: var(--target); border: none; background: none; cursor: pointer;
-  font-family: var(--sans); font-size: 1rem; color: var(--ink-faint);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: .15rem; padding: .5rem 0;
+  min-height: var(--target); padding: 16px 0; border: none; background: none;
+  cursor: pointer; color: var(--muted);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border-top: 2px solid transparent; margin-top: -1px;
 }
-nav.tabs button i { font-style: normal; font-size: 1.5rem; line-height: 1; }
-nav.tabs button[aria-current="true"] { color: var(--red); font-weight: 600; }
+nav.tabs button[aria-current='true'] { color: var(--ink); border-top-color: var(--ink); }
+
+/* Section nav inside a member: same label, underlined instead. */
+/* Sits directly under the hero and runs the full width of it, so a member
+   page reads as one page rather than a header stacked on a card. */
+.subtabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line);
+           margin: 0; padding: 0 22px; overflow-x: auto; flex: none;
+           background: var(--cream); }
+@media (min-width: 900px) { .subtabs { padding: 0 40px; gap: 28px; } }
+.subtabs button {
+  flex: none; min-height: 42px; border: none; background: none; cursor: pointer;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--muted);
+  border-bottom: 2px solid transparent; padding: 0 0 10px;
+}
+.subtabs button[aria-current='true'] { color: var(--ink); border-bottom-color: var(--ink); }
 
 /* ── cards ───────────────────────────────────────────────── */
 .card {
-  background: var(--card); border-radius: 1rem; padding: 1.1rem 1.2rem;
-  margin: 0 0 .9rem; box-shadow: 0 1px 3px rgba(36,30,26,.07);
+  background: var(--cream); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 22px; margin: 0 0 14px;
 }
-.card h3 { font-family: var(--serif); font-size: 1.25rem; margin: 0 0 .3rem;
-           font-weight: 600; line-height: 1.35; }
-.meta { color: var(--ink-faint); font-size: .95rem; display: flex;
-        flex-wrap: wrap; gap: .3rem .9rem; }
-.en { color: var(--ink-faint); font-size: .95rem; }
+.card.tap { cursor: pointer; }
+.card .eyebrow { margin-bottom: 10px; }
+.meta { color: var(--muted); font-family: var(--mono); font-size: 10.5px;
+        letter-spacing: 1.5px; text-transform: uppercase;
+        display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.en { color: var(--muted); font-family: var(--serif); font-size: 15px;
+      line-height: 1.6; }
 
-/* Her words. The one thing on a card that is hers, so it gets the serif. */
-.said {
-  font-family: var(--serif); font-size: 1.2rem; line-height: 1.75;
-  margin: .9rem 0 0; padding-left: .95rem; border-left: 3px solid var(--red);
+/* ── the quote box ───────────────────────────────────────────
+   The most important element in the product. It is the one thing on the
+   screen that is hers, verbatim, and everything around it is arranged to
+   protect it: its own border, Georgia, her face beside it, the attribution
+   in mono beneath. Nothing is ever laid on top of it. */
+.quote {
+  display: flex; gap: 14px; align-items: flex-start;
+  border: 1px solid var(--line); border-radius: var(--radius-s);
+  padding: 18px; margin: 18px 0 0; background: var(--cream);
 }
-.narr { color: var(--ink-soft); margin: .8rem 0 0; font-size: 1.05rem; }
+.quote .face { flex: none; }
+.quote q { font-family: var(--serif); font-size: 18px; line-height: 1.55;
+           color: var(--ink); display: block; quotes: '“' '”'; }
+.quote .by { margin-top: 12px; }
+/* Retired, kept. She told it differently later; the earlier telling greys
+   back behind a rule and is labelled. Nothing is deleted, and nothing here
+   implies she was wrong. */
+.quote.retired { opacity: .55; border: 0; border-left: 2px solid var(--line);
+                 border-radius: 0; padding-left: 16px; }
 
-/* Depth is optional, not hidden. */
-details.more { margin-top: .9rem; border-top: 1px solid var(--line-soft); padding-top: .7rem; }
-details.more > summary { cursor: pointer; color: var(--red); font-size: 1rem;
-                         list-style: none; min-height: 2.5rem; display: flex;
-                         align-items: center; }
-details.more > summary::-webkit-details-marker { display: none; }
-details.more > summary::after { content: " ›"; margin-left: .3rem; }
-details.more[open] > summary::after { content: " ⌄"; }
+.face {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: repeating-linear-gradient(135deg, #DCD8CF 0 7px, #CFCAC0 7px 14px);
+  display: grid; place-items: center; color: var(--body);
+  font-size: 15px; font-weight: 600;
+}
+.face.l { width: 72px; height: 72px; font-size: 22px; }
+.face.xl { width: 150px; height: 150px; font-size: 44px; }
 
-.gap { margin-top: .8rem; color: var(--ink-faint); font-size: .95rem; }
-.gap b { color: var(--red); font-weight: 600; }
-
-.era { font-family: var(--serif); color: var(--ink-faint); font-size: 1rem;
-       margin: 1.6rem 0 .6rem; letter-spacing: .08em; }
+/* ── pills ───────────────────────────────────────────────── */
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--ink); background: none;
+  white-space: nowrap;
+}
+/* Lime, and only ever for something of hers that is new. */
+.pill.lime { background: var(--lime); border-color: var(--lime); color: var(--ink-2); }
+/* A guess wears its uncertainty: dashed, everywhere, always. */
+.pill.dash { border-style: dashed; border-color: var(--ink); }
+.pill.on-dark { border-color: rgba(252, 251, 249, .45); color: var(--cream); }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* ── buttons ─────────────────────────────────────────────── */
 .btn {
-  min-height: var(--target); width: 100%; border: none; border-radius: .8rem;
-  background: var(--red); color: #fff; font-family: var(--sans); font-size: 1.1rem;
-  cursor: pointer; padding: .8rem 1.2rem;
+  min-height: 52px; border: 1px solid var(--ink); border-radius: 999px;
+  background: var(--ink); color: var(--cream); cursor: pointer;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.5px;
+  text-transform: uppercase; padding: 14px 22px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
 }
-.btn.ghost { background: none; border: 1.5px solid var(--line); color: var(--ink); }
-.btn.green { background: var(--green); }
-.btn.small { min-height: 3rem; width: auto; font-size: 1rem; padding: .5rem 1rem; }
-.btn:disabled { opacity: .45; cursor: default; }
-.row { display: flex; gap: .7rem; flex-wrap: wrap; margin-top: 1rem; }
+/* Filled primary and outlined secondary, side by side — the reference's
+   pairing, and the only two button weights in the family app. */
+.btn.ghost { background: none; color: var(--ink); }
+.btn.lime  { background: var(--lime); border-color: var(--lime); color: var(--ink-2); }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.wide { width: 100%; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
 
 input, textarea {
-  width: 100%; font: inherit; font-size: 1.05rem; padding: .8rem .9rem;
-  border: 1.5px solid var(--line); border-radius: .7rem;
-  background: var(--card); color: inherit;
+  width: 100%; font-family: var(--serif); font-size: 17px; line-height: 1.5;
+  padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-s);
+  background: var(--cream); color: var(--ink);
 }
-textarea { min-height: 6rem; resize: vertical; }
-label { display: block; color: var(--ink-faint); font-size: .95rem; margin: 1rem 0 .35rem; }
+input:focus, textarea:focus { outline: none; border-color: var(--ink); }
+textarea { min-height: 7rem; resize: vertical; }
+label { display: block; margin: 20px 0 8px;
+        font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.5px;
+        text-transform: uppercase; color: var(--muted); }
 
 /* ── sheets ──────────────────────────────────────────────── */
-.scrim { position: absolute; inset: 0; background: rgba(36,30,26,.35);
+.scrim { position: absolute; inset: 0; background: rgba(14, 15, 12, .42);
          z-index: 60; animation: fade .18s ease; }
 .sheet {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 61;
-  background: var(--paper); border-radius: 1.4rem 1.4rem 0 0;
-  max-height: 82%; overflow-y: auto; padding: .6rem 1.1rem 2rem;
-  animation: rise .24s cubic-bezier(.2,.8,.3,1);
-  box-shadow: 0 -8px 30px rgba(36,30,26,.18);
+  background: var(--cream); border-radius: var(--radius) var(--radius) 0 0;
+  max-height: 86%; overflow-y: auto; padding: 8px 22px 40px;
+  animation: rise .24s cubic-bezier(.2, .8, .3, 1);
+  box-shadow: 0 -18px 50px rgba(14, 15, 12, .22);
 }
-.grab { width: 3rem; height: .3rem; border-radius: 1rem; background: var(--line);
-        margin: .5rem auto 1rem; }
-.sheet h2 { font-family: var(--serif); font-size: 1.35rem; margin: 0 0 .2rem; }
+.grab { width: 44px; height: 4px; border-radius: 999px; background: var(--line);
+        margin: 10px auto 20px; }
+/* The sheet spans the viewport, its contents do not. Georgia at 18px across
+   1400px is about 180 characters a line, which is unreadable — and the quote
+   box is the element that suffers most from it. Padding rather than a width
+   so the panel itself, and its rise animation, are untouched. */
+@media (min-width: 900px) {
+  .sheet { padding-left: max(22px, calc((100% - 46rem) / 2));
+           padding-right: max(22px, calc((100% - 46rem) / 2)); }
+}
 @keyframes rise { from { transform: translateY(100%) } }
 @keyframes fade { from { opacity: 0 } }
 @keyframes fadeup { from { opacity: 0; transform: translateY(14px) } }
@@ -166,68 +307,216 @@ sampan-map { display: block; width: 100%; height: 100%; }
  * z-index 21 opened *underneath* the zoom buttons and the attribution strip,
  * so tapping a pin appeared to do nothing useful. Containing them is the fix;
  * out-bidding 1000 would only work until Leaflet picked a bigger number. */
-.maprap { position: absolute; inset: 0; z-index: 0; isolation: isolate; }
+.maprap { position: absolute; inset: 0; z-index: 0; isolation: isolate;
+          background: var(--ink-2); }
 
-/* Uncertainty is drawn, not written. */
-.certainty { display: inline-flex; align-items: center; gap: .4rem;
-             color: var(--ink-faint); font-size: .95rem; }
-.certainty s { width: .7rem; height: .7rem; border-radius: 50%;
-               background: var(--green); text-decoration: none; }
-.certainty.guess s { background: none; border: 2px dashed var(--ink-faint); }
+/* Leaflet paints its container #ddd behind the tiles. On a wide viewport the
+   tiles arrive over a second or so, and until they do that grey reads as bare
+   page down both sides — the map looked broken on every cold load rather than
+   merely unfinished. Ink behind them means a loading map is a dark map. */
+.maprap .leaflet-container { background: var(--ink-2); }
 
-/* ── record ──────────────────────────────────────────────── */
-.rec { display: flex; flex-direction: column; align-items: center;
-       justify-content: center; gap: 1.6rem; height: 100%; padding: 1.5rem; text-align: center; }
-.rec p { margin: 0; font-size: 1.15rem; color: var(--ink-soft); }
+/* Leaflet's own furniture, restated in the palette. Left as its default
+   near-white it is the only thing on the dark map that is neither a pin nor
+   a word of hers. */
+.maprap .leaflet-control-attribution {
+  background: rgba(14, 15, 12, .72); color: var(--muted);
+  font-family: var(--mono); font-size: 9px; letter-spacing: .5px;
+  padding: 3px 8px; border-radius: 999px 0 0 0;
+}
+.maprap .leaflet-control-attribution a { color: var(--muted); }
+
+/* Chrome laid over the dark map. */
+.map-legend {
+  position: absolute; left: 20px; bottom: 20px; z-index: 5;
+  display: flex; flex-direction: column; gap: 9px; pointer-events: none;
+}
+.map-legend .key { display: flex; align-items: center; gap: 10px; }
+.map-legend .key s { width: 15px; height: 15px; border-radius: 50%;
+                     flex: none; text-decoration: none; box-sizing: border-box; }
+.map-legend .key s.named   { background: var(--cream); }
+.map-legend .key s.guessed { border: 2px dashed var(--cream); }
+.map-legend .key s.cluster { background: var(--lime); }
+
+/* Absence is a place on the page: the tray is docked to the map, sits above
+   it, and cannot be dismissed. */
+.tray {
+  position: absolute; right: 20px; bottom: 20px; z-index: 5;
+  width: min(330px, calc(100% - 40px)); text-align: left;
+  background: var(--cream); border: 0; border-radius: 22px; padding: 18px;
+  cursor: pointer; font: inherit; color: var(--ink);
+}
+.tray .prose { margin-top: 10px; }
+.tray .pills { margin-top: 14px; }
+
+/* Uncertainty is drawn, not written — the same three marks as the map, at
+   text size, so a card and a pin never disagree. */
+.certainty { display: inline-flex; align-items: center; gap: 7px;
+             font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.5px;
+             text-transform: uppercase; color: var(--muted); }
+.certainty s { width: 11px; height: 11px; border-radius: 50%; flex: none;
+               background: var(--ink); text-decoration: none; box-sizing: border-box; }
+.certainty.guess s { background: none; border: 2px dashed var(--ink); }
+
+/* ── chapters ────────────────────────────────────────────────
+   Full-bleed, no gutters: the tiles touch. Black and white until something
+   in them is new, then that one blooms into colour. Chapters are found, not
+   authored, and the grid says so. */
+.chapter-grid { display: grid; grid-template-columns: 1fr; gap: 0;
+                border-top: 1px solid var(--line); }
+@media (min-width: 900px) {
+  .chapter-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.tile {
+  position: relative; min-height: 300px; padding: 26px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  border: 0; border-right: 1px solid var(--line-cream);
+  border-bottom: 1px solid var(--line-cream);
+  cursor: pointer; text-align: left; color: var(--cream);
+  background: var(--ink-2); filter: grayscale(1);
+  transition: filter .25s ease;
+}
+.tile[data-new='true'], .tile:hover, .tile:focus-visible { filter: none; }
+.tile .ttl { color: var(--cream); margin-top: 10px; max-width: 20ch; }
+.tile .pills { margin-top: 16px; }
+.tile .lbl { color: rgba(252, 251, 249, .7); }
+
+/* Inside a chapter: the fact strip is the skeleton the system extracted, the
+   sentence column is the only place words appear in her voice. */
+.chapter-open { display: grid; grid-template-columns: 1fr; gap: 0;
+                border-top: 1px solid var(--line); }
+@media (min-width: 900px) {
+  .chapter-open { grid-template-columns: 1.35fr 1fr; }
+  .chapter-open .facts { border-right: 1px solid var(--line); border-bottom: 0; }
+}
+.chapter-open .facts, .chapter-open .sentences { padding: 28px 22px; }
+.chapter-open .facts { border-bottom: 1px solid var(--line); }
+.fact-strip { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
+              margin-top: 22px; }
+@media (min-width: 700px) { .fact-strip { grid-template-columns: repeat(3, 1fr); } }
+.fact-strip .f { border-top: 1px solid var(--line); padding-top: 12px; }
+.fact-strip .f .ttl { margin-top: 7px; }
+.sentences { display: flex; flex-direction: column; gap: 14px; }
+
+/* ── household ─────────────────────────────────────────────
+   Full-bleed and gutterless like the chapter grid, so the two screens that
+   list things list them the same way. */
+.people { display: grid; grid-template-columns: 1fr; gap: 0;
+          border-top: 1px solid var(--line); }
+@media (min-width: 900px) {
+  /* auto-fit, not auto-fill: with three people and room for four, auto-fill
+     keeps the empty fourth track and the row stops short of the page edge. */
+  .people { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  .person { padding: 28px 40px; border-right: 1px solid var(--line); }
+}
+.person { display: flex; align-items: center; gap: 16px; padding: 18px 22px;
+          border-bottom: 1px solid var(--line); cursor: pointer;
+          min-height: var(--target); width: 100%; background: var(--cream);
+          border-left: 0; border-right: 0; border-top: 0; text-align: left; }
+.person:hover { background: var(--bg); }
+.person .who { font-size: 19px; font-weight: 600; letter-spacing: -.01em; }
+.person .meta { margin-top: 7px; }
+.person .go { margin-left: auto; font-size: 20px; color: var(--muted); }
+
+.bubble { border: 1px solid var(--line); border-radius: var(--radius-s);
+          padding: 16px 18px; margin-bottom: 12px; background: var(--cream);
+          font-family: var(--serif); font-size: 16px; line-height: 1.6;
+          white-space: pre-wrap; animation: fadeup .25s ease; }
+.bubble.mine { background: none; border-style: dashed; margin-left: 15%; }
+.empty { color: var(--muted); font-family: var(--serif); font-size: 16px;
+         text-align: center; padding: 48px 16px; line-height: 1.6; }
+
+/* ═══ HER SIDE ═══════════════════════════════════════════════
+   Same palette, same restraint, none of the density. Nothing below 22px,
+   nothing smaller than a thumb, and no mono anywhere she has to read it.
+   This is not a senior mode — it is the same product, sized for her. */
+.teller {
+  height: 100%; display: flex; flex-direction: column; gap: 24px;
+  padding: 30px 26px 36px; text-align: left;
+  font-size: var(--teller-body); line-height: 1.45; color: var(--ink);
+}
+/* The ground fills the viewport so this screen is as full-bleed as the map,
+   but her content stays at thumb distance: a 262px button stranded in the
+   middle of a 1400px page is not the same button. */
+.teller > * { width: 100%; max-width: 30rem; margin-inline: auto; }
+.teller.dark { background: var(--ink-2); color: var(--cream); text-align: center; }
+
+.teller .say { font-size: 31px; font-weight: 600; line-height: 1.3; margin: 0; }
+.teller .sub  { font-size: 23px; color: var(--body); margin: 10px 0 0; line-height: 1.4; }
+.teller.dark .sub { color: rgba(252, 251, 249, .7); }
+.teller .mid { flex: 1; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 28px; }
+
+/* One button, thumb-height, and it is the only thing to press. */
 .bigbtn {
-  width: 15rem; height: 15rem; border-radius: 50%; border: none; cursor: pointer;
-  background: var(--red); color: #fff; font-family: var(--serif); font-size: 2.1rem;
-  box-shadow: 0 8px 26px rgba(156,59,36,.28); position: relative;
+  width: 262px; height: 262px; max-width: 78vw; max-height: 78vw;
+  border-radius: 50%; border: none; cursor: pointer;
+  background: var(--lime); color: var(--ink-2);
+  font-family: var(--sans); font-size: 40px; font-weight: 600;
+  box-shadow: 0 18px 44px rgba(26, 26, 26, .16);
+  display: flex; align-items: center; justify-content: center; padding: 0 20px;
 }
-.bigbtn[data-on="true"] { background: var(--green); box-shadow: 0 8px 26px rgba(47,93,80,.3); }
-.bigbtn::before {
-  content: ""; position: absolute; inset: -1.1rem; border-radius: 50%;
-  border: 2px solid currentColor; opacity: 0; }
-.bigbtn[data-on="true"]::before { animation: breathe 2s ease-in-out infinite; }
-@keyframes breathe { 0%,100% { transform: scale(1); opacity: .45 }
-                     50% { transform: scale(1.28); opacity: .12 } }
+.teller .hint { font-size: 24px; color: var(--body); text-align: center;
+             line-height: 1.5; margin: 0; }
+.teller.dark .hint { color: rgba(252, 251, 249, .6); }
 
-.asked {
-  background: var(--card); border-radius: 1rem; padding: 1rem 1.2rem;
-  border-left: 4px solid var(--red); text-align: left; animation: fadeup .3s ease;
+/* Proof it is hearing her, and the only lime on the recording screen. */
+.wave { display: flex; align-items: flex-end; gap: 10px; height: 120px; }
+.wave span { width: 12px; border-radius: 999px; background: var(--lime);
+             animation: bar 1.1s ease-in-out infinite alternate; }
+@keyframes bar { from { transform: scaleY(.35) } to { transform: scaleY(1) } }
+.elapsed { font-size: 27px; opacity: .65; }
+
+/* The one control on the recording screen, and it is the one that stops. */
+.stopbtn {
+  min-height: 96px; border-radius: 999px; border: none; cursor: pointer;
+  background: var(--cream); color: var(--ink-2); width: 100%;
+  font-family: var(--sans); font-size: 28px; font-weight: 600; padding: 0 24px;
 }
-.asked .who { font-family: var(--serif); font-size: 1.2rem; }
 
-/* ── member ──────────────────────────────────────────────── */
-.person { display: flex; align-items: center; gap: .9rem; padding: .95rem 0;
-          border-bottom: 1px solid var(--line-soft); cursor: pointer; min-height: var(--target); }
-.face { width: 3.4rem; height: 3.4rem; border-radius: 50%; flex: none;
-        background: var(--card-warm); display: grid; place-items: center;
-        font-family: var(--serif); font-size: 1.3rem; color: var(--red); }
-.person .who { font-family: var(--serif); font-size: 1.2rem; }
+/* A waiting question is a person, not a badge: their face, their name, one
+   arrow. And it always says who asked. */
+.teller .from {
+  flex: none; border-top: 1px solid var(--line); padding-top: 22px;
+  display: flex; align-items: center; gap: 16px; width: 100%;
+  background: none; border-left: 0; border-right: 0; border-bottom: 0;
+  cursor: pointer; text-align: left; color: inherit; min-height: var(--teller-target);
+}
+.teller .from .name { font-size: 26px; font-weight: 600; line-height: 1.35; }
+.teller .from .rel  { font-size: 22px; color: var(--body); margin-top: 6px; }
+.teller .from .go   { margin-left: auto; font-size: 30px; }
 
-.subtabs { display: flex; gap: .4rem; border-bottom: 1px solid var(--line);
-           margin: 0 0 1rem; }
-.subtabs button { flex: 1; min-height: 3.2rem; border: none; background: none;
-                  font: inherit; font-size: 1.05rem; color: var(--ink-faint);
-                  border-bottom: 2px solid transparent; cursor: pointer; }
-.subtabs button[aria-current="true"] { color: var(--ink); border-bottom-color: var(--red); }
+.teller .asked {
+  background: var(--bg); border-radius: var(--radius); padding: 24px; width: 100%;
+}
+.teller .asked q { font-family: var(--serif); font-size: 28px; line-height: 1.5;
+                color: var(--ink); display: block; }
+.teller .actions { flex: none; display: flex; flex-direction: column; gap: 14px; }
+.teller .actions button {
+  min-height: var(--teller-target); border-radius: 999px; cursor: pointer;
+  font-family: var(--sans); font-size: 26px; font-weight: 600; padding: 0 22px;
+  border: 1px solid rgba(26, 26, 26, .3); background: none; color: var(--body);
+}
+.teller .actions button.go { min-height: 96px; background: var(--lime);
+                          border-color: var(--lime); color: var(--ink-2); font-size: 28px; }
 
-.bubble { background: var(--card); border-radius: 1rem; padding: .9rem 1.1rem;
-          margin-bottom: .8rem; animation: fadeup .25s ease; }
-.bubble.mine { background: var(--card-warm); margin-left: 3rem; }
-.empty { color: var(--ink-faint); text-align: center; padding: 3rem 1rem; }
-
+/* The only control on her screens that is not part of a state. At her scale,
+   because the floor applies to everything she can read, including this. */
+.teller-back {
+  flex: none; margin: 0 auto 26px; width: min(30rem, calc(100% - 52px));
+  min-height: var(--teller-target);
+  border: 1px solid var(--line); border-radius: 999px; background: none;
+  cursor: pointer; color: var(--body);
+  font-family: var(--sans); font-size: var(--teller-body); font-weight: 500;
+}
 
 /* Shown when the archive cannot be loaded at all. A blank page cannot tell you
    whether the key is missing or the service is down. */
 .failed {
-  max-width: 28rem; margin: 18vh auto 0; padding: 0 1.6rem;
-  font-family: var(--sans); color: var(--ink); text-align: center;
+  max-width: 28rem; margin: 18vh auto 0; padding: 0 26px; text-align: center;
 }
-.failed h1 { font-family: var(--serif); font-size: 2rem; margin: 0 0 .8rem; }
-.failed p { line-height: 1.6; opacity: .85; }
-.failed code {
-  font-size: .95em; background: rgba(36,30,26,.07);
-  padding: .1rem .35rem; border-radius: .25rem;
-}
+.failed h1 { font-size: 36px; font-weight: 700; letter-spacing: -.025em; margin: 0 0 14px; }
+.failed p { font-family: var(--serif); font-size: 17px; line-height: 1.65; color: var(--body); }
+.failed code { font-family: var(--mono); font-size: .92em;
+               background: rgba(26, 26, 26, .07); padding: 2px 6px; border-radius: 4px; }
+

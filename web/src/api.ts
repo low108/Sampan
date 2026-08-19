@@ -62,6 +62,15 @@ export const api = {
   pending: (narrator: string) =>
     request<PendingAsk>(`/api/talk/${encodeURIComponent(narrator)}/pending`),
 
+  /** Answer this one next. The call carries one question, so opening a
+   *  specific one from the bell has to decide which — otherwise the agent
+   *  asks whatever is oldest and names the wrong person out loud. */
+  chooseAsk: (narrator: string, ask_id: string) =>
+    request<unknown>(`/api/talk/${encodeURIComponent(narrator)}/pending/choose`, {
+      method: 'POST',
+      body: JSON.stringify({ ask_id }),
+    }),
+
   about: (narrator: string, question: string) =>
     request<AboutAnswer>(`/api/family/${encodeURIComponent(narrator)}/about`, {
       method: 'POST',

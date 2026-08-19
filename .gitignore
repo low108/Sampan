@@ -13,3 +13,4 @@ google-cloud-sdk/
 
 # Front-end dependencies
 web/node_modules/
+web/src/node_modules/

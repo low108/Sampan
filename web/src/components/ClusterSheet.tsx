@@ -6,7 +6,7 @@ import { Sheet } from './Sheet';
  * The shop, the room above it and the station are a few hundred metres apart,
  * so at any usable zoom they are one marker — and to her they are one place
  * anyway. The map was already grouping them correctly; nothing was listening,
- * so tapping the group did nothing at all and the map felt broken.
+ * so tapping the group did nothing at all and the map felt dead.
  */
 interface Props {
   pins: Pin[];
@@ -26,26 +26,49 @@ export function ClusterSheet({ pins, onPick, onClose }: Props) {
 
   return (
     <Sheet onClose={onClose}>
-      <h2>{pins.length} stories here</h2>
-      {span && <p className="en">{span}</p>}
-      {pins.map((p) => (
-        <article
-          key={p.id}
-          className="card"
-          role="button"
-          tabIndex={0}
-          onClick={() => onPick(p.id)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') onPick(p.id);
-          }}
-        >
-          <h3>{p.title}</h3>
-          <div className="meta">
-            <span>{p.year ?? 'year not yet told'}</span>
-            <span>{p.narrator_name}</span>
-          </div>
-        </article>
-      ))}
+      {/* A dot on the household map can hold stories from more than one
+          person, so name all of them rather than assuming the first. */}
+      <div className="lbl dim">{[...new Set(pins.map((p) => p.narrator_name))].join(' · ')}</div>
+      <h2 className="ttl l" style={{ marginTop: 10 }}>
+        {pins.length} stories here
+      </h2>
+      {span && (
+        <div className="lbl dim" style={{ marginTop: 10 }}>
+          {span}
+        </div>
+      )}
+
+      <div style={{ marginTop: 22 }}>
+        {pins.map((p) => (
+          <article
+            key={p.id}
+            className="card tap"
+            role="button"
+            tabIndex={0}
+            onClick={() => onPick(p.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') onPick(p.id);
+            }}
+          >
+            <h3 className="ttl s">{p.title}</h3>
+            <div className="meta" style={{ marginTop: 10 }}>
+              <span>{p.year ?? 'year not yet told'}</span>
+              <span
+                className={
+                  p.precision === 'town' || p.precision === 'region'
+                    ? 'certainty guess'
+                    : 'certainty'
+                }
+              >
+                <s />
+                {p.precision === 'town' || p.precision === 'region'
+                  ? 'guessed'
+                  : 'named in the telling'}
+              </span>
+            </div>
+          </article>
+        ))}
+      </div>
     </Sheet>
   );
 }

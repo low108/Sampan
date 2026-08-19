@@ -96,6 +96,9 @@ export interface Chapter {
   summary: string;
   members: string[];
   facts: ChapterFact[];
+  /** Tellings she later replaced. Kept, shown, and marked as retired — the
+   *  family may correct the system, never her. */
+  retired?: ChapterFact[];
 }
 
 export interface ChaptersView {
@@ -145,5 +148,5 @@ export interface ChatLine {
 
 export type Tab = 'map' | 'record' | 'family';
 export type MemberTab = 'chat' | 'map' | 'chapters' | 'ask';
-export type Sheet = 'notifs' | 'unplaced' | 'cluster';
+export type Sheet = 'notifs' | 'unplaced' | 'cluster' | 'viewer';
 export type RecordState = 'idle' | 'live';
