@@ -51,6 +51,17 @@ class Settings(BaseSettings):
     quiet_from_hour: int = Field(default=22, alias="SAMPAN_QUIET_FROM")
     quiet_until_hour: int = Field(default=8, alias="SAMPAN_QUIET_UNTIL")
 
+    # --- Screening --------------------------------------------------------
+    # Model Armor template screening every transcript before it is stored. The
+    # template carries the policy -- which info types to de-identify, which
+    # categories to block -- because that belongs to whoever runs the deploy.
+    # Empty means no screening, which is right for local work against an
+    # in-memory store and wrong for anything holding real conversations.
+    armor_template: str = Field(default="", alias="SAMPAN_ARMOR_TEMPLATE")
+    armor_location: str = Field(
+        default="asia-southeast1", alias="SAMPAN_ARMOR_LOCATION"
+    )
+
     # --- Generated imagery ------------------------------------------------
     # Both empty by default, and both are checked before anything is published:
     # a deploy without them simply has no card images, which is a product with

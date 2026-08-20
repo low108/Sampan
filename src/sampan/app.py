@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 
 from sampan.affect import GeminiAffectMonitor, policy, watch
 from sampan.archivist import GeminiStoryExtractor
+from sampan.armor import build_screen
 from sampan.auth import require_api_key
 from sampan.callflow import Transcript, finish_call, prepare_call
 from sampan.config import Settings, apply_genai_env, get_settings
@@ -835,6 +836,7 @@ def create_app() -> FastAPI:
                     judge=stack.judge,
                     tool_calls=tool_log.as_records(),
                     settings=settings,
+                    screener=build_screen(settings),
                 )
 
     static_dir = find_static_dir()

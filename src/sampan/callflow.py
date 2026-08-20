@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sampan.archivist import StoryExtractor, ingest_conversation, mentions
+from sampan.armor import Screen, screen
 from sampan.companion import build_agent
 from sampan.config import Settings
 from sampan.contradiction import ContradictionJudge, reconcile
@@ -149,20 +150,42 @@ def finish_call(
     fact_extractor: FactExtractor | None = None,
     judge: ContradictionJudge | None = None,
     tool_calls: list[dict[str, Any]] | None = None,
+    screener: Screen | None = None,
 ) -> NarratorMemory | None:
     """Fold a finished call back into stored memory.
 
     Returns the updated memory, or None if the call was too short to extract
     anything from.
     """
+    # Screened before anything is written, and the screened text is what
+    # everything downstream reads. Extracting from the original while storing
+    # the redacted version would make `build_facts` refuse exactly the quotes
+    # that had something worth protecting in them.
+    checked = screen(transcript.render(), screener)
+    if not checked.stored:
+        # Fail closed: the transcript is not stored at all. The call is
+        # recorded so its absence is visible rather than silent.
+        repository.save_conversation(
+            narrator_id,
+            prepared.conversation_id,
+            "",
+            turns=len(transcript),
+            tool_calls=tool_calls or [],
+            withheld=checked.reason,
+        )
+        return None
+
+    rendered = checked.text
+
     # Saved before the length check, like the transcript: a call too short to
     # extract from is exactly the one you want the tool record for.
     repository.save_conversation(
         narrator_id,
         prepared.conversation_id,
-        transcript.render(),
+        rendered,
         turns=len(transcript),
         tool_calls=tool_calls or [],
+        screened=[f.model_dump(mode="json") for f in checked.findings],
     )
 
     for subject in prepared.memory.private_marks:
@@ -187,7 +210,7 @@ def finish_call(
     forgotten = repository.forgotten(narrator_id)
 
     outcome = ingest_conversation(
-        transcript.render(),
+        rendered,
         extractor,
         known_entities=prepared.memory.entities,
         known_threads=prepared.stored.threads,
@@ -245,7 +268,6 @@ def finish_call(
     # carrying fields its instructions do not govern gets those fields filled.
     # Optional, so a call still folds in cleanly without it.
     if fact_extractor is not None:
-        rendered = transcript.render()
         # What was dropped, and by which rule. Extraction is silent to the
         # agent by design; it should not also be silent to whoever is trying
         # to work out why a fact she plainly stated is not in the archive.
