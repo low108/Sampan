@@ -57,6 +57,17 @@ class Settings(BaseSettings):
     # categories to block -- because that belongs to whoever runs the deploy.
     # Empty means no screening, which is right for local work against an
     # in-memory store and wrong for anything holding real conversations.
+    # "dlp" calls Sensitive Data Protection directly; "armor" goes through
+    # Model Armor, which delegates to the same DLP templates and adds the
+    # filters DLP has no equivalent of -- prompt injection, jailbreak. Default
+    # dlp: one hop fewer, and one silent failure mode fewer (R18).
+    screen_backend: str = Field(default="dlp", alias="SAMPAN_SCREEN_BACKEND")
+    dlp_inspect_template: str = Field(
+        default="", alias="SAMPAN_DLP_INSPECT_TEMPLATE"
+    )
+    dlp_deidentify_template: str = Field(
+        default="", alias="SAMPAN_DLP_DEIDENTIFY_TEMPLATE"
+    )
     armor_template: str = Field(default="", alias="SAMPAN_ARMOR_TEMPLATE")
     armor_location: str = Field(
         default="asia-southeast1", alias="SAMPAN_ARMOR_LOCATION"

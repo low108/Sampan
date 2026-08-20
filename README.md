@@ -30,7 +30,7 @@ Zep/Graphiti, Zep-style retrieval behind a single `remember` tool, contradiction
 routed to the correct time axis, a topic *lean* that never becomes a push, and
 communities as her chapters.
 
-**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 442
+**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 445
 unit tests. Everything is in English, including the seeds and the UI.
 
 Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
@@ -162,7 +162,18 @@ Model Armor's *basic* SDP config is not used, deliberately. It enables Google's
 whole default set, which on an eighty-year-old's life story means names, dates,
 addresses and health details — it would redact the archive itself.
 
-Then redeploy with `SAMPAN_ARMOR_TEMPLATE=sampan-transcripts`.
+Then redeploy with:
+
+```
+SAMPAN_DLP_INSPECT_TEMPLATE=sampan-bank-only
+SAMPAN_DLP_DEIDENTIFY_TEMPLATE=sampan-bank-redact
+```
+
+That is the DLP-direct path, which is the default. To route through Model Armor
+instead — for its prompt-injection and jailbreak filters, which DLP has no
+equivalent of — add `SAMPAN_SCREEN_BACKEND=armor` and
+`SAMPAN_ARMOR_TEMPLATE=sampan-transcripts`. Both produce identical redaction;
+measured at 507ms and 429ms on the same transcript.
 
 **It fails open.** If Model Armor cannot be reached, the plain transcript is
 stored, the failure is logged at ERROR to `sampan.armor`, and the conversation

@@ -231,15 +231,58 @@ class TestWhenUnconfigured:
         assert result.text == "K: something she said"
 
     def test_an_unconfigured_deployment_has_no_screen(self) -> None:
+        """A developer against an in-memory store has nothing to protect, and
+        requiring a DLP template to run the app at all would be theatre."""
         assert build_screen(Settings(GOOGLE_CLOUD_PROJECT="")) is None
         assert build_screen(Settings(GOOGLE_CLOUD_PROJECT="p")) is None
 
-    def test_a_configured_template_builds_one(self) -> None:
+    def test_dlp_is_the_default_backend(self) -> None:
+        """One hop fewer to the same detection, and one silent failure mode
+        fewer: Model Armor's SDP filter delegates to these very templates
+        (R18)."""
+        from sampan.armor import DlpScreen
+
         built = build_screen(
-            Settings(GOOGLE_CLOUD_PROJECT="p", SAMPAN_ARMOR_TEMPLATE="t")
+            Settings(
+                GOOGLE_CLOUD_PROJECT="p",
+                SAMPAN_DLP_INSPECT_TEMPLATE="i",
+                SAMPAN_DLP_DEIDENTIFY_TEMPLATE="d",
+            )
         )
 
-        assert built is not None
+        assert isinstance(built, DlpScreen)
+
+    def test_dlp_needs_both_templates(self) -> None:
+        """Inspecting without de-identifying finds the number and stores it
+        anyway, which is worse than not looking."""
+        assert (
+            build_screen(
+                Settings(GOOGLE_CLOUD_PROJECT="p", SAMPAN_DLP_INSPECT_TEMPLATE="i")
+            )
+            is None
+        )
+
+    def test_model_armor_is_opt_in(self) -> None:
+        """Chosen for the filters DLP has no equivalent of, not for the
+        redaction."""
+        from sampan.armor import ModelArmorScreen
+
+        built = build_screen(
+            Settings(
+                GOOGLE_CLOUD_PROJECT="p",
+                SAMPAN_SCREEN_BACKEND="armor",
+                SAMPAN_ARMOR_TEMPLATE="t",
+            )
+        )
+
+        assert isinstance(built, ModelArmorScreen)
+
+    def test_asking_for_armor_without_a_template_screens_nothing(self) -> None:
+        built = build_screen(
+            Settings(GOOGLE_CLOUD_PROJECT="p", SAMPAN_SCREEN_BACKEND="armor")
+        )
+
+        assert built is None
 
     def test_allow_all_is_a_pass_through(self) -> None:
         result = AllowAll().sanitize("verbatim")

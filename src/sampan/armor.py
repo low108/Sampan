@@ -121,6 +121,62 @@ class ModelArmorScreen:
         return _read(response.sanitization_result, text)
 
 
+class DlpScreen:
+    """Sensitive Data Protection, called directly.
+
+    The same detection Model Armor performs, one hop shorter. Its SDP filter
+    delegates here anyway — a finding named `BANK_ACCOUNT_NUMBER` comes from
+    our own DLP inspect template, not from anything Model Armor knows.
+
+    Removing the hop removes a failure with it. Model Armor answers 200 with
+    `EXECUTION_SKIPPED` when its service agent cannot read the DLP templates —
+    a screen that reports success and protects nothing. Called directly, the
+    caller is the Cloud Run service account and a permission problem is an
+    exception, which is a thing that can be noticed.
+
+    What is given up is everything Model Armor does that DLP does not: prompt
+    injection, jailbreak, responsible-AI categories. Those matter here — the
+    transcript becomes part of the Archivist's prompt — so this is a choice
+    between two defensible options, not an upgrade (R18).
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def sanitize(self, text: str) -> Screened:
+        from google.cloud import dlp_v2
+
+        settings = self._settings
+        parent = (
+            f"projects/{settings.project_id}/locations/{settings.armor_location}"
+        )
+        inspect = f"{parent}/inspectTemplates/{settings.dlp_inspect_template}"
+        deidentify = (
+            f"{parent}/deidentifyTemplates/{settings.dlp_deidentify_template}"
+        )
+        response = dlp_v2.DlpServiceClient().deidentify_content(
+            request={
+                "parent": parent,
+                "inspect_template_name": inspect,
+                "deidentify_template_name": deidentify,
+                "item": {"value": text},
+            }
+        )
+
+        # The summary says what was replaced and how often, which Model Armor
+        # does not report -- so a redaction is auditable down to the count.
+        findings = [
+            Finding(
+                filter="sdp",
+                detail=f"{summary.info_type.name} x{result.count}",
+            )
+            for summary in response.overview.transformation_summaries
+            for result in summary.results
+            if summary.info_type.name and result.count
+        ]
+        return Screened(text=response.item.value, findings=findings, stored=True)
+
+
 def _read(result: Any, original: str) -> Screened:
     """Turn Model Armor's result into the two things the caller needs: the text
     to store, and whether it was actually checked.
@@ -214,9 +270,17 @@ def build_screen(settings: Settings) -> Screen | None:
     """The screen this deployment should use, or None for no screening.
 
     None rather than a raise when unconfigured: a developer running against an
-    in-memory store has nothing to protect, and making them provision a Model
-    Armor template to see the app at all would be security theatre.
+    in-memory store has nothing to protect, and making them provision a DLP
+    template to see the app at all would be security theatre.
+
+    DLP by default. It is the shorter path to the same detection, and Model
+    Armor's own value here is the filters it has and DLP does not — so reach
+    for it when those are wanted, not for the redaction (R18).
     """
-    if not settings.configured or not settings.armor_template:
+    if not settings.configured:
         return None
-    return ModelArmorScreen(settings)
+    if settings.screen_backend == "armor":
+        return ModelArmorScreen(settings) if settings.armor_template else None
+    if settings.dlp_inspect_template and settings.dlp_deidentify_template:
+        return DlpScreen(settings)
+    return None
