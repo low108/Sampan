@@ -12,6 +12,8 @@ shaped this way and what that shape cost.
 
 | Rev | Date | Change | Supersedes |
 |---|---|---|---|
+| 5 | 2026-08-20 | Closes R14: the narrator is now guaranteed a node in her own graph (D20). Records what the phrasing comparison actually showed — see §8.3, which corrects the guidance given at rev 4. | Rev 4 §8.3 phrasing note |
+| 4 | 2026-08-20 | Records the first end-to-end observation of a contradiction verdict against the real model, and the three failed probes that preceded it. Adds R14, the missing narrator entity. | — |
 | 3 | 2026-08-20 | **Corrects rev 1 and 2, which were wrong.** §8.3 described fact extraction and contradiction as part of the call. They were never wired: the WebSocket handler passed neither `fact_extractor` nor `judge` to `finish_call`, both default to `None`, and the whole pass was skipped on every real call. Fixed (D19), R13 records what it means for data written before this. | Rev 1–2 §8.3, §7.4 |
 | 2 | 2026-08-20 | Closes R11 by building the read side of `forgotten` (D18); records R12, the retroactive limit that fix leaves behind. Adds §6.3, the Google Cloud and Gemini technology inventory — §6.2 lists package pins, which is not the same thing. | — |
 | 1 | 2026-08-20 | First issue. Covers the service as of `d1652a19`, after the memory v2 revamp, the front-end redesign, and the ask-queue and tool-log fixes. Auditing the collection inventory for §7.3 found R11, a write-only `forgotten` collection. | — |
@@ -443,6 +445,33 @@ filled.
 > visible in Firestore were convincing because `scripts/backfill_facts.py` had written them by
 > hand. Wired in at rev 3 (D19); see R13 for the data already stored.
 
+**Observed end to end, once, at rev 4.** Against the real model, with her real held facts:
+
+```
+JUDGE #1
+  subject : Lim Ah Hock / owned
+  held    : Her father opened a coffee shop in Ipoh on Jalan Bandar in 1958.
+  new     : Her father owned and operated Ah Gong's shop on Jalan Bandar until 1971.
+  verdict : conflicting_testimony
+→ earlier telling RETIRED   t_expired set, superseded_by set
+                            valid_from=1958 valid_to=1969 — untouched
+→ concern raised            "In one account her father operated the Jalan Bandar shop
+                             until 1969, while in another she mentioned he kept it until 1971."
+```
+
+**Three probes failed to reach a verdict first, and what they cost is worth recording**
+because each is a way the subsystem can look broken while working exactly as written:
+
+| Probe | Outcome | Cause |
+|---|---|---|
+| Three chained real sessions | 5 → 12 → 15 facts, nothing retired | **Unknown.** The judge was not instrumented, so whether `candidates()` produced any pair is unrecorded. The three sessions covered different subjects |
+| A birthplace contradiction, no entities seeded | Every extracted fact was about her *mother*; none about her | **Confirmed.** `seeds/intake.json` holds ten entities — father, mother, sister, husband, son, daughter, granddaughter, grandfather, Ipoh, Sungai Siput — and **no entity for the narrator**. `build_facts` refuses a fact whose subject is unknown, so no fact about her can form until something creates her entity, and she rarely says her own name. See R14 |
+| The same, entities seeded | Call 1 produced two `born_at` facts; call 2 added nothing | **Hypothesis, unproven.** Call 2 led with a denial ("I was not born in Sungai Siput") and the extractor takes assertions. The comparison that would settle it — the same correction phrased both ways through the same extractor — hit `429 RESOURCE_EXHAUSTED` and has not been run. The successful probe changed phrasing *and* subject *and* predicate *and* the held set, so attribution is confounded |
+
+The practical consequence for a recorded demo: a correction must be spoken as a plain positive
+claim, repeated, not as a denial of the earlier one. That guidance rests on the unproven
+hypothesis above and should be treated as such.
+
 **Contradiction routes to the correct axis** — this is the decision the subsystem exists for:
 
 | `Disagreement` | Meaning | Action |
@@ -580,7 +609,7 @@ and returns data, so the model can be replaced by a fake without a network.
 
 ### 9.2 Test inventory
 
-468 tests total: **408 unit** (default), **60 integration** (`-m integration`, deselected by
+477 tests total: **414 unit** (default), **63 integration** (`-m integration`, deselected by
 `addopts = "-q -m 'not integration'"`). Largest suites:
 
 | File | Tests | File | Tests |
@@ -606,6 +635,8 @@ that memory accumulates across calls in production rather than in a fixture.
 | A quote not present in the transcript | `test_facts.py` — refused |
 | A forgotten subject reappearing on a later call | `test_callflow.py::TestForgetting` — stories, threads and facts all dropped |
 | An optional extraction dependency silently missing in production | `test_service.py::TestExtractionIsFullyWired` |
+| A later telling retiring an earlier one, real model | `test_facts_integration.py::TestContradictionEndToEnd` |
+| A narrator absent from her own entity graph | `test_entity_resolution.py::TestTheNarratorIsInHerOwnGraph` |
 | Forgetting a subject without losing its sensitivity | `test_callflow.py::TestForgetting` |
 | Query terms shorter than three characters | `test_retrieval.py` |
 | Quiet-hours window crossing midnight | `test_quiet.py` |
@@ -645,8 +676,9 @@ mid-story and presents as a Live API bug.
 | D17 | Extraction in-process on a worker thread, not Pub/Sub | Pub/Sub is the right answer at any real volume and gives retries for free. It also adds a topic, a subscription, a second deployable and an at-least-once contract to a system with one narrator. Accepted cost: a crash between hang-up and write loses that call's extraction (R1) |
 | D18 | Forgetting drops stories, threads and facts — and deliberately **keeps** entities and sensitivities | Dropping everything derived from the subject is the intuitive reading of "forget it". It is also dangerous: a sensitivity is what steers the agent *away* from a painful subject, so removing it alongside the story deletes the story and the reason not to ask again. Entities stay because other stories reference them, and forgetting a story is not forgetting that a person exists |
 | D19 | Production extraction dependencies are built together in one named `ExtractionStack`, never passed individually | Optional keywords are right for the seam, which is exercised with fakes, and they are what let the fact pass be silently absent from production for the subsystem's whole life. A dependency that defaults to doing nothing cannot be caught by the seam's own tests, because the seam is what gets the fakes. Assembling all three in one place makes "is the judge connected?" a question a test can ask |
+| D20 | The narrator's own entity is guaranteed at `prepare_call`, with an id derived from the narrator id, rather than added to the seed file | Fixing `seeds/intake.json` repairs this household and no other: every future narrator starts with the same hole, and the failure is silent because refusals are silent by design. Deriving the id makes the guarantee idempotent, and matching an existing entity by name first means a graph that already resolved her from a mention does not end up with two of her — which would split her facts across two subjects and quietly break every comparison between them |
 
-No decision has been superseded or withdrawn as of revision 3. D19 does not supersede D13 —
+No decision has been superseded or withdrawn as of revision 5. D19 does not supersede D13 —
 the routing D13 describes was always correct; it was never reached.
 
 ---
@@ -712,7 +744,7 @@ No external template was imposed. Sections omitted from the default structure an
 | # | Risk | Consequence | Status |
 |---|---|---|---|
 | R1 | Extraction is in-process (D17) | A crash between hang-up and write loses that call's extraction. Transcript survives; the call can be re-extracted | Accepted |
-| R2 | No retry or dead-letter on any model call | A transient Vertex failure silently costs one letter, one place resolution, or one affect tick | Accepted |
+| R2 | No retry or dead-letter on any model call | A transient Vertex failure silently costs one letter, one place resolution, or one affect tick. **Observed live:** repeated probing exhausted the Vertex quota and `429 RESOURCE_EXHAUSTED` propagated out of extraction. In a call this is swallowed by the `suppress(Exception)` around `finish_call`, so the transcript survives and the entire derived pass is lost with no signal | Accepted, and the most likely thing to go wrong during a recording |
 | R3 | Affect state reaches the agent only via the next tool response | If the agent calls no tool, it never learns she is tired. The screen updates; the behaviour does not | Accepted, and the least satisfying part of the design |
 | R4 | A failed affect assessment is indistinguishable from a calm one | A monitor that stops working presents as a steady state. **Design bug, not a documentation gap** | Open — no fix designed |
 | R5 | A story with no letter looks like a story that did not warrant one | Mild version of R4 | Accepted |
@@ -721,6 +753,7 @@ No external template was imposed. Sections omitted from the default structure an
 | R8 | φ_cos absent from retrieval (D11) | Recall depends on lexical overlap and graph proximity. A question phrased with no shared vocabulary will miss | Accepted at current corpus size |
 | R9 | `remember` and `flag_concern` log field names, not values | The tool log proves *that* the agent looked something up, not *what came back* | Open — see B2 |
 | R10 | Single Firestore database, no backup configured | Deleting the database loses the archive | Accepted for a hackathon; unacceptable for the product this pretends to be |
+| ~~R14~~ | The narrator had no entity in her own graph. `seeds/intake.json` names her family and her places, not her, so every fact with her as subject was refused for an unknown subject until some mention happened to invent one | — | **Closed at rev 5** (D20). Her real archive had recovered by luck: something resolved her, and that entity carries more facts than any other subject |
 | R13 | Every fact and community in Firestore predates the wiring fix and was produced by `scripts/backfill_facts.py`, not by a call | The graph is real but its provenance is a script. Facts written by live calls from rev 3 onward will interleave with backfilled ones, and nothing distinguishes them — `episode_id` points at the conversation either way | **Accepted.** The backfill reads the same transcripts through the same extractor, so the content is not suspect; only the claim "this was built by calls" was |
 | R12 | Forgetting is prospective, not retroactive. The filter runs at extraction, so a subject already extracted and stored before she asked to forget it stays in `stories__<id>` and `facts__<id>` | She asks the agent to forget something it recorded last month. The tombstone stops it being rebuilt and does not remove what is already there, so the family can still read it. Deleting stored data is a heavier action than filtering a pass, and no sweep is built | **Open.** A retroactive sweep would need to decide what to do with facts other stories depend on, and that decision has not been made |
 | ~~R11~~ | `forgotten__<id>` was write-only: `Repository.forgotten()` had no callers, so a subject she asked to drop was rebuilt by the next extraction pass — after the agent had told her it would not | — | **Closed at rev 2** (D18). Found by auditing this document's collection list at rev 1 |

@@ -16,6 +16,7 @@ from sampan.archivist import StoryExtractor, ingest_conversation, mentions
 from sampan.companion import build_agent
 from sampan.config import Settings
 from sampan.contradiction import ContradictionJudge, reconcile
+from sampan.entities import ensure_self
 from sampan.fact_extraction import FactExtractor, build_facts
 from sampan.opener import build_session_plan, render_plan
 from sampan.preferences import fold_preferences
@@ -67,7 +68,13 @@ def prepare_call(
 ) -> PreparedCall:
     """Load everything this call should already know."""
     stored = repository.load_memory(narrator_id)
-    entities = repository.load_entities(narrator_id)
+    # She has to be in her own graph, or every fact about her is refused for an
+    # unknown subject and the archive can record everything except its subject.
+    entities = ensure_self(
+        repository.load_entities(narrator_id),
+        narrator_id=narrator_id,
+        display_name=stored.display_name or repository.display_name(narrator_id),
+    )
     ask = repository.pending_ask(narrator_id)
 
     # Second resolution alone collides: Live API sessions cap at roughly

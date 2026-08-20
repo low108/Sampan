@@ -279,7 +279,13 @@ class TestMemorySurvives:
 
         other = prepare_call(repository, settings, narrator_id="someone_else")
 
-        assert other.memory.entities == []
+        # One entity, and it is themselves: everyone is in their own graph, or
+        # no fact can be recorded about them. Nothing of hers crosses over.
+        assert [e.entity_id for e in other.memory.entities] == [
+            "ent_self_someone_else"
+        ]
+        hers = {e.entity_id for e in prepared.memory.entities}
+        assert not hers & {e.entity_id for e in other.memory.entities}
         assert other.stored.session_count == 0
 
 

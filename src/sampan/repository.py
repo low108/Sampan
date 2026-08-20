@@ -78,6 +78,15 @@ class Repository:
         memory.updated_at = datetime.now(UTC).isoformat()
         self._store.put(PROFILES, memory.narrator_id, memory.model_dump(mode="json"))
 
+    def display_name(self, narrator_id: str) -> str:
+        """The name on the household roster, or "" if they are not on it.
+
+        A single-document read: `list_members` also counts stories for everyone,
+        which is far too much work for a name at the top of a call.
+        """
+        raw = self._store.get("members", narrator_id)
+        return str((raw or {}).get("display_name") or "")
+
     # --- entities ---------------------------------------------------------
 
     def load_entities(self, narrator_id: str) -> list[Entity]:
