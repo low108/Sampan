@@ -17,7 +17,8 @@ from sampan.companion import build_agent
 from sampan.config import Settings
 from sampan.contradiction import ContradictionJudge, reconcile
 from sampan.entities import ensure_self
-from sampan.fact_extraction import FactExtractor, build_facts
+from sampan.fact_extraction import FactExtractor, Refusal, build_facts
+from sampan.memories import MemoryRequest, publish
 from sampan.opener import build_session_plan, render_plan
 from sampan.preferences import fold_preferences
 from sampan.repository import NarratorMemory, Repository
@@ -144,6 +145,7 @@ def finish_call(
     transcript: Transcript,
     *,
     narrator_id: str,
+    settings: Settings | None = None,
     fact_extractor: FactExtractor | None = None,
     judge: ContradictionJudge | None = None,
     tool_calls: list[dict[str, Any]] | None = None,
@@ -176,6 +178,8 @@ def finish_call(
     # Consumed only by a call that was long enough to be a real exchange.
     if prepared.memory.ask_delivered and prepared.memory.ask is not None:
         repository.mark_ask_delivered(narrator_id, prepared.memory.ask.ask_id)
+
+    settings = settings or Settings()
 
     # Everything she has ever asked to drop, including anything said on this
     # call -- `forget_this` writes through immediately, so the tombstone is
@@ -215,7 +219,26 @@ def finish_call(
 
     repository.save_memory(updated)
     repository.save_entities(narrator_id, outcome.entities)
-    repository.save_stories(narrator_id, prepared.conversation_id, outcome.stories)
+    written = repository.save_stories(
+        narrator_id, prepared.conversation_id, outcome.stories
+    )
+
+    # Ask for an image for each new story, and do not wait for one. Veo is tens
+    # of seconds; the card is complete without it and acquires it later (D21).
+    # `publish` never raises -- a picture is not worth a failed call.
+    for story_id, story in zip(written, outcome.stories, strict=False):
+        candidate = story.candidate
+        publish(
+            settings,
+            MemoryRequest(
+                narrator_id=narrator_id,
+                story_id=story_id,
+                title=candidate.title,
+                sense_detail=candidate.sense_detail,
+                where_said=candidate.where.raw_name,
+                year=candidate.when.start_year if candidate.when else None,
+            ),
+        )
 
     # Facts are a second pass with its own schema, deliberately not another
     # field on the story extraction: a schema is part of the prompt, and one
@@ -223,11 +246,21 @@ def finish_call(
     # Optional, so a call still folds in cleanly without it.
     if fact_extractor is not None:
         rendered = transcript.render()
+        # What was dropped, and by which rule. Extraction is silent to the
+        # agent by design; it should not also be silent to whoever is trying
+        # to work out why a fact she plainly stated is not in the archive.
+        refusals: list[Refusal] = []
         extracted = build_facts(
             fact_extractor.extract(rendered, outcome.entities),
             transcript=rendered,
             known_entities=outcome.entities,
             episode_id=prepared.conversation_id,
+            on_refusal=refusals.append,
+        )
+        repository.record_refusals(
+            narrator_id,
+            prepared.conversation_id,
+            [r.model_dump(mode="json") for r in refusals],
         )
         # Facts are extracted from the raw transcript, so they rebuild a
         # forgotten subject even when its story has already been dropped. The

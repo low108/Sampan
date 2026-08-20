@@ -12,6 +12,7 @@ shaped this way and what that shape cost.
 
 | Rev | Date | Change | Supersedes |
 |---|---|---|---|
+| 6 | 2026-08-20 | Closes R15: fact extraction drops to `temperature=0.0` and refusals are recorded with the rule that fired. Adds the Pub/Sub image pipeline (D21, D22), which reaches the opposite answer to D17 on different facts. | — |
 | 5 | 2026-08-20 | Closes R14: the narrator is now guaranteed a node in her own graph (D20). Corrects the rev-4 phrasing claim, which was wrong — the extractor proposes the fact either way; what varies is the refusal (R15). | Rev 4 §8.3 phrasing note |
 | 4 | 2026-08-20 | Records the first end-to-end observation of a contradiction verdict against the real model, and the three failed probes that preceded it. Adds R14, the missing narrator entity. | — |
 | 3 | 2026-08-20 | **Corrects rev 1 and 2, which were wrong.** §8.3 described fact extraction and contradiction as part of the call. They were never wired: the WebSocket handler passed neither `fact_extractor` nor `judge` to `finish_call`, both default to `None`, and the whole pass was skipped on every real call. Fixed (D19), R13 records what it means for data written before this. | Rev 1–2 §8.3, §7.4 |
@@ -153,7 +154,7 @@ which is not the same list.
 | **Gemini Live API** | `live.py`, `companion.py` | Bidirectional audio streaming for the call itself |
 | **Gemini structured output** | 8 modules, 9 call sites | `response_schema` + `response_mime_type="application/json"` — a Pydantic class *is* the schema. Schemas: `ExtractionResponse`, `FactBatch`, `Judgement`, `CommunitySummary`, `Assessment`, `Answer`, `Letter`, `_Batch` and `_Links` (both `places.py`) |
 | **Gemini function calling** | `tools.py` via ADK | The five tools the Companion calls mid-sentence |
-| **Veo 3.1** | Build-time only | Generates the looping memory clip at the head of a story card. Run by hand, not at request time: the assets are checked in, and a card must never wait on a video model |
+| **Veo 3.1** | `memories.py`, off the request path | Generates the looping memory clip at the head of a story card. Reached through Pub/Sub, never during a call (D21) |
 
 #### Models, and what each one is for
 
@@ -219,6 +220,8 @@ open because inference was slow is worse than one with no picture.
 |---|---|---|
 | **Cloud Run** | The whole service | `--timeout=3600` — the 300 s default kills calls mid-story and presents as a Live API bug. `--concurrency=20`, `--cpu=1`, `--memory=1Gi`, `--max-instances=3` |
 | **Firestore** | All persistence | Native mode, `(default)`, `asia-southeast1`. Sixteen collections (§7.3) |
+| **Pub/Sub** | Queues image generation | Topic `sampan-memories`, push subscription to `/internal/memories`. `--ack-deadline=600`: Veo takes tens of seconds and the 10s default redelivers while the first attempt is still generating, billing for each |
+| **Cloud Storage** | Holds the clips | An mp4 is ~1.2 MB against a 1 MB Firestore document cap, so the bytes cannot live beside the archive |
 | **Cloud Build** | Image build | Implicit: `gcloud run deploy --source=.` builds remotely from the Dockerfile |
 | **Artifact Registry** | Image storage | Implicit, same path |
 
@@ -323,6 +326,7 @@ constant declared in source appears here, and every collection present in the li
 | `stories__<id>` | `<conversation_id>_<NN>` | 11a / 5w | `save_stories` | `cards_for`, every family view | Scored stories from extraction. Id embeds the conversation, so a story always points back at the call it came from |
 | `entities__<id>` | `entity_id` | 33a / 12w | `save_entities` | `prepare_call`, chapters, retrieval seeds | People, places and things, resolved and merged across calls |
 | `facts__<id>` | `fact_id` | 18a / 4w | `save_facts`, `expire_fact` | `load_facts`, `search_facts`, chapters | The graph edges, current **and** retired. `load_facts` filters to current by default; `current_only=False` reads the history of a belief |
+| `memories__<id>` | `story_id` | 0 | `save_memory_asset`, from the Pub/Sub worker | Story cards | Where a story's generated clip lives: URL, prompt and model. The bytes are in Cloud Storage; this is the pointer |
 | `communities__<id>` | `community_id` | 3a / 1w | `save_communities` — replaced wholesale | `load_communities` | Chapters. Replaced rather than merged, because a refresh recomputes every label and merging would leave chapters the current graph no longer supports |
 
 #### The bridge to the family
@@ -629,7 +633,7 @@ and returns data, so the model can be replaced by a fake without a network.
 
 ### 9.2 Test inventory
 
-477 tests total: **414 unit** (default), **63 integration** (`-m integration`, deselected by
+493 tests total: **430 unit** (default), **63 integration** (`-m integration`, deselected by
 `addopts = "-q -m 'not integration'"`). Largest suites:
 
 | File | Tests | File | Tests |
@@ -657,6 +661,9 @@ that memory accumulates across calls in production rather than in a fixture.
 | An optional extraction dependency silently missing in production | `test_service.py::TestExtractionIsFullyWired` |
 | A later telling retiring an earlier one, real model | `test_facts_integration.py::TestContradictionEndToEnd` |
 | A narrator absent from her own entity graph | `test_entity_resolution.py::TestTheNarratorIsInHerOwnGraph` |
+| A refused fact naming which rule refused it | `test_facts.py::TestRefusalsAreRecorded` |
+| A missing topic or broken Pub/Sub during a call | `test_memories.py::TestPublishingNeverBreaksACall` |
+| An unreadable Pub/Sub push envelope | `test_memories.py::TestThePushEnvelope` |
 | Forgetting a subject without losing its sensitivity | `test_callflow.py::TestForgetting` |
 | Query terms shorter than three characters | `test_retrieval.py` |
 | Quiet-hours window crossing midnight | `test_quiet.py` |
@@ -697,8 +704,10 @@ mid-story and presents as a Live API bug.
 | D18 | Forgetting drops stories, threads and facts — and deliberately **keeps** entities and sensitivities | Dropping everything derived from the subject is the intuitive reading of "forget it". It is also dangerous: a sensitivity is what steers the agent *away* from a painful subject, so removing it alongside the story deletes the story and the reason not to ask again. Entities stay because other stories reference them, and forgetting a story is not forgetting that a person exists |
 | D19 | Production extraction dependencies are built together in one named `ExtractionStack`, never passed individually | Optional keywords are right for the seam, which is exercised with fakes, and they are what let the fact pass be silently absent from production for the subsystem's whole life. A dependency that defaults to doing nothing cannot be caught by the seam's own tests, because the seam is what gets the fakes. Assembling all three in one place makes "is the judge connected?" a question a test can ask |
 | D20 | The narrator's own entity is guaranteed at `prepare_call`, with an id derived from the narrator id, rather than added to the seed file | Fixing `seeds/intake.json` repairs this household and no other: every future narrator starts with the same hole, and the failure is silent because refusals are silent by design. Deriving the id makes the guarantee idempotent, and matching an existing entity by name first means a graph that already resolved her from a mention does not end up with two of her — which would split her facts across two subjects and quietly break every comparison between them |
+| D21 | Image generation goes through Pub/Sub, while extraction stays in-process (D17) | The two look like the same problem. Extraction takes seconds, runs once per call, and produces the thing the product exists to keep — so an in-process worker with the transcript already written is the right trade, and R1 is the accepted cost. Veo takes tens of seconds to minutes and produces something the card is complete without. A queue is what lets a card open immediately and acquire its picture later, which is the only acceptable order. D21 does not supersede D17: it is the same reasoning reaching the opposite answer on different facts |
+| D22 | The push endpoint always returns 200, even on failure | Returning an error is the conventional way to ask for redelivery. Redelivering a Veo call is not like redelivering a database write: a wedged message would bill for a paid model on every attempt. The outcome goes in the body, and the dead-letter topic is the backstop |
 
-No decision has been superseded or withdrawn as of revision 5. D19 does not supersede D13 —
+No decision has been superseded or withdrawn as of revision 6. D19 does not supersede D13 —
 the routing D13 describes was always correct; it was never reached.
 
 ---
@@ -774,7 +783,7 @@ No external template was imposed. Sections omitted from the default structure an
 | R9 | `remember` and `flag_concern` log field names, not values | The tool log proves *that* the agent looked something up, not *what came back* | Open — see B2 |
 | R10 | Single Firestore database, no backup configured | Deleting the database loses the archive | Accepted for a hackathon; unacceptable for the product this pretends to be |
 | ~~R14~~ | The narrator had no entity in her own graph. `seeds/intake.json` names her family and her places, not her, so every fact with her as subject was refused for an unknown subject until some mention happened to invent one | — | **Closed at rev 5** (D20). Her real archive had recovered by luck: something resolved her, and that entity carries more facts than any other subject |
-| R15 | Fact extraction is non-deterministic at the refusal boundary, and refusals are silent | The same sentence yields a stored fact on one run and nothing on the next — measured 3/4 and 4/4 across two phrasings, with the model proposing the fact 8/8 times. Silence is right for one uncertain fact among many; it is wrong when the dropped one is what a demo is built on, and nothing distinguishes "she did not say it" from "it was dropped this time" | **Open.** Dropping fact extraction to `temperature=0.0`, or logging refusals with the rule that fired, would each help; neither is done |
 | R13 | Every fact and community in Firestore predates the wiring fix and was produced by `scripts/backfill_facts.py`, not by a call | The graph is real but its provenance is a script. Facts written by live calls from rev 3 onward will interleave with backfilled ones, and nothing distinguishes them — `episode_id` points at the conversation either way | **Accepted.** The backfill reads the same transcripts through the same extractor, so the content is not suspect; only the claim "this was built by calls" was |
 | R12 | Forgetting is prospective, not retroactive. The filter runs at extraction, so a subject already extracted and stored before she asked to forget it stays in `stories__<id>` and `facts__<id>` | She asks the agent to forget something it recorded last month. The tombstone stops it being rebuilt and does not remove what is already there, so the family can still read it. Deleting stored data is a heavier action than filtering a pass, and no sweep is built | **Open.** A retroactive sweep would need to decide what to do with facts other stories depend on, and that decision has not been made |
+| ~~R15~~ | Fact extraction was non-deterministic at the refusal boundary, and refusals were silent | — | **Closed at rev 6.** `temperature` dropped to 0.0, and refusals are recorded with the rule that fired, on the conversation and in `GET /api/talk/{id}/calls` |
 | ~~R11~~ | `forgotten__<id>` was write-only: `Repository.forgotten()` had no callers, so a subject she asked to drop was rebuilt by the next extraction pass — after the agent had told her it would not | — | **Closed at rev 2** (D18). Found by auditing this document's collection list at rev 1 |

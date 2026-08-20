@@ -276,3 +276,100 @@ class TestPredicateVocabulary:
         offered = set(ExtractedFact.model_fields)
 
         assert not offered & {"fact_id", "t_created", "t_expired", "superseded_by"}
+
+
+class TestRefusalsAreRecorded:
+    """Silent to the agent, not silent to us.
+
+    Extraction refuses rather than asserting what it cannot support, and that
+    silence is right: the archive says less. It was also silent to whoever had
+    to work out why a fact she plainly stated was missing, which is how the
+    same sentence yielding a fact on one run and nothing on the next went
+    unnoticed. See R15 in docs/system-analysis.md.
+    """
+
+    @staticmethod
+    def _entity():
+        from sampan.models import Entity, EntityType
+
+        return Entity(
+            entity_id="ent_mother", type=EntityType.PERSON, canonical_name="Tan Ah Tai"
+        )
+
+    def _proposed(self, **overrides):
+        from sampan.fact_extraction import ExtractedFact
+        from sampan.facts import Predicate
+
+        base = dict(
+            subject_id="ent_mother",
+            predicate=Predicate.MADE,
+            object_literal="salted fish fried rice",
+            statement="Her mother cooked salted fish fried rice.",
+            quote="My mother cook salted fish fried rice.",
+        )
+        base.update(overrides)
+        return ExtractedFact(**base)
+
+    def _build(self, item, transcript: str):
+        from sampan.fact_extraction import Refusal, build_facts
+
+        refusals: list[Refusal] = []
+        facts = build_facts(
+            [item],
+            transcript=transcript,
+            known_entities=[self._entity()],
+            episode_id="conv_1",
+            on_refusal=refusals.append,
+        )
+        return facts, refusals
+
+    def test_a_quote_she_never_said_names_the_rule(self) -> None:
+        facts, refusals = self._build(
+            self._proposed(quote="She loved cooking for the family."),
+            "K: My mother cook salted fish fried rice.",
+        )
+
+        assert facts == []
+        assert [r.rule for r in refusals] == ["not_quoted"]
+        # And carries enough to see what was lost, not just that something was.
+        assert refusals[0].statement == "Her mother cooked salted fish fried rice."
+
+    def test_an_unknown_subject_names_the_rule(self) -> None:
+        facts, refusals = self._build(
+            self._proposed(subject_id="ent_nobody"),
+            "K: My mother cook salted fish fried rice.",
+        )
+
+        assert facts == []
+        assert [r.rule for r in refusals] == ["unknown_subject"]
+        assert refusals[0].subject_id == "ent_nobody"
+
+    def test_a_fact_asserting_nothing_names_the_rule(self) -> None:
+        facts, refusals = self._build(
+            self._proposed(object_literal="", object_id=None),
+            "K: My mother cook salted fish fried rice.",
+        )
+
+        assert facts == []
+        assert [r.rule for r in refusals] == ["asserts_nothing"]
+
+    def test_a_kept_fact_refuses_nothing(self) -> None:
+        facts, refusals = self._build(
+            self._proposed(), "K: My mother cook salted fish fried rice."
+        )
+
+        assert len(facts) == 1
+        assert refusals == []
+
+    def test_the_callback_is_optional(self) -> None:
+        """Six call sites do not need to change to add a diagnostic."""
+        from sampan.fact_extraction import build_facts
+
+        facts = build_facts(
+            [self._proposed(quote="never said")],
+            transcript="K: something else entirely",
+            known_entities=[self._entity()],
+            episode_id="conv_1",
+        )
+
+        assert facts == []

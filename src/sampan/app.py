@@ -46,6 +46,7 @@ from sampan.household import (
     unplaced,
 )
 from sampan.live import ToolLog, open_session, pump
+from sampan.memories import BucketBlobs, VeoGenerator, decode_push, render
 from sampan.models import AffectState, Ask
 from sampan.notifications import mark_seen, notifications_for, unseen_count
 from sampan.places import GeminiPlaceResolver
@@ -647,6 +648,10 @@ def create_app() -> FastAPI:
         looked up before saying it. Without it a wrong answer mid-call is
         unfalsifiable after the fact — you cannot tell a bad lookup from a
         good lookup badly used.
+
+        `fact_refusals` is the other half: what extraction declined and which
+        rule declined it, so a fact she plainly stated going missing has an
+        explanation rather than a shrug.
         """
         rows = store.list(f"conversations__{narrator_id}")
         rows.sort(key=lambda raw: raw.get("occurred_at") or "", reverse=True)
@@ -657,6 +662,7 @@ def create_app() -> FastAPI:
                     "occurred_at": raw.get("occurred_at", ""),
                     "turns": raw.get("turns", 0),
                     "tool_calls": raw.get("tool_calls", []),
+                    "fact_refusals": raw.get("fact_refusals", []),
                 }
                 for raw in rows[: max(1, min(limit, 50))]
             ]
@@ -713,6 +719,43 @@ def create_app() -> FastAPI:
             "question": ask.question,
             "voice_note": ask.voice_note_url,
         }
+
+    @app.post("/internal/memories", dependencies=[Depends(require_api_key)])
+    def make_memory(
+        body: dict[str, Any],
+        settings: Annotated[Settings, Depends(get_settings)],
+        store: Annotated[DocumentStore, Depends(get_store)],
+    ) -> dict[str, Any]:
+        """Pub/Sub push: generate one story's image.
+
+        Always 200, even on failure. A push endpoint that returns an error gets
+        the same message redelivered, and redelivering a Veo call is expensive
+        in a way that redelivering most things is not — a wedged message could
+        bill for hours. The outcome is in the body instead.
+
+        Auth is the shared key on the subscription's push URL rather than an
+        OIDC token: the whole service already gates on it, and one auth model
+        is easier to keep correct than two.
+        """
+        request = decode_push(body)
+        if request is None:
+            return {"ok": False, "reason": "unreadable message"}
+        if not settings.memories_bucket:
+            return {"ok": False, "reason": "no SAMPAN_MEMORIES_BUCKET configured"}
+
+        try:
+            asset = render(
+                request,
+                VeoGenerator(settings),
+                BucketBlobs(settings.memories_bucket),
+            )
+        except Exception as error:  # noqa: BLE001 -- see the docstring
+            return {"ok": False, "story_id": request.story_id, "error": str(error)}
+
+        Repository(store).save_memory_asset(
+            request.narrator_id, asset.model_dump(mode="json")
+        )
+        return {"ok": True, "story_id": asset.story_id, "video_url": asset.video_url}
 
     @app.websocket("/ws/talk")
     async def talk(websocket: WebSocket) -> None:
@@ -791,6 +834,7 @@ def create_app() -> FastAPI:
                     fact_extractor=stack.facts,
                     judge=stack.judge,
                     tool_calls=tool_log.as_records(),
+                    settings=settings,
                 )
 
     static_dir = find_static_dir()

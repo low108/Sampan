@@ -38,6 +38,7 @@ FORGOTTEN = "forgotten"
 PRIVATE = "private"
 FACTS = "facts"
 COMMUNITIES = "communities"
+MEMORIES = "memories"
 
 
 class NarratorMemory(BaseModel):
@@ -206,6 +207,35 @@ class Repository:
                 **extra,
             },
         )
+
+    def record_refusals(
+        self, narrator_id: str, conversation_id: str, refusals: list[dict[str, Any]]
+    ) -> None:
+        """Attach what fact extraction declined to the call it came from.
+
+        A second write rather than a field on the first, because the transcript
+        is saved before extraction runs on purpose (D6) and must not wait for
+        it. Absent when nothing was refused, so an empty list and a call that
+        predates this feature look the same -- which is correct, since neither
+        refused anything we know about.
+        """
+        if not refusals:
+            return
+        collection = self._scoped(CONVERSATIONS, narrator_id)
+        raw = self._store.get(collection, conversation_id)
+        if raw is None:
+            return
+        raw["fact_refusals"] = refusals
+        self._store.put(collection, conversation_id, raw)
+
+    def save_memory_asset(self, narrator_id: str, asset: dict[str, Any]) -> None:
+        """Where a story's generated clip lives. One document per story."""
+        self._store.put(
+            self._scoped(MEMORIES, narrator_id), asset["story_id"], asset
+        )
+
+    def load_memory_assets(self, narrator_id: str) -> list[dict[str, Any]]:
+        return self._store.list(self._scoped(MEMORIES, narrator_id))
 
     # --- care -------------------------------------------------------------
 

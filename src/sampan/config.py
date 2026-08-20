@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     quiet_from_hour: int = Field(default=22, alias="SAMPAN_QUIET_FROM")
     quiet_until_hour: int = Field(default=8, alias="SAMPAN_QUIET_UNTIL")
 
+    # --- Generated imagery ------------------------------------------------
+    # Both empty by default, and both are checked before anything is published:
+    # a deploy without them simply has no card images, which is a product with
+    # one fewer feature rather than a product that fails.
+    memories_topic: str = Field(default="", alias="SAMPAN_MEMORIES_TOPIC")
+    memories_bucket: str = Field(default="", alias="SAMPAN_MEMORIES_BUCKET")
+
     # --- Auth -------------------------------------------------------------
     # Shared secret guarding every non-public route. Cheap, and it keeps stray
     # web traffic from draining the hackathon credits.
