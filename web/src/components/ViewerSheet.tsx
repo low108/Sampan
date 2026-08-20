@@ -52,7 +52,7 @@ export function ViewerSheet({ members, current, onPick, onClose }: Props) {
                 <span>{m.records ? 'records' : 'reads only'}</span>
               </div>
             </div>
-            {m.narrator_id === current && <span className="pill lime">You</span>}
+            {m.narrator_id === current && <span className="pill accent">You</span>}
           </button>
         ))}
       </div>

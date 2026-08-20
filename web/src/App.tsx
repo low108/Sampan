@@ -457,7 +457,7 @@ interface TellerProps {
 }
 
 export function TellerSide({ question, note, live, said, onToggle, onLater }: TellerProps) {
-  /* J · RECORDING — dark so the room stays quiet, lime only in the waveform,
+  /* J · RECORDING — dark so the room stays quiet, marigold only in the waveform,
      because the waveform is the proof it is hearing her. */
   if (live) return <Recording said={said} onStop={onToggle} />;
 

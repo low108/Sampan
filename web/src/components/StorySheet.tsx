@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, givenName, initial } from '../api';
 import type { Pin, StoryCard } from '../types';
+import { Memory, memoryFor } from './Memory';
 import { Sheet } from './Sheet';
 
 /** Anything coarser than a street is a guess, and is said to be one: a
@@ -73,9 +74,19 @@ export function StorySheet({ pin, onClose, onCorrect, onAsk }: Props) {
   /* Whose story this is. The archive holds three people's, so nothing on this
    * card may assume the teller is her — the given name says who it was. */
   const teller = givenName(pin.narrator_name);
+  /* Not every story has one, and that is the honest default — most of her life
+   * has no picture, and generating one per story would be inventing it. */
+  const media = memoryFor(pin.title);
 
   return (
     <Sheet onClose={onClose}>
+      {media && (
+        <Memory media={media}>
+          <span className={guess ? 'pill dash' : 'pill'}>
+            {guess ? 'Place guessed by the system' : `Place ${teller} named`}
+          </span>
+        </Memory>
+      )}
       <div className="lbl dim">
         {card?.where_said || pin.title} · {era(card, pin)}
       </div>
@@ -84,9 +95,11 @@ export function StorySheet({ pin, onClose, onCorrect, onAsk }: Props) {
       </h2>
 
       <div className="pills" style={{ marginTop: 18 }}>
-        <span className={guess ? 'pill dash' : 'pill'}>
-          {guess ? 'Place guessed' : `Place ${teller} named`}
-        </span>
+        {!media && (
+          <span className={guess ? 'pill dash' : 'pill'}>
+            {guess ? 'Place guessed' : `Place ${teller} named`}
+          </span>
+        )}
         <span className="pill">{pin.narrator_name}</span>
       </div>
 
@@ -102,7 +115,7 @@ export function StorySheet({ pin, onClose, onCorrect, onAsk }: Props) {
       )}
 
       <div className="row">
-        <button className="btn lime" disabled={asked} onClick={() => { onAsk(pin); setAsked(true); }}>
+        <button className="btn accent" disabled={asked} onClick={() => { onAsk(pin); setAsked(true); }}>
           {asked ? `${teller} will be asked` : `Ask ${teller} about this`}
         </button>
       </div>

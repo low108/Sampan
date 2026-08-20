@@ -6,7 +6,7 @@ import { Sheet } from './Sheet';
  * recording with his question already loaded, so the distance between someone
  * was thinking of you and she starts talking is a single tap.
  *
- * Lime marks only the two things that are hers: a story that just arrived, and
+ * Marigold marks only the two things that are hers: a story that just arrived,
  * a question waiting for her. Everything else in this list is quiet. */
 interface Props {
   bell: Bell | null;
@@ -14,7 +14,7 @@ interface Props {
   onClose: () => void;
 }
 
-/* A concern gets a way in but never the lime: lime means something of theirs
+/* A concern gets a way in but never the marigold: it means something of theirs
    is new, and a wellbeing flag is not news to celebrate. It outranks
    everything in the sort order instead. */
 const CTA: Partial<Record<Notification['kind'], string>> = {
@@ -62,7 +62,7 @@ export function BellSheet({ bell, onOpen, onClose }: Props) {
               </div>
               {CTA[n.kind] && (
                 <div className="pills" style={{ marginTop: 14 }}>
-                  <span className={hers && !n.seen ? 'pill lime' : 'pill'}>
+                  <span className={hers && !n.seen ? 'pill accent' : 'pill'}>
                     {CTA[n.kind]}
                   </span>
                 </div>

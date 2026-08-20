@@ -20,11 +20,14 @@
 
   /* The map speaks the same three marks as the rest of the app, and only
      three: she named it, the system guessed it, several stories are here.
-     Cream is "she named it", so clusters take the lime to stay unambiguous —
-     the one place lime is not "something of hers is new". */
-  const INK = '#0E0F0C';
-  const CREAM = '#FCFBF9';
-  const LIME = '#E7FE54';
+     Cream is "she named it", so clusters take the marigold to stay unambiguous
+     -- the one place it is not "something of hers is new". */
+  const INK = '#171009';
+  const CREAM = '#FDF8EF';
+  // Marigold: the cluster is the one sanctioned use away from
+  // "something of hers is new", because cream is already the
+  // "she named it" fill and a number needs its own colour.
+  const MARIGOLD = '#F2A93C';
   const SANS = "'Archivo', system-ui, sans-serif";
 
   function loadLeaflet() {
@@ -72,10 +75,10 @@
     const guess = isGuess(p);
     const size = guess ? 26 : 22;
     const core = guess
-      ? `border:2px dashed ${CREAM};background:rgba(252,251,249,.10);`
-      : `background:${CREAM};box-shadow:0 0 0 ${selected ? 7 : 4}px rgba(252,251,249,.22);`;
+      ? `border:2px dashed ${CREAM};background:rgba(253,248,239,.10);`
+      : `background:${CREAM};box-shadow:0 0 0 ${selected ? 7 : 4}px rgba(253,248,239,.22);`;
     const ring = guess && selected
-      ? `outline:2px solid rgba(252,251,249,.5);outline-offset:5px;`
+      ? `outline:2px solid rgba(253,248,239,.5);outline-offset:5px;`
       : '';
     return `<div style="width:${size}px;height:${size}px;border-radius:50%;${core}${ring}box-sizing:border-box;"></div>`;
   }
@@ -300,10 +303,10 @@
           });
           this._add(L.circleMarker(center, { radius: 4, color: CREAM, weight: 1.5, fillColor: INK, fillOpacity: 1, interactive: false }));
         } else {
-          /* Just the number. At region scale eight stories are one lime
+          /* Just the number. At region scale eight stories are one marigold
              disc; tapping it lists every one so none is unreachable. */
           const n = g.items.length;
-          const html = `<div style="width:46px;height:46px;border-radius:50%;background:${LIME};
+          const html = `<div style="width:46px;height:46px;border-radius:50%;background:${MARIGOLD};
             box-shadow:0 6px 18px rgba(0,0,0,.38);display:flex;align-items:center;justify-content:center;
             color:${INK};font:700 18px/1 ${SANS};letter-spacing:-.02em;box-sizing:border-box;">${n}</div>`;
           this._marker(center, html, [46, 46], () => {

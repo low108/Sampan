@@ -266,7 +266,7 @@ function AskAbout({
                     {m.follow}
                   </p>
                   <div className="row">
-                    <button className="btn lime" onClick={() => void queue(m.follow!)}>
+                    <button className="btn accent" onClick={() => void queue(m.follow!)}>
                       Ask this next call
                     </button>
                   </div>
