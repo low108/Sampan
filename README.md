@@ -126,9 +126,14 @@ export SAMPAN_API_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(
 
 ### Screening what gets stored (recommended)
 
-Transcripts are screened by Model Armor before they reach Firestore, so a bank
-account number she reads out is de-identified rather than archived. Off unless a
-template is configured.
+Transcripts are screened before they reach Firestore, so a bank account number
+she reads out is de-identified rather than archived. Off unless a template is
+configured.
+
+The detection is **Sensitive Data Protection (DLP)**, not Model Armor. Model
+Armor is the façade: its SDP filter delegates to DLP, and in advanced mode to
+the templates below. It is worth keeping only for the filters DLP has no
+equivalent of — prompt injection and jailbreak — which are **not enabled yet**.
 
 ```bash
 gcloud services enable modelarmor.googleapis.com dlp.googleapis.com
