@@ -133,19 +133,29 @@ template is configured.
 ```bash
 gcloud services enable modelarmor.googleapis.com dlp.googleapis.com
 
-# Narrow on purpose: one info type. Model Armor's *basic* SDP config enables
-# Google's whole default set, which on an eighty-year-old's life story means
-# names, dates, addresses and health details — the archive itself. Advanced
-# config against a DLP inspect template is what keeps it to the account number.
-gcloud dlp inspect-templates create \
-  --location=asia-southeast1 \
-  --template-id=sampan-bank-only \
-  --inspect-config-info-types=<VERIFIED_INFO_TYPE>
-
-gcloud model-armor templates create sampan-transcripts \
-  --location=asia-southeast1 \
-  --advanced-config-inspect-template=projects/$GOOGLE_CLOUD_PROJECT/locations/asia-southeast1/inspectTemplates/sampan-bank-only
+# The Model Armor service agent needs to read the DLP templates. Without this
+# the filter is SKIPPED and the API still answers 200 — a screen that reports
+# success and protects nothing.
+NUM=$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format='value(projectNumber)')
+gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+  --member="serviceAccount:service-${NUM}@gcp-sa-modelarmor.iam.gserviceaccount.com" \
+  --role=roles/dlp.user
 ```
+
+Then create the two DLP templates and the Model Armor template that points at
+them — `scripts/setup_armor.sh` does all three.
+
+**On what DLP can and cannot detect here.** `FINANCIAL_ACCOUNT_NUMBER` sounds
+like the right built-in and detects nothing: a bare Malaysian account number
+spoken aloud matches no built-in info type at any likelihood. There are no
+`MALAYSIA_*` info types at all, so there is no IC detector either. What works is
+`CREDIT_CARD_NUMBER` (Luhn-checkable) plus a custom regex for grouped 10–16
+digit runs. That regex was measured against her entire real archive: one
+finding, the planted account number, and no false positives on years or dates.
+
+Model Armor's *basic* SDP config is not used, deliberately. It enables Google's
+whole default set, which on an eighty-year-old's life story means names, dates,
+addresses and health details — it would redact the archive itself.
 
 Then redeploy with `SAMPAN_ARMOR_TEMPLATE=sampan-transcripts`.
 

@@ -123,33 +123,69 @@ class ModelArmorScreen:
 
 def _read(result: Any, original: str) -> Screened:
     """Turn Model Armor's result into the two things the caller needs: the text
-    to store, and why it is or is not the text that came in."""
+    to store, and whether it was actually checked.
+
+    The second is not a formality. Model Armor answers 200 with
+    `invocation_result: FAILURE` and `execution_state: EXECUTION_SKIPPED` when
+    its service agent lacks permission on the DLP templates — no exception, no
+    error field, just a filter that quietly did not run. Read naively that is
+    indistinguishable from a clean transcript, which is the worst shape a
+    security control can have: it reports success while protecting nothing.
+    Observed, not hypothesised: it is what the first live call returned.
+    """
     from google.cloud import modelarmor_v1 as ma
 
     findings: list[Finding] = []
     text = original
+    skipped: list[str] = []
+
+    if getattr(result, "invocation_result", None) == ma.InvocationResult.FAILURE:
+        skipped.append("invocation failed")
 
     for name, filter_result in (result.filter_results or {}).items():
         sdp = getattr(filter_result, "sdp_filter_result", None)
         deidentified = getattr(sdp, "deidentify_result", None) if sdp else None
-        if deidentified and getattr(deidentified, "data", None):
-            # The whole reason for the screen: identifiers replaced, and the
-            # replacement is what gets stored and extracted from.
-            replacement = getattr(deidentified.data, "text", "")
-            if replacement:
-                text = replacement
-            findings.append(
-                Finding(
-                    filter="sdp",
-                    detail=", ".join(
-                        i.name for i in getattr(deidentified, "info_types", []) or []
-                    ),
+
+        if deidentified is not None:
+            state = getattr(deidentified, "execution_state", None)
+            if state == ma.FilterExecutionState.EXECUTION_SKIPPED:
+                skipped.extend(
+                    m.message for m in getattr(deidentified, "message_items", []) or []
                 )
-            )
-            continue
+                continue
+            if getattr(deidentified, "data", None):
+                # The whole reason for the screen: identifiers replaced, and
+                # the replacement is what gets stored and extracted from.
+                replacement = getattr(deidentified.data, "text", "")
+                if replacement:
+                    text = replacement
+                findings.append(
+                    Finding(
+                        filter="sdp",
+                        # Strings on the wire, not objects with `.name`.
+                        detail=", ".join(
+                            str(getattr(i, "name", i))
+                            for i in getattr(deidentified, "info_types", []) or []
+                        ),
+                    )
+                )
+                continue
+
         matched = getattr(filter_result, "match_state", None)
         if matched == ma.FilterMatchState.MATCH_FOUND:
             findings.append(Finding(filter=str(name)))
+
+    if skipped:
+        reason = "; ".join(skipped)[:500]
+        log.error(
+            "Model Armor reported success but the filter did not run; "
+            "storing the transcript unscreened. %s",
+            reason,
+        )
+        return Screened(
+            text=original, findings=findings, stored=True, unscreened=True,
+            reason=reason,
+        )
 
     return Screened(text=text, findings=findings, stored=True)
 
