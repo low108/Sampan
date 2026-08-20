@@ -6,7 +6,11 @@ __pycache__/
 .ruff_cache/
 .scratch/
 *.wav
+# Recordings and scratch video stay out. The generated story-card memories are
+# product assets, not recordings: the Dockerfile builds the front end from
+# web/, so a clip missing here ships a poster and no video.
 *.mp4
+!web/public/memories/*.mp4
 
 google-cloud-sdk/
 .DS_Store
