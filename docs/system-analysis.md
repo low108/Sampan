@@ -12,7 +12,7 @@ shaped this way and what that shape cost.
 
 | Rev | Date | Change | Supersedes |
 |---|---|---|---|
-| 2 | 2026-08-20 | Closes R11 by building the read side of `forgotten` (D18). Extraction now filters stories, threads and facts against every subject she has asked to drop. | — |
+| 2 | 2026-08-20 | Closes R11 by building the read side of `forgotten` (D18); records R12, the retroactive limit that fix leaves behind. Adds §6.3, the Google Cloud and Gemini technology inventory — §6.2 lists package pins, which is not the same thing. | — |
 | 1 | 2026-08-20 | First issue. Covers the service as of `d1652a19`, after the memory v2 revamp, the front-end redesign, and the ask-queue and tool-log fixes. Auditing the collection inventory for §7.3 found R11, a write-only `forgotten` collection. | — |
 
 Verification basis for this revision: names, routes, collections and constants were read from
@@ -136,6 +136,78 @@ Out of scope for this document: the React front end (`web/`), the demo notebook
 Python `>=3.12`. Container is `python:3.12-slim`, dependencies installed with `uv sync
 --locked`. `uv` itself is pinned to `0.12.5` by digest-free tag in the Dockerfile — a mutable
 tag would let an upstream resolver change alter two builds of the same commit.
+
+### 6.3 Google Cloud and Gemini technology
+
+The package table above is what `pyproject.toml` pins. This is what the system actually uses,
+which is not the same list.
+
+#### Model serving
+
+| Technology | Where | What it does here |
+|---|---|---|
+| **Vertex AI** | Every model call | `GOOGLE_GENAI_USE_VERTEXAI=true`, set by `apply_genai_env`. The Gemini Developer API is **not** used: its model names do not exist on Vertex, and mixing the two silently changes which models resolve |
+| **Gemini Live API** | `live.py`, `companion.py` | Bidirectional audio streaming for the call itself |
+| **Gemini structured output** | 8 modules, 9 call sites | `response_schema` + `response_mime_type="application/json"` — a Pydantic class *is* the schema. Schemas: `ExtractionResponse`, `FactBatch`, `Judgement`, `CommunitySummary`, `Assessment`, `Answer`, `Letter`, `_Batch` and `_Links` (both `places.py`) |
+| **Gemini function calling** | `tools.py` via ADK | The five tools the Companion calls mid-sentence |
+
+#### Models, and what each one is for
+
+| Model | Setting | Region | Used by | Temperature |
+|---|---|---|---|---|
+| `gemini-live-2.5-flash-native-audio` | `SAMPAN_LIVE_MODEL` | `us-central1` | `companion.py` — the voice of Xiao Chuan | n/a (Live) |
+| `gemini-3.7-flash` | `SAMPAN_ARCHIVIST_MODEL` | `global` | `contradiction.py` and `places.py` (0.0), `fact_extraction.py` (0.1), `archivist.py` (0.2), `communities.py` and `ask_about.py` (0.3), `letters.py` (0.6) | per call |
+| `gemini-3.7-flash` | `SAMPAN_AFFECT_MODEL` | `global` | `affect.py` — the audio fork (0.0) | 0.0 |
+
+Temperature is set per call, not globally, and the spread is deliberate: `0.0` where the
+answer is a judgement that must be reproducible (contradiction, affect, geocoding), `0.1–0.2`
+for extraction, and `0.6` for the one task that is writing rather than analysis. `letters.py`
+is still schema-constrained at that temperature — the freedom is in the prose, not the shape.
+
+The Live model is `2.5` while the rest are `3.7`. No Live dialog model meets the hackathon's
+"3.5 or newer" bar, so compliance is satisfied through the Archivist and affect models — this
+is a known and stated position, not an oversight (`PRD.md` §9.2).
+
+#### Live API features in use
+
+Configured in `open_session` (`live.py`). Each is doing work; none is default.
+
+| Feature | Setting | Why |
+|---|---|---|
+| Audio response | `response_modalities=[Modality.AUDIO]` | Native audio out, not text-to-speech over a text model |
+| **Affective dialog** | `enable_affective_dialog=True` | The model adapts its own delivery to how she sounds. It returns **no readout**, so it complements the affect monitor rather than replacing it — which is precisely why the fork exists |
+| Session resumption | `SessionResumptionConfig(transparent=True)` | Live sessions cap at roughly fifteen minutes; transparent resumption survives that boundary without her noticing |
+| Input transcription | `AudioTranscriptionConfig()` | Her words, for the transcript the Archivist reads |
+| Output transcription | `AudioTranscriptionConfig()` | The agent's words, so the transcript has both sides |
+| Call ceiling | `max_llm_calls=500` | A runaway loop cannot drain the credits |
+
+#### Google ADK 2.7.0
+
+| Symbol | Role |
+|---|---|
+| `Agent` | The Companion, built per call with instruction, tools and session plan |
+| `Runner` | Drives the live loop |
+| `LiveRequestQueue` | Where the application pushes PCM. **This is what makes the affect fork free** — ADK never touches the microphone, so a copy needs no ADK hook, and none exists |
+| `RunConfig` | The feature table above |
+| `InMemorySessionService` | Session state for the duration of one call. Deliberately not durable: memory that must survive is in Firestore, and conflating the two would make ADK's session store a second source of truth (D5) |
+
+#### Infrastructure
+
+| Technology | Role | Configuration that is contract, not detail |
+|---|---|---|
+| **Cloud Run** | The whole service | `--timeout=3600` — the 300 s default kills calls mid-story and presents as a Live API bug. `--concurrency=20`, `--cpu=1`, `--memory=1Gi`, `--max-instances=3` |
+| **Firestore** | All persistence | Native mode, `(default)`, `asia-southeast1`. Sixteen collections (§7.3) |
+| **Cloud Build** | Image build | Implicit: `gcloud run deploy --source=.` builds remotely from the Dockerfile |
+| **Artifact Registry** | Image storage | Implicit, same path |
+
+APIs that must be enabled: `run`, `firestore`, `aiplatform`, `cloudbuild`.
+
+**The region split is the piece most likely to be "tidied" by someone later.** Three regions
+are in play and each is deliberate: story data in `asia-southeast1` (near her), text inference
+at `global`, and the Live API in `us-central1` because native audio is not offered at
+`global`. That last was established by probing, not by reading documentation.
+
+---
 
 ---
 
@@ -637,4 +709,5 @@ No external template was imposed. Sections omitted from the default structure an
 | R8 | φ_cos absent from retrieval (D11) | Recall depends on lexical overlap and graph proximity. A question phrased with no shared vocabulary will miss | Accepted at current corpus size |
 | R9 | `remember` and `flag_concern` log field names, not values | The tool log proves *that* the agent looked something up, not *what came back* | Open — see B2 |
 | R10 | Single Firestore database, no backup configured | Deleting the database loses the archive | Accepted for a hackathon; unacceptable for the product this pretends to be |
+| R12 | Forgetting is prospective, not retroactive. The filter runs at extraction, so a subject already extracted and stored before she asked to forget it stays in `stories__<id>` and `facts__<id>` | She asks the agent to forget something it recorded last month. The tombstone stops it being rebuilt and does not remove what is already there, so the family can still read it. Deleting stored data is a heavier action than filtering a pass, and no sweep is built | **Open.** A retroactive sweep would need to decide what to do with facts other stories depend on, and that decision has not been made |
 | ~~R11~~ | `forgotten__<id>` was write-only: `Repository.forgotten()` had no callers, so a subject she asked to drop was rebuilt by the next extraction pass — after the agent had told her it would not | — | **Closed at rev 2** (D18). Found by auditing this document's collection list at rev 1 |
