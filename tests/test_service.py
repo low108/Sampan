@@ -267,3 +267,97 @@ class TestPendingAsk:
 
         assert body["waiting"] is False
         assert body["quiet_hours"] is True
+
+
+class TestExtractionIsFullyWired:
+    """The memory-v2 pass has to actually run on a real call.
+
+    `finish_call` takes `fact_extractor` and `judge` as optional keywords so the
+    seam can be exercised with fakes. The WebSocket handler passed neither, so
+    on every real call the entire fact pass was skipped -- no fact extraction,
+    no contradiction reconciliation, no edges written. Nothing raised and no
+    test failed; the graph only grew when someone ran scripts/backfill_facts.py
+    by hand, which is why the facts in Firestore looked convincing.
+
+    Optional dependencies that default to doing nothing cannot be checked by
+    the seam tests, because the seam is what gets the fakes. They have to be
+    checked where they are assembled.
+    """
+
+    def test_production_builds_all_three_extractors(self) -> None:
+        from sampan.app import build_extraction_stack
+        from sampan.archivist import GeminiStoryExtractor
+        from sampan.contradiction import GeminiContradictionJudge
+        from sampan.fact_extraction import GeminiFactExtractor
+
+        stack = build_extraction_stack(Settings(GOOGLE_CLOUD_PROJECT="p"))
+
+        assert isinstance(stack.stories, GeminiStoryExtractor)
+        assert isinstance(stack.facts, GeminiFactExtractor)
+        assert isinstance(stack.judge, GeminiContradictionJudge)
+
+    def test_the_call_handler_passes_the_facts_pass_to_finish_call(self) -> None:
+        """Reads the handler rather than driving it: opening a real WebSocket
+        needs a live model. It cannot prove the wiring works; it can prove
+        nobody quietly dropped it again."""
+        import inspect
+
+        from sampan import app as app_module
+
+        source = inspect.getsource(app_module)
+        handler = source[source.index("async def talk(") :]
+
+        assert "fact_extractor=stack.facts" in handler
+        assert "judge=stack.judge" in handler
+
+    def test_a_stack_with_a_judge_reconciles_rather_than_appends(self) -> None:
+        """The judge's whole job: a later telling retires an earlier assertion
+        instead of the archive holding both as current."""
+        from sampan.contradiction import Disagreement, Judgement, reconcile
+        from sampan.facts import Fact, Predicate
+
+        held = [
+            Fact(
+                fact_id="f1",
+                subject_id="e_shop",
+                predicate=Predicate.OWNED,
+                object_id="e_father",
+                statement="her father owned the shop",
+                quote="My father owned the shop until 1969.",
+                episode_id="conv_1",
+            )
+        ]
+        newer = [
+            Fact(
+                fact_id="f2",
+                subject_id="e_shop",
+                predicate=Predicate.OWNED,
+                object_id="e_father",
+                statement="her uncle owned the shop",
+                quote="Actually my uncle took it over before it closed.",
+                episode_id="conv_2",
+            )
+        ]
+
+        class Says:
+            def __init__(self, verdict: Disagreement) -> None:
+                self.verdict = verdict
+
+            def judge(self, new: Fact, old: Fact) -> Judgement:
+                return Judgement(kind=self.verdict, reason="a later telling")
+
+        changed, questions = reconcile(
+            newer, held, Says(Disagreement.CONFLICTING_TESTIMONY)
+        )
+
+        # The older telling is retired in transaction time, not deleted, and
+        # its valid time is untouched -- she is not being corrected.
+        retired = [f for f in changed if f.fact_id == "f1"]
+        assert len(retired) == 1
+        assert retired[0].t_expired is not None
+        assert retired[0].superseded_by == "f2"
+        assert retired[0].valid_from == held[0].valid_from
+        assert retired[0].valid_to == held[0].valid_to
+        # And the disagreement comes back as a question for her, not a silent
+        # decision by the archive.
+        assert questions == ["a later telling"]

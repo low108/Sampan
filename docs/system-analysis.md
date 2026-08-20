@@ -12,6 +12,7 @@ shaped this way and what that shape cost.
 
 | Rev | Date | Change | Supersedes |
 |---|---|---|---|
+| 3 | 2026-08-20 | **Corrects rev 1 and 2, which were wrong.** §8.3 described fact extraction and contradiction as part of the call. They were never wired: the WebSocket handler passed neither `fact_extractor` nor `judge` to `finish_call`, both default to `None`, and the whole pass was skipped on every real call. Fixed (D19), R13 records what it means for data written before this. | Rev 1–2 §8.3, §7.4 |
 | 2 | 2026-08-20 | Closes R11 by building the read side of `forgotten` (D18); records R12, the retroactive limit that fix leaves behind. Adds §6.3, the Google Cloud and Gemini technology inventory — §6.2 lists package pins, which is not the same thing. | — |
 | 1 | 2026-08-20 | First issue. Covers the service as of `d1652a19`, after the memory v2 revamp, the front-end redesign, and the ask-queue and tool-log fixes. Auditing the collection inventory for §7.3 found R11, a write-only `forgotten` collection. | — |
 
@@ -342,8 +343,8 @@ map is the one place a family sees itself as a family.
 | Seam | Interface | Implementations |
 |---|---|---|
 | Story extraction | `StoryExtractor` | `GeminiStoryExtractor`, fakes in tests |
-| Fact extraction | `FactExtractor` | `GeminiFactExtractor`, fakes |
-| Contradiction | `ContradictionJudge` | `GeminiContradictionJudge`, fakes |
+| Fact extraction | `FactExtractor` | `GeminiFactExtractor`, fakes. Assembled for production in `build_extraction_stack` |
+| Contradiction | `ContradictionJudge` | `GeminiContradictionJudge`, fakes. Assembled for production in `build_extraction_stack` |
 | Chapter naming | `CommunityNamer` | `GeminiCommunityNamer`, fakes |
 | Affect | `AffectMonitor` | `GeminiAffectMonitor`, fakes |
 | Storage | `DocumentStore` | `FirestoreDocumentStore`, `InMemoryDocumentStore` |
@@ -433,6 +434,14 @@ the subject is unknown, or the fact asserts nothing. `ExtractedFact` is delibera
 `Fact` — it omits `fact_id`, `t_created`, `t_expired` and `superseded_by`, because a schema is
 part of the prompt and one carrying fields its instructions do not govern gets those fields
 filled.
+
+> **Correction, rev 3.** Revisions 1 and 2 of this document described the whole of this
+> subsystem as though it ran on every call. It did not. `finish_call` takes `fact_extractor`
+> and `judge` as optional keywords defaulting to `None`, and the WebSocket handler passed
+> neither, so **no fact was extracted and no contradiction was reconciled by any live call**
+> — for as long as the subsystem has existed. Nothing raised, no test failed, and the facts
+> visible in Firestore were convincing because `scripts/backfill_facts.py` had written them by
+> hand. Wired in at rev 3 (D19); see R13 for the data already stored.
 
 **Contradiction routes to the correct axis** — this is the decision the subsystem exists for:
 
@@ -571,7 +580,7 @@ and returns data, so the model can be replaced by a fake without a network.
 
 ### 9.2 Test inventory
 
-465 tests total: **405 unit** (default), **60 integration** (`-m integration`, deselected by
+468 tests total: **408 unit** (default), **60 integration** (`-m integration`, deselected by
 `addopts = "-q -m 'not integration'"`). Largest suites:
 
 | File | Tests | File | Tests |
@@ -596,6 +605,7 @@ that memory accumulates across calls in production rather than in a fixture.
 | A call below four turns | `test_callflow.py` — transcript kept, ask not consumed |
 | A quote not present in the transcript | `test_facts.py` — refused |
 | A forgotten subject reappearing on a later call | `test_callflow.py::TestForgetting` — stories, threads and facts all dropped |
+| An optional extraction dependency silently missing in production | `test_service.py::TestExtractionIsFullyWired` |
 | Forgetting a subject without losing its sensitivity | `test_callflow.py::TestForgetting` |
 | Query terms shorter than three characters | `test_retrieval.py` |
 | Quiet-hours window crossing midnight | `test_quiet.py` |
@@ -634,8 +644,10 @@ mid-story and presents as a Live API bug.
 | D16 | Tool results summarised, unrecognised ones recorded by shape | Storing responses whole is lossless. It also stores the guidance channel on every entry and can store a dozen facts per `remember`. Recording `{}` for an unrecognised response was rejected separately: it reads as *the tool returned nothing*, a different and more alarming claim than *nothing was recognised* |
 | D17 | Extraction in-process on a worker thread, not Pub/Sub | Pub/Sub is the right answer at any real volume and gives retries for free. It also adds a topic, a subscription, a second deployable and an at-least-once contract to a system with one narrator. Accepted cost: a crash between hang-up and write loses that call's extraction (R1) |
 | D18 | Forgetting drops stories, threads and facts — and deliberately **keeps** entities and sensitivities | Dropping everything derived from the subject is the intuitive reading of "forget it". It is also dangerous: a sensitivity is what steers the agent *away* from a painful subject, so removing it alongside the story deletes the story and the reason not to ask again. Entities stay because other stories reference them, and forgetting a story is not forgetting that a person exists |
+| D19 | Production extraction dependencies are built together in one named `ExtractionStack`, never passed individually | Optional keywords are right for the seam, which is exercised with fakes, and they are what let the fact pass be silently absent from production for the subsystem's whole life. A dependency that defaults to doing nothing cannot be caught by the seam's own tests, because the seam is what gets the fakes. Assembling all three in one place makes "is the judge connected?" a question a test can ask |
 
-No decision has been superseded or withdrawn as of revision 2.
+No decision has been superseded or withdrawn as of revision 3. D19 does not supersede D13 —
+the routing D13 describes was always correct; it was never reached.
 
 ---
 
@@ -709,5 +721,6 @@ No external template was imposed. Sections omitted from the default structure an
 | R8 | φ_cos absent from retrieval (D11) | Recall depends on lexical overlap and graph proximity. A question phrased with no shared vocabulary will miss | Accepted at current corpus size |
 | R9 | `remember` and `flag_concern` log field names, not values | The tool log proves *that* the agent looked something up, not *what came back* | Open — see B2 |
 | R10 | Single Firestore database, no backup configured | Deleting the database loses the archive | Accepted for a hackathon; unacceptable for the product this pretends to be |
+| R13 | Every fact and community in Firestore predates the wiring fix and was produced by `scripts/backfill_facts.py`, not by a call | The graph is real but its provenance is a script. Facts written by live calls from rev 3 onward will interleave with backfilled ones, and nothing distinguishes them — `episode_id` points at the conversation either way | **Accepted.** The backfill reads the same transcripts through the same extractor, so the content is not suspect; only the claim "this was built by calls" was |
 | R12 | Forgetting is prospective, not retroactive. The filter runs at extraction, so a subject already extracted and stored before she asked to forget it stays in `stories__<id>` and `facts__<id>` | She asks the agent to forget something it recorded last month. The tombstone stops it being rebuilt and does not remove what is already there, so the family can still read it. Deleting stored data is a heavier action than filtering a pass, and no sweep is built | **Open.** A retroactive sweep would need to decide what to do with facts other stories depend on, and that decision has not been made |
 | ~~R11~~ | `forgotten__<id>` was write-only: `Repository.forgotten()` had no callers, so a subject she asked to drop was rebuilt by the next extraction pass — after the agent had told her it would not | — | **Closed at rev 2** (D18). Found by auditing this document's collection list at rev 1 |

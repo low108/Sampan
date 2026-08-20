@@ -13,7 +13,7 @@ import os
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, NamedTuple
 
 from fastapi import (
     Depends,
@@ -30,12 +30,14 @@ from sampan.archivist import GeminiStoryExtractor
 from sampan.auth import require_api_key
 from sampan.callflow import Transcript, finish_call, prepare_call
 from sampan.config import Settings, apply_genai_env, get_settings
+from sampan.contradiction import GeminiContradictionJudge
 from sampan.corrections import (
     Correction,
     apply_correction,
     duplicate_candidates,
     needs_confirmation,
 )
+from sampan.fact_extraction import GeminiFactExtractor
 from sampan.family import build_cards, build_map, feed, stats, timeline
 from sampan.household import (
     cards_for,
@@ -100,6 +102,33 @@ class SmokeResult(BaseModel):
     written: dict[str, Any]
     read_back: dict[str, Any] | None
     round_trip_ok: bool
+
+
+class ExtractionStack(NamedTuple):
+    """Everything `finish_call` needs to fold a call back into memory.
+
+    Named and constructed in one place because the alternative failed silently:
+    `finish_call` takes `fact_extractor` and `judge` as optional keywords, the
+    WebSocket handler passed neither, and the whole memory-v2 pass -- fact
+    extraction, contradiction, every edge the graph is made of -- was skipped on
+    every real call for as long as it has existed. Nothing raised. The graph
+    only ever grew when someone ran `scripts/backfill_facts.py` by hand.
+
+    Optionality is right for the seam, which is exercised with fakes. It is
+    wrong for production, so production builds all three together or not at all.
+    """
+
+    stories: GeminiStoryExtractor
+    facts: GeminiFactExtractor
+    judge: GeminiContradictionJudge
+
+
+def build_extraction_stack(settings: Settings) -> ExtractionStack:
+    return ExtractionStack(
+        stories=GeminiStoryExtractor(settings),
+        facts=GeminiFactExtractor(settings),
+        judge=GeminiContradictionJudge(settings),
+    )
 
 
 def get_store() -> DocumentStore:
@@ -751,13 +780,16 @@ def create_app() -> FastAPI:
             # The call is over for her the moment she hangs up; extraction
             # happens afterwards and must never hold the socket open.
             with contextlib.suppress(Exception):
+                stack = build_extraction_stack(settings)
                 await asyncio.to_thread(
                     finish_call,
                     repository,
-                    GeminiStoryExtractor(settings),
+                    stack.stories,
                     prepared,
                     transcript,
                     narrator_id=user_id,
+                    fact_extractor=stack.facts,
+                    judge=stack.judge,
                     tool_calls=tool_log.as_records(),
                 )
 
