@@ -664,6 +664,8 @@ def create_app() -> FastAPI:
                     "turns": raw.get("turns", 0),
                     "tool_calls": raw.get("tool_calls", []),
                     "fact_refusals": raw.get("fact_refusals", []),
+                    "unscreened": bool(raw.get("unscreened")),
+                    "screened": raw.get("screened", []),
                 }
                 for raw in rows[: max(1, min(limit, 50))]
             ]

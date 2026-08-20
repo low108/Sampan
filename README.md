@@ -30,7 +30,7 @@ Zep/Graphiti, Zep-style retrieval behind a single `remember` tool, contradiction
 routed to the correct time axis, a topic *lean* that never becomes a push, and
 communities as her chapters.
 
-**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 440
+**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 442
 unit tests. Everything is in English, including the seeds and the UI.
 
 Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
@@ -126,32 +126,44 @@ export SAMPAN_API_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(
 
 ### Screening what gets stored (recommended)
 
-Every transcript is screened by Model Armor before it reaches Firestore, so
-identifiers she reads out — an account number, an IC, a phone number — are
-de-identified rather than archived. Off unless a template is configured.
+Transcripts are screened by Model Armor before they reach Firestore, so a bank
+account number she reads out is de-identified rather than archived. Off unless a
+template is configured.
 
 ```bash
-gcloud services enable modelarmor.googleapis.com
+gcloud services enable modelarmor.googleapis.com dlp.googleapis.com
+
+# Narrow on purpose: one info type. Model Armor's *basic* SDP config enables
+# Google's whole default set, which on an eighty-year-old's life story means
+# names, dates, addresses and health details — the archive itself. Advanced
+# config against a DLP inspect template is what keeps it to the account number.
+gcloud dlp inspect-templates create \
+  --location=asia-southeast1 \
+  --template-id=sampan-bank-only \
+  --inspect-config-info-types=<VERIFIED_INFO_TYPE>
+
 gcloud model-armor templates create sampan-transcripts \
   --location=asia-southeast1 \
-  --basic-config-filter-enforcement=enabled
+  --advanced-config-inspect-template=projects/$GOOGLE_CLOUD_PROJECT/locations/asia-southeast1/inspectTemplates/sampan-bank-only
 ```
 
 Then redeploy with `SAMPAN_ARMOR_TEMPLATE=sampan-transcripts`.
 
-**Two things to understand before turning this on.**
+**It fails open.** If Model Armor cannot be reached, the plain transcript is
+stored, the failure is logged at ERROR to `sampan.armor`, and the conversation
+is flagged `unscreened: true` with the error. Deliberate: losing her account of
+her own life because a screening API had a bad minute is worse than holding an
+unscreened transcript in a private database until someone reads the log.
 
-It is *fail closed*. If Model Armor cannot be reached, the transcript is not
-stored and neither are the stories extracted from it — the call is recorded
-with a `withheld` reason so the gap is visible, but her words for that call are
-gone. That is deliberate: a control that stores unscreened text whenever it is
-inconvenient is not a control. It is also the one place the system knowingly
-breaks "nothing she said is lost".
+`unscreened: true` is not the same as an empty `screened` list. The first means
+the screen never ran; the second means it ran and objected to nothing. Both are
+returned by `GET /api/talk/{id}/calls`, so "which calls went through unchecked"
+is a query:
 
-It *alters her words*. The de-identified text is what gets stored and what
-extraction reads, so quotes in the archive are as-screened. That is right for
-an account number and wrong for anything carrying meaning, and where the line
-falls is set by your template, not by the code. Start narrow.
+```bash
+curl -H "X-Sampan-Key: $KEY" "$URL/api/talk/ah_khim/calls?limit=50" \
+  | python3 -c "import json,sys;[print(c['conversation_id']) for c in json.load(sys.stdin)['calls'] if c['unscreened']]"
+```
 
 ### Generated card imagery (optional)
 

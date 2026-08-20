@@ -111,11 +111,43 @@ class TestTheScreenRunsFirst:
         assert screener.seen == [spoken.render()]
 
 
-class TestFailingClosed:
-    def test_a_broken_screen_stores_no_transcript(
+class TestFailingOpen:
+    """A screening outage costs the screen, not the call.
+
+    The opposite of the posture the service takes on a missing project or key
+    (D2), and deliberately: there, failing closed protects the archive from
+    silent data loss. Here it would cause it. Losing an eighty-year-old's
+    account of her own life because a screening API had a bad minute is worse
+    than holding an unscreened transcript in a private database until someone
+    reads the log line.
+    """
+
+    def test_a_broken_screen_still_stores_her_words(
         self, repository: Repository, settings: Settings
     ) -> None:
-        """A control that degrades to "store it anyway" is not a control."""
+        prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
+        spoken = conversation()
+
+        finish_call(
+            repository,
+            StubExtractor(FULL),
+            prepared,
+            spoken,
+            narrator_id=NARRATOR,
+            screener=Breaks(),
+        )
+
+        stored = repository._store.get(  # noqa: SLF001
+            f"conversations__{NARRATOR}", prepared.conversation_id
+        )
+        assert stored is not None
+        assert stored["transcript"] == spoken.render()
+
+    def test_the_call_is_marked_as_never_screened(
+        self, repository: Repository, settings: Settings
+    ) -> None:
+        """Not the same as "the screen found nothing". Which calls went through
+        unchecked has to be answerable."""
         prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
 
         finish_call(
@@ -131,13 +163,12 @@ class TestFailingClosed:
             f"conversations__{NARRATOR}", prepared.conversation_id
         )
         assert stored is not None
-        assert stored["transcript"] == ""
+        assert stored["unscreened"] is True
+        assert "RuntimeError" in stored["screen_error"]
 
-    def test_the_absence_says_why(
+    def test_a_clean_screen_is_not_marked_unscreened(
         self, repository: Repository, settings: Settings
     ) -> None:
-        """A call that vanished silently is indistinguishable from one that
-        never happened."""
         prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
 
         finish_call(
@@ -146,22 +177,38 @@ class TestFailingClosed:
             prepared,
             conversation(),
             narrator_id=NARRATOR,
-            screener=Breaks(),
+            screener=AllowAll(),
         )
 
         stored = repository._store.get(  # noqa: SLF001
             f"conversations__{NARRATOR}", prepared.conversation_id
         )
         assert stored is not None
-        assert "screening failed" in stored["withheld"]
-        assert stored["turns"] > 0
+        assert stored["unscreened"] is False
 
-    def test_nothing_derived_is_stored_either(
+    def test_the_failure_is_logged_at_error(
+        self, repository: Repository, settings: Settings, caplog
+    ) -> None:
+        """The log line is half the audit trail; the flag on the document is
+        the other half."""
+        prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
+
+        with caplog.at_level("ERROR", logger="sampan.armor"):
+            finish_call(
+                repository,
+                StubExtractor(FULL),
+                prepared,
+                conversation(),
+                narrator_id=NARRATOR,
+                screener=Breaks(),
+            )
+
+        assert any("unscreened" in r.message for r in caplog.records)
+
+    def test_the_stories_still_land(
         self, repository: Repository, settings: Settings
     ) -> None:
-        """Stories are extracted from the transcript. Refusing to store the
-        transcript and then storing what was extracted from it would leak the
-        very thing the refusal was protecting."""
+        """The call is not punished for the screen's outage."""
         prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
 
         finish_call(
@@ -173,7 +220,7 @@ class TestFailingClosed:
             screener=Breaks(),
         )
 
-        assert repository.load_stories(NARRATOR) == []
+        assert len(repository.load_stories(NARRATOR)) == 1
 
 
 class TestWhenUnconfigured:

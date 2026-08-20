@@ -12,6 +12,7 @@ shaped this way and what that shape cost.
 
 | Rev | Date | Change | Supersedes |
 |---|---|---|---|
+| 8 | 2026-08-20 | Screening fails open (D25, superseding D24) and the transcript survives an outage; the call is flagged `unscreened` and logged. Restores O2. | D24 |
 | 7 | 2026-08-20 | Adds Model Armor screening ahead of the first write (D23, D24). Records R16 and R17: fail-closed screening inverts O2, and de-identification qualifies O3. | O2, O3 |
 | 6 | 2026-08-20 | Closes R15: fact extraction drops to `temperature=0.0` and refusals are recorded with the rule that fired. Adds the Pub/Sub image pipeline (D21, D22), which reaches the opposite answer to D17 on different facts. | — |
 | 5 | 2026-08-20 | Closes R14: the narrator is now guaranteed a node in her own graph (D20). Corrects the rev-4 phrasing claim, which was wrong — the extractor proposes the fact either way; what varies is the refusal (R15). | Rev 4 §8.3 phrasing note |
@@ -105,7 +106,7 @@ Two requirements shape the backend more than the rest:
 | # | Objective | Target | Status |
 |---|---|---|---|
 | O1 | A call runs end to end without holding the socket open for extraction | Extraction starts after hang-up | Met (§8.2) |
-| O2 | Nothing she said is lost, even if extraction fails | Transcript written before extraction | Met for extraction failures (§8.2, D6). **Qualified at rev 7:** a screening failure withholds the transcript deliberately (D24, R16) |
+| O2 | Nothing she said is lost, even if extraction fails | Transcript written before extraction | Met (§8.2, D6). Rev 7 qualified this; rev 8 restored it — screening now fails open (D25) |
 | O3 | The agent never asserts a fact she did not say | Facts refused without a verbatim quote found in the transcript | Met (§8.3, D7). **Qualified at rev 7:** "verbatim" means as-screened where a template de-identifies (D23, R17) |
 | O4 | A misconfigured deploy refuses rather than degrades silently | Startup/dependency failure on missing project or key | Met (§8.6, D2) |
 | O5 | Retrieval is deterministic and testable without a network | Seam 4 is a pure function | Met (§8.4, D10) |
@@ -635,7 +636,7 @@ and returns data, so the model can be replaced by a fake without a network.
 
 ### 9.2 Test inventory
 
-503 tests total: **440 unit** (default), **63 integration** (`-m integration`, deselected by
+505 tests total: **442 unit** (default), **63 integration** (`-m integration`, deselected by
 `addopts = "-q -m 'not integration'"`). Largest suites:
 
 | File | Tests | File | Tests |
@@ -667,7 +668,7 @@ that memory accumulates across calls in production rather than in a fixture.
 | A missing topic or broken Pub/Sub during a call | `test_memories.py::TestPublishingNeverBreaksACall` |
 | An unreadable Pub/Sub push envelope | `test_memories.py::TestThePushEnvelope` |
 | Extraction reading the screened text, not the original | `test_armor.py::TestTheScreenRunsFirst` |
-| A screening outage storing neither transcript nor stories | `test_armor.py::TestFailingClosed` |
+| A screening outage keeping the transcript and flagging it | `test_armor.py::TestFailingOpen` |
 | Forgetting a subject without losing its sensitivity | `test_callflow.py::TestForgetting` |
 | Query terms shorter than three characters | `test_retrieval.py` |
 | Quiet-hours window crossing midnight | `test_quiet.py` |
@@ -711,9 +712,10 @@ mid-story and presents as a Live API bug.
 | D21 | Image generation goes through Pub/Sub, while extraction stays in-process (D17) | The two look like the same problem. Extraction takes seconds, runs once per call, and produces the thing the product exists to keep — so an in-process worker with the transcript already written is the right trade, and R1 is the accepted cost. Veo takes tens of seconds to minutes and produces something the card is complete without. A queue is what lets a card open immediately and acquire its picture later, which is the only acceptable order. D21 does not supersede D17: it is the same reasoning reaching the opposite answer on different facts |
 | D22 | The push endpoint always returns 200, even on failure | Returning an error is the conventional way to ask for redelivery. Redelivering a Veo call is not like redelivering a database write: a wedged message would bill for a paid model on every attempt. The outcome goes in the body, and the dead-letter topic is the backstop |
 | D23 | Model Armor screens the transcript before the first write, and the screened text is what everything downstream reads | Screening at the boundary and extracting from the original is the obvious split, and it is broken: `build_facts` refuses a fact whose quote is absent from the transcript, so the archive would silently refuse exactly the quotes containing a redaction — losing the sentences the screen existed to make safe. One screen, one text |
-| D24 | A screening failure stores no transcript, and no stories either | Storing unscreened text on failure is the tempting degradation and makes the control decorative. Storing the derived stories while refusing the transcript is worse still: stories are extracted *from* it, so that leaks the thing the refusal was protecting. The call is recorded with `withheld` and a reason, so the gap is visible rather than silent. Accepted cost: a screening outage loses calls (R16) |
+| ~~D24~~ | *Superseded by D25.* A screening failure stored no transcript and no stories | Reasoning at the time: a control that degrades to "store it anyway" is decorative. What falsified it: the thing being protected is not symmetrical. Failing closed on a missing project (D2) prevents silent data loss; failing closed here *causes* it, and the data lost is an eighty-year-old's account of her own life |
+| D25 | A screening failure stores the plain transcript, logs at ERROR, and flags the conversation `unscreened` | Supersedes D24. An unscreened transcript sitting in a private database until someone reads a log line is a smaller harm than losing the call outright. The flag is distinct from an empty findings list — one means the screen never ran, the other that it ran and objected to nothing — so "which calls went through unchecked" is a query rather than a guess |
 
-No decision has been superseded or withdrawn as of revision 7. D19 does not supersede D13 —
+D24 is superseded by D25 as of revision 8. It is kept above, struck through, with what falsified it — a reader needs to know the fail-closed design was tried and why it was wrong here, or they will propose it again. D19 does not supersede D13 —
 the routing D13 describes was always correct; it was never reached.
 
 ---
@@ -789,7 +791,7 @@ No external template was imposed. Sections omitted from the default structure an
 | R9 | `remember` and `flag_concern` log field names, not values | The tool log proves *that* the agent looked something up, not *what came back* | Open — see B2 |
 | R10 | Single Firestore database, no backup configured | Deleting the database loses the archive | Accepted for a hackathon; unacceptable for the product this pretends to be |
 | ~~R14~~ | The narrator had no entity in her own graph. `seeds/intake.json` names her family and her places, not her, so every fact with her as subject was refused for an unknown subject until some mention happened to invent one | — | **Closed at rev 5** (D20). Her real archive had recovered by luck: something resolved her, and that entity carries more facts than any other subject |
-| R16 | Screening is fail-closed, so a Model Armor outage loses calls outright | Her words are gone for those calls — not delayed, gone. This is a deliberate inversion of O2 ("nothing she said is lost"), which held only while nothing stood between the transcript and the write. The alternative was a control that stores unscreened text whenever it is inconvenient, which is not a control | **Accepted, and the sharpest trade in the system.** Reversible by removing `SAMPAN_ARMOR_TEMPLATE`, which turns screening off entirely rather than degrading it |
+| R16 | Screening is fail-open (D25), so a Model Armor outage stores transcripts nobody checked | Unscreened text sits in Firestore until the log line is read. Bounded by the audit trail — an ERROR log and `unscreened: true` on the conversation — and by nothing else: there is no alerting on it and no sweep that re-screens afterwards | **Accepted.** The re-screening sweep is the obvious follow-up and is not built |
 | R17 | Screening de-identifies her words, and the product's promise is that they are verbatim | O3 says the agent never asserts a fact she did not say; a de-identified transcript means the stored sentence is not exactly the spoken one. Right for an account number, wrong for anything carrying meaning, and where that line falls is set by the Model Armor template rather than by this code — so a badly configured template can quietly damage the archive | **Accepted.** `screened` on the conversation records which info types fired, so redaction is auditable rather than invisible |
 | R13 | Every fact and community in Firestore predates the wiring fix and was produced by `scripts/backfill_facts.py`, not by a call | The graph is real but its provenance is a script. Facts written by live calls from rev 3 onward will interleave with backfilled ones, and nothing distinguishes them — `episode_id` points at the conversation either way | **Accepted.** The backfill reads the same transcripts through the same extractor, so the content is not suspect; only the claim "this was built by calls" was |
 | R12 | Forgetting is prospective, not retroactive. The filter runs at extraction, so a subject already extracted and stored before she asked to forget it stays in `stories__<id>` and `facts__<id>` | She asks the agent to forget something it recorded last month. The tombstone stops it being rebuilt and does not remove what is already there, so the family can still read it. Deleting stored data is a heavier action than filtering a pass, and no sweep is built | **Open.** A retroactive sweep would need to decide what to do with facts other stories depend on, and that decision has not been made |

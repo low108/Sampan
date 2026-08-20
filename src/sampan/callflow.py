@@ -162,20 +162,12 @@ def finish_call(
     # the redacted version would make `build_facts` refuse exactly the quotes
     # that had something worth protecting in them.
     checked = screen(transcript.render(), screener)
-    if not checked.stored:
-        # Fail closed: the transcript is not stored at all. The call is
-        # recorded so its absence is visible rather than silent.
-        repository.save_conversation(
-            narrator_id,
-            prepared.conversation_id,
-            "",
-            turns=len(transcript),
-            tool_calls=tool_calls or [],
-            withheld=checked.reason,
-        )
-        return None
-
     rendered = checked.text
+
+    # `unscreened` is recorded alongside the findings and is not the same as
+    # an empty findings list: one means the screen ran and objected to
+    # nothing, the other means it never ran. Which calls went through
+    # unchecked has to be a query, not a guess.
 
     # Saved before the length check, like the transcript: a call too short to
     # extract from is exactly the one you want the tool record for.
@@ -186,6 +178,8 @@ def finish_call(
         turns=len(transcript),
         tool_calls=tool_calls or [],
         screened=[f.model_dump(mode="json") for f in checked.findings],
+        unscreened=checked.unscreened,
+        screen_error=checked.reason,
     )
 
     for subject in prepared.memory.private_marks:

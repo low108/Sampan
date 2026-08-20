@@ -17,19 +17,32 @@ nobody wants in a database — an account number, an IC, a phone number — and 
 would be the wrong trade for anything that carries meaning. Model Armor's SDP
 filter is what draws that line, not this module.
 
-Fail closed. If screening cannot run, the transcript is not stored. That loses
-a call, which is serious and is the point: a security control that degrades to
-"store it anyway" is not a control. It matches the posture the service already
-takes on a missing project or a missing key (D2).
+Fail open, and loudly. If screening cannot run the plain transcript is stored
+and the failure is logged and recorded on the conversation. This is the
+opposite of the posture the service takes on a missing project or key (D2), and
+the reason is what is being protected: there, failing closed protects the
+archive from silent data loss; here, failing closed *causes* it. Losing an
+eighty-year-old's account of her own life because a screening API had a bad
+minute is a worse outcome than holding an unscreened transcript in a private
+database for as long as it takes to notice the log line.
+
+The failure is recorded on the conversation, so "which calls went through
+unscreened" is a query rather than a guess (D24, superseded).
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
 from sampan.config import Settings
+
+# The first logger in the service, and it earns its place: this is the one
+# event where the system knowingly does the less safe thing, and it has to be
+# findable in Cloud Logging afterwards.
+log = logging.getLogger("sampan.armor")
 
 
 class Finding(BaseModel):
@@ -50,6 +63,9 @@ class Screened(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
     stored: bool = True
     reason: str = ""
+    # True when the text was stored without ever being checked. Not the same
+    # as "nothing was found", and the difference is the whole audit trail.
+    unscreened: bool = False
 
     @property
     def redacted(self) -> bool:
@@ -139,22 +155,23 @@ def _read(result: Any, original: str) -> Screened:
 
 
 def screen(text: str, screener: Screen | None) -> Screened:
-    """Screen a transcript, or refuse to store it.
+    """Screen a transcript, or store it plainly and say so.
 
-    Never raises. A screening failure returns `stored=False`, which is the
-    fail-closed path: the caller writes nothing rather than writing text that
-    was never checked.
+    Never raises. A screening failure returns the original text with
+    `unscreened=True` and a reason, and logs at ERROR: the call survives, and
+    the fact that it went through unchecked is on the record in two places.
     """
     if screener is None:
         return Screened(text=text, stored=True)
     try:
         return screener.sanitize(text)
     except Exception as error:  # noqa: BLE001 -- see the module docstring
-        return Screened(
-            text="",
-            stored=False,
-            reason=f"screening failed: {type(error).__name__}",
+        reason = f"{type(error).__name__}: {error}"
+        log.error(
+            "Model Armor screening failed; storing the transcript unscreened. %s",
+            reason,
         )
+        return Screened(text=text, stored=True, unscreened=True, reason=reason)
 
 
 def build_screen(settings: Settings) -> Screen | None:
