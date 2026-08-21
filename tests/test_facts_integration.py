@@ -258,7 +258,8 @@ K: The shop was open right up to nineteen seventy-one, then finish.
     ) -> None:
         from sampan.app import build_extraction_stack
         from sampan.callflow import Transcript, finish_call, prepare_call
-        from sampan.facts import Fact, Predicate, When
+        from sampan.facts import Fact, Predicate
+        from sampan.models import Precision, When
         from sampan.repository import Repository
         from sampan.store import InMemoryDocumentStore
 
@@ -283,8 +284,18 @@ K: The shop was open right up to nineteen seventy-one, then finish.
                 "Later he saved a bit of money, nineteen fifty-eight "
                 "he opened a coffee shop."
             ),
-            valid_from=When(raw_phrase="nineteen fifty-eight", start_year=1958),
-            valid_to=When(raw_phrase="sixty-nine closed", start_year=1969),
+            valid_from=When(
+                raw_phrase="nineteen fifty-eight",
+                start_year=1958,
+                precision=Precision.YEAR,
+                confidence=1.0,
+            ),
+            valid_to=When(
+                raw_phrase="sixty-nine closed",
+                start_year=1969,
+                precision=Precision.YEAR,
+                confidence=1.0,
+            ),
             episode_id="conv_seed",
         )
         repo.save_facts("probe", [original])
