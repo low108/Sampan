@@ -14,6 +14,12 @@ from typing import Any
 
 from sampan.archivist import StoryExtractor, ingest_conversation, mentions
 from sampan.armor import Screen, screen
+from sampan.changes import (
+    GraphChange,
+    describe_edges,
+    describe_nodes,
+    describe_retirement,
+)
 from sampan.companion import build_agent
 from sampan.config import Settings
 from sampan.contradiction import ContradictionJudge, reconcile
@@ -237,6 +243,15 @@ def finish_call(
         last_closure=outcome.closure.reason,
     )
 
+    # What this call did to the graph: nodes touched, edges added, edges
+    # retired. Assembled from what is already here, and drawn by the family
+    # side rather than shown to her.
+    names = {e.entity_id: e.canonical_name for e in outcome.entities}
+    change = GraphChange(
+        conversation_id=prepared.conversation_id,
+        nodes=describe_nodes(outcome.resolutions, names),
+    )
+
     repository.save_memory(updated)
     repository.save_entities(narrator_id, outcome.entities)
     written = repository.save_stories(
@@ -289,6 +304,9 @@ def finish_call(
             for fact in extracted
             if not any(mentions(fact.quote, subject) for subject in forgotten)
         ]
+        change.edges = describe_edges(extracted)
+        change.refused = refusals
+
         if judge is not None:
             # A later telling retires an earlier assertion; it never deletes
             # it, and where the disagreement is about her account rather than
@@ -296,12 +314,21 @@ def finish_call(
             # questions for the next call, because which telling is right is
             # hers to settle.
             extracted, disputes = reconcile(
-                extracted, repository.load_facts(narrator_id), judge
+                extracted,
+                repository.load_facts(narrator_id),
+                judge,
+                on_verdict=lambda amended, new, verdict: change.retired.append(
+                    describe_retirement(amended, amended, verdict.kind, verdict.reason)
+                ),
             )
             for dispute in disputes:
                 repository.raise_concern(
                     narrator_id, "contradiction", dispute, prepared.conversation_id
                 )
         repository.save_facts(narrator_id, extracted)
+
+    repository.record_graph_change(
+        narrator_id, prepared.conversation_id, change.model_dump(mode="json")
+    )
 
     return updated

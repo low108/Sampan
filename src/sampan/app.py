@@ -53,6 +53,7 @@ from sampan.notifications import mark_seen, notifications_for, unseen_count
 from sampan.places import GeminiPlaceResolver
 from sampan.quiet import is_quiet
 from sampan.repository import Repository
+from sampan.retrieval import FactGraph, SearchTrace, search_facts
 from sampan.store import DocumentStore, get_document_store
 from sampan.tools import CallMemory
 
@@ -635,6 +636,104 @@ def create_app() -> FastAPI:
         if not result.applied:
             raise HTTPException(status_code=400, detail=result.reason)
         return result.model_dump()
+
+    @app.post(
+        "/api/family/{narrator_id}/search", dependencies=[Depends(require_api_key)]
+    )
+    def search_archive(
+        narrator_id: str,
+        body: AboutRequest,
+        store: Annotated[DocumentStore, Depends(get_store)],
+    ) -> dict[str, Any]:
+        """Run the agent's own retrieval, and return its working.
+
+        The same `search_facts` the Companion calls mid-sentence, driven from a
+        text box instead — so the ranking can be watched without waiting for
+        the agent to decide to reach for something.
+
+        Nodes and edges come back laid out by hop distance rather than as a
+        flat list, because the distance *is* the structure: seeds at zero, then
+        what they reach. There is no model anywhere in this path, so the same
+        query returns the same numbers every time.
+        """
+        repository = Repository(store)
+        entities = repository.load_entities(narrator_id)
+        names = {e.entity_id: e.canonical_name for e in entities}
+
+        # Retired facts are loaded too: the trace names what it stopped
+        # asserting, which is the thing a flat index cannot report.
+        graph = FactGraph(
+            facts=repository.load_facts(narrator_id, current_only=False),
+            entities=entities,
+        )
+
+        needle = body.question.strip()
+
+        # Grounding: which entities does this question actually name?
+        #
+        # `remember` is handed a short name and can match on equality. A typed
+        # question is a sentence, so the entity has to be found *inside* it --
+        # "what did her father do at the coffee shop" names Lim Ah Hock by his
+        # role and Ah Gong's shop by part of its name. TrustGraph spends an LLM
+        # call on this step; a substring sweep over a few dozen entities is
+        # both cheaper and reproducible.
+        #
+        # Guarded by length: a two-character name would match almost any
+        # sentence, which is the same failure `_MIN_QUERY_TERM` fixes in BM25.
+        asked = needle.lower()
+        seeds = [
+            e.entity_id
+            for e in entities
+            if e.merged_into is None
+            and any(
+                len(term) >= 4 and term.lower() in asked
+                for term in [e.canonical_name, e.role or "", *e.aliases]
+            )
+        ]
+
+        held: list[SearchTrace] = []
+        found = search_facts(
+            needle, graph, seeds=seeds, limit=5, on_trace=held.append
+        )
+        trace = held[0] if held else SearchTrace(query=needle)
+
+        rank_by_id = {f.fact_id: i for i, f in enumerate(found)}
+        scored = {c.fact_id: c for c in trace.candidates}
+        drawn = [f for f in graph.facts if f.fact_id in scored or not f.is_current]
+
+        touched: set[str] = {*trace.seeds}
+        for fact in drawn:
+            touched.add(fact.subject_id)
+            if fact.object_id:
+                touched.add(fact.object_id)
+
+        return {
+            "trace": trace.model_dump(mode="json"),
+            "nodes": [
+                {
+                    "id": entity_id,
+                    "name": names.get(entity_id, entity_id),
+                    "hops": trace.reached.get(entity_id),
+                    "seed": entity_id in trace.seeds,
+                }
+                for entity_id in sorted(touched)
+            ],
+            "edges": [
+                {
+                    "fact_id": fact.fact_id,
+                    "source": fact.subject_id,
+                    "target": fact.object_id or "",
+                    "literal": fact.object_literal,
+                    "predicate": fact.predicate.value,
+                    "statement": fact.statement,
+                    "quote": fact.quote,
+                    "rank": rank_by_id.get(fact.fact_id),
+                    "retired": not fact.is_current,
+                    "superseded_by": fact.superseded_by or "",
+                }
+                for fact in drawn
+            ],
+        }
 
     @app.get("/api/talk/{narrator_id}/calls", dependencies=[Depends(require_api_key)])
     def call_log(

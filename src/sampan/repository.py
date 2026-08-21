@@ -237,6 +237,21 @@ class Repository:
     def load_memory_assets(self, narrator_id: str) -> list[dict[str, Any]]:
         return self._store.list(self._scoped(MEMORIES, narrator_id))
 
+    def record_graph_change(
+        self, narrator_id: str, conversation_id: str, change: dict[str, Any]
+    ) -> None:
+        """What this call did to the graph, attached to the call that did it.
+
+        A second write for the same reason as the refusals: the transcript is
+        stored before extraction runs (D6) and must not wait on it.
+        """
+        collection = self._scoped(CONVERSATIONS, narrator_id)
+        raw = self._store.get(collection, conversation_id)
+        if raw is None:
+            return
+        raw["graph_change"] = change
+        self._store.put(collection, conversation_id, raw)
+
     # --- care -------------------------------------------------------------
 
     def raise_concern(

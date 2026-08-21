@@ -6,6 +6,7 @@ import type {
   Household,
   MapView,
   PendingAsk,
+  SearchResult,
   TimelineView,
 } from './types';
 
@@ -69,6 +70,13 @@ export const api = {
     request<unknown>(`/api/talk/${encodeURIComponent(narrator)}/pending/choose`, {
       method: 'POST',
       body: JSON.stringify({ ask_id }),
+    }),
+
+  /** The agent's own retrieval, driven from a text box, with its working. */
+  search: (narrator: string, question: string) =>
+    request<SearchResult>(`/api/family/${encodeURIComponent(narrator)}/search`, {
+      method: 'POST',
+      body: JSON.stringify({ question }),
     }),
 
   about: (narrator: string, question: string) =>

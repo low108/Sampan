@@ -146,7 +146,62 @@ export interface ChatLine {
   follow?: string;
 }
 
+/** One fact, with every number that decided where it ranked. */
+export interface Scored {
+  fact_id: string;
+  statement: string;
+  bm25: number;
+  hops: number | null;
+  rrf: number;
+  mentions: number;
+  confidence: number;
+  /** Position in the returned list, or null for a candidate that was scored
+   *  and rejected — the more interesting half. */
+  rank: number | null;
+}
+
+/** A fact the query matched that the archive no longer asserts. */
+export interface Passed {
+  fact_id: string;
+  statement: string;
+  superseded_by: string;
+  expired_at: string;
+}
+
+/** Why a query returned what it did. No model anywhere in this path, so the
+ *  same question traced twice gives identical numbers. */
+export interface SearchTrace {
+  query: string;
+  terms: string[];
+  dropped: string[];
+  seeds: string[];
+  reached: Record<string, number>;
+  considered: number;
+  lexical_hits: number;
+  structural_hits: number;
+  candidates: Scored[];
+  returned: string[];
+  retired: Passed[];
+}
+
+export interface SearchResult {
+  trace: SearchTrace;
+  nodes: { id: string; name: string; hops: number | null; seed: boolean }[];
+  edges: {
+    fact_id: string;
+    source: string;
+    target: string;
+    literal: string;
+    predicate: string;
+    statement: string;
+    quote: string;
+    rank: number | null;
+    retired: boolean;
+    superseded_by: string;
+  }[];
+}
+
 export type Tab = 'map' | 'record' | 'family';
-export type MemberTab = 'chat' | 'map' | 'chapters' | 'ask';
+export type MemberTab = 'chat' | 'map' | 'chapters' | 'graph' | 'ask';
 export type Sheet = 'notifs' | 'unplaced' | 'cluster' | 'viewer';
 export type RecordState = 'idle' | 'live';

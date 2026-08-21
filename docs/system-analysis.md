@@ -12,6 +12,7 @@ shaped this way and what that shape cost.
 
 | Rev | Date | Change | Supersedes |
 |---|---|---|---|
+| 10 | 2026-08-21 | Retrieval and the write path both report their working (D27, D28): `SearchTrace` for reads, `GraphChange` for creates and retirements, and a family-side panel that runs the agent's own lookup from a text box. | — |
 | 9 | 2026-08-20 | DLP becomes the default screening backend, Model Armor opt-in (D26). Closes R18. | — |
 | 8 | 2026-08-20 | Screening fails open (D25, superseding D24) and the transcript survives an outage; the call is flagged `unscreened` and logged. Restores O2. | D24 |
 | 7 | 2026-08-20 | Adds Model Armor screening ahead of the first write (D23, D24). Records R16 and R17: fail-closed screening inverts O2, and de-identification qualifies O3. | O2, O3 |
@@ -757,6 +758,7 @@ All routes require the shared secret in the `X-Sampan-Key` header except where n
 | GET | `/api/household` | `household` | Key |
 | GET | `/api/family/{narrator_id}` | `family_view` | Key. `?view=` selects `feed` (default), `map`, `timeline`, `chapters` |
 | POST | `/api/family/{narrator_id}/about` | `ask_about_her` | Key |
+| POST | `/api/family/{narrator_id}/search` | `search_archive` | Key. Runs the agent's own retrieval from a text box and returns the trace plus nodes and edges. No model in this path |
 | POST | `/api/family/{narrator_id}/ask` | `leave_ask` | Key |
 | GET | `/api/family/{narrator_id}/corrections` | `pending_corrections` | Key |
 | POST | `/api/family/{narrator_id}/corrections` | `correct` | Key |
