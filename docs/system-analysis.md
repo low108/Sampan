@@ -523,6 +523,7 @@ reranked.
 | φ_bfs | Breadth-first hops from seed entities, `depth = 2` | Present |
 | φ_cos | `semantic` callable parameter | **Slot open, no implementation supplied.** Retrieval is lexical plus structural |
 | Fusion | RRF, `_RRF_K = 60` | Present |
+| Explanation | `on_trace` -> `SearchTrace` | Present. Every number was already computed and discarded on the return line |
 | Rerank | Node distance, then episode mentions | Present |
 
 **`_MIN_QUERY_TERM = 3`** is the non-obvious constant and it fixes a real defect. In a corpus
@@ -531,6 +532,26 @@ someone the archive has never heard of — matched a fact about "Ah Chwee" on th
 alone, and the agent would have told her about the wrong person with complete confidence.
 Query terms shorter than three characters are discarded; document tokens keep their full
 length, because they still count toward length normalisation.
+
+**The trace is the demonstrable part.** `on_trace` yields the working of an
+answer: which query terms survived `_MIN_QUERY_TERM` and which were dropped,
+what the seeds reached and at what distance, every candidate's BM25, hops, RRF
+and episode-mention counts, which made the cut, and — the part a flat index
+cannot produce — the facts that *matched the query but are no longer asserted*,
+named with what superseded them.
+
+Two properties make this worth showing rather than merely logging. It is
+**deterministic**: no model sits anywhere in the chain, so the same question
+traced twice yields identical numbers, which a retrieval pipeline that asks an
+LLM to select edges cannot promise. And a query that returns nothing still
+produces a trace, because "the archive has never heard of Ah Seng" and "the
+ranking dropped it" are indistinguishable from outside and only the working
+tells them apart.
+
+Recorded on `CallMemory.searches` rather than returned to the agent — the
+numbers are for the family and for anyone auditing an answer — and persisted on
+the conversation beside the tool log, so the log says the agent reached for
+memory and the trace says what it found and what it passed over.
 
 That φ_cos is absent is a deliberate deferral, not an oversight (D11), and it is the first
 thing to add if recall proves inadequate at a larger corpus size.
@@ -638,7 +659,7 @@ and returns data, so the model can be replaced by a fake without a network.
 
 ### 9.2 Test inventory
 
-508 tests total: **445 unit** (default), **63 integration** (`-m integration`, deselected by
+522 tests total: **459 unit** (default), **63 integration** (`-m integration`, deselected by
 `addopts = "-q -m 'not integration'"`). Largest suites:
 
 | File | Tests | File | Tests |
@@ -665,6 +686,8 @@ that memory accumulates across calls in production rather than in a fixture.
 | A forgotten subject reappearing on a later call | `test_callflow.py::TestForgetting` — stories, threads and facts all dropped |
 | An optional extraction dependency silently missing in production | `test_service.py::TestExtractionIsFullyWired` |
 | A later telling retiring an earlier one, real model | `test_facts_integration.py::TestContradictionEndToEnd` |
+| A query that matched nothing still explaining itself | `test_retrieval.py::TestTheTrace` |
+| A retired fact named rather than silently absent | `test_retrieval.py::TestTheTrace` |
 | A narrator absent from her own entity graph | `test_entity_resolution.py::TestTheNarratorIsInHerOwnGraph` |
 | A refused fact naming which rule refused it | `test_facts.py::TestRefusalsAreRecorded` |
 | A missing topic or broken Pub/Sub during a call | `test_memories.py::TestPublishingNeverBreaksACall` |

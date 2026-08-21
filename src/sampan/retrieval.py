@@ -32,6 +32,8 @@ from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
+from pydantic import BaseModel, Field
+
 from sampan.facts import Fact
 from sampan.models import Entity
 
@@ -159,6 +161,66 @@ def _rrf(rankings: Sequence[Sequence[Fact]]) -> dict[str, float]:
     return fused
 
 
+class Scored(BaseModel):
+    """One fact and every number that decided where it ranked.
+
+    All five are already computed inside `search_facts` and were thrown away
+    on the return line. Nothing here is recalculated for the trace.
+    """
+
+    fact_id: str
+    statement: str
+    bm25: float = 0.0
+    # Hops from the nearest seed entity. None when the seeds could not reach
+    # it at all, which is different from being far away.
+    hops: int | None = None
+    rrf: float = 0.0
+    mentions: int = 0
+    confidence: float = 0.0
+    # Position in the returned list, or None for a candidate that was scored
+    # and did not make the cut -- which is the more interesting half.
+    rank: int | None = None
+
+
+class Passed(BaseModel):
+    """A fact the query matched that the archive no longer asserts.
+
+    The thing a flat index cannot show. She told it differently later, so it
+    lost in transaction time and never entered the ranking -- and saying so is
+    the whole argument for keeping both tellings.
+    """
+
+    fact_id: str
+    statement: str
+    superseded_by: str = ""
+    expired_at: str = ""
+
+
+class SearchTrace(BaseModel):
+    """Why this query returned these facts.
+
+    Deterministic by construction: every stage below is a pure function of the
+    query and the graph, so the same question traced twice gives the same
+    numbers. That is not true of a retrieval pipeline with a model in the
+    middle of it, and it is what makes this worth showing to anyone.
+    """
+
+    query: str
+    # Terms that survived `_MIN_QUERY_TERM`, and the ones that did not. The
+    # second list is why "Ah Seng" does not match "Ah Chwee" on the honorific.
+    terms: list[str] = Field(default_factory=list)
+    dropped: list[str] = Field(default_factory=list)
+    seeds: list[str] = Field(default_factory=list)
+    # Entities the seeds reached within `depth`, and how far each one was.
+    reached: dict[str, int] = Field(default_factory=dict)
+    considered: int = 0
+    lexical_hits: int = 0
+    structural_hits: int = 0
+    candidates: list[Scored] = Field(default_factory=list)
+    returned: list[str] = Field(default_factory=list)
+    retired: list[Passed] = Field(default_factory=list)
+
+
 def search_facts(
     query: str,
     graph: FactGraph,
@@ -167,18 +229,28 @@ def search_facts(
     limit: int = 5,
     depth: int = 2,
     semantic: Callable[[str, Sequence[Fact]], list[tuple[Fact, float]]] | None = None,
+    on_trace: Callable[[SearchTrace], None] | None = None,
 ) -> list[Fact]:
     """Rank facts for a query. Pure, deterministic, no network.
 
     `semantic` is the φ_cos slot: pass a scorer and it joins the fusion as a
     third ranking. Absent, retrieval is lexical plus structural, which is what
     this corpus warrants.
+
+    `on_trace` receives the working of the answer: which query terms survived,
+    what the seeds reached, every candidate's score at each stage, and the
+    facts that matched but are no longer asserted. Optional, and building it
+    costs nothing that was not already computed -- the numbers were being
+    discarded on the return line.
     """
     current = [f for f in graph.facts if f.is_current]
     if not current:
+        if on_trace is not None:
+            on_trace(SearchTrace(query=query))
         return []
 
-    lexical = [fact for fact, _ in bm25(query, current)]
+    scored_lexical = bm25(query, current)
+    lexical = [fact for fact, _ in scored_lexical]
 
     distance = graph.hops_from(seeds, depth=depth) if seeds else {}
     structural = sorted(
@@ -198,6 +270,26 @@ def search_facts(
 
     fused = _rrf(rankings)
     if not fused:
+        # Nothing matched -- and this is the case most worth explaining, since
+        # "the archive has never heard of Ah Seng" and "the ranking dropped it"
+        # look identical from outside. Trace the terms and what the seeds
+        # reached, so the empty answer has working too.
+        if on_trace is not None:
+            on_trace(
+                _trace(
+                    query=query,
+                    graph=graph,
+                    seeds=seeds,
+                    current=current,
+                    scored_lexical=scored_lexical,
+                    structural=structural,
+                    distance=distance,
+                    fused={},
+                    mentions=_episode_mentions(current),
+                    ordered=[],
+                    top=[],
+                )
+            )
         return []
 
     mentions = _episode_mentions(current)
@@ -217,7 +309,94 @@ def search_facts(
         )
 
     candidates = [f for f in current if f.fact_id in fused]
-    return sorted(candidates, key=rank_key)[:limit]
+    ordered = sorted(candidates, key=rank_key)
+    top = ordered[:limit]
+
+    if on_trace is not None:
+        on_trace(
+            _trace(
+                query=query,
+                graph=graph,
+                seeds=seeds,
+                current=current,
+                scored_lexical=scored_lexical,
+                structural=structural,
+                distance=distance,
+                fused=fused,
+                mentions=mentions,
+                ordered=ordered,
+                top=top,
+            )
+        )
+    return top
+
+
+def _trace(
+    *,
+    query: str,
+    graph: FactGraph,
+    seeds: Sequence[str],
+    current: list[Fact],
+    scored_lexical: list[tuple[Fact, float]],
+    structural: list[Fact],
+    distance: dict[str, int],
+    fused: dict[str, float],
+    mentions: dict[str, int],
+    ordered: list[Fact],
+    top: list[Fact],
+) -> SearchTrace:
+    """Assemble the working. Reads only what ranking already produced."""
+    all_terms = tokenise(query)
+    kept = [t for t in all_terms if len(t) >= _MIN_QUERY_TERM]
+    bm25_by_id = {fact.fact_id: score for fact, score in scored_lexical}
+    place = {fact.fact_id: i for i, fact in enumerate(top)}
+
+    def hops_for(fact: Fact) -> int | None:
+        reached = [
+            distance[e]
+            for e in (fact.subject_id, fact.object_id or "")
+            if e in distance
+        ]
+        return min(reached) if reached else None
+
+    # Facts the query matched that the archive stopped asserting. Scored the
+    # same way, so the comparison with what did return is like for like.
+    retired_facts = [f for f in graph.facts if not f.is_current]
+    retired = [
+        Passed(
+            fact_id=fact.fact_id,
+            statement=fact.statement,
+            superseded_by=fact.superseded_by or "",
+            expired_at=fact.t_expired.isoformat() if fact.t_expired else "",
+        )
+        for fact, _ in bm25(query, retired_facts)
+    ]
+
+    return SearchTrace(
+        query=query,
+        terms=kept,
+        dropped=[t for t in all_terms if len(t) < _MIN_QUERY_TERM],
+        seeds=list(seeds),
+        reached=dict(distance),
+        considered=len(current),
+        lexical_hits=len(scored_lexical),
+        structural_hits=len(structural),
+        candidates=[
+            Scored(
+                fact_id=fact.fact_id,
+                statement=fact.statement,
+                bm25=round(bm25_by_id.get(fact.fact_id, 0.0), 4),
+                hops=hops_for(fact),
+                rrf=round(fused.get(fact.fact_id, 0.0), 6),
+                mentions=mentions[fact.subject_id],
+                confidence=fact.confidence,
+                rank=place.get(fact.fact_id),
+            )
+            for fact in ordered
+        ],
+        returned=[f.fact_id for f in top],
+        retired=retired,
+    )
 
 
 def _episode_mentions(facts: Sequence[Fact]) -> dict[str, int]:

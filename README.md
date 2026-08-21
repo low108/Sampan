@@ -30,7 +30,7 @@ Zep/Graphiti, Zep-style retrieval behind a single `remember` tool, contradiction
 routed to the correct time axis, a topic *lean* that never becomes a push, and
 communities as her chapters.
 
-**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 445
+**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 459
 unit tests. Everything is in English, including the seeds and the UI.
 
 Remaining work is recording: sessions 5 and 6, and the dress rehearsal.

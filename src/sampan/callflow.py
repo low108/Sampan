@@ -177,6 +177,9 @@ def finish_call(
         rendered,
         turns=len(transcript),
         tool_calls=tool_calls or [],
+        # The tool log records that the agent reached for memory; this records
+        # what came back and, more usefully, what was scored and passed over.
+        searches=[t.model_dump(mode="json") for t in prepared.memory.searches],
         screened=[f.model_dump(mode="json") for f in checked.findings],
         unscreened=checked.unscreened,
         screen_error=checked.reason,

@@ -664,6 +664,7 @@ def create_app() -> FastAPI:
                     "turns": raw.get("turns", 0),
                     "tool_calls": raw.get("tool_calls", []),
                     "fact_refusals": raw.get("fact_refusals", []),
+                    "searches": raw.get("searches", []),
                     "unscreened": bool(raw.get("unscreened")),
                     "screened": raw.get("screened", []),
                 }

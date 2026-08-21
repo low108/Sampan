@@ -26,7 +26,7 @@ from sampan.models import (
     Thread,
 )
 from sampan.preferences import may_raise
-from sampan.retrieval import FactGraph, search_facts
+from sampan.retrieval import FactGraph, SearchTrace, search_facts
 from sampan.threads import rank_for_opener
 
 
@@ -58,6 +58,10 @@ class CallMemory:
     noted_preferences: list[PreferenceObservation] = field(default_factory=list)
     fragments: list[dict[str, str]] = field(default_factory=list)
     private_marks: list[str] = field(default_factory=list)
+    # Why each `remember` returned what it did. Kept on the call rather than
+    # returned to the agent: the working is for the family and for anyone
+    # auditing an answer, and reading it back to her would be noise.
+    searches: list[SearchTrace] = field(default_factory=list)
     concerns: list[dict[str, str]] = field(default_factory=list)
     ask_delivered: bool = False
     # Called the moment a concern is raised, so a fall reaches the family
@@ -139,7 +143,10 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
         seeds = list(dict.fromkeys([*matched, *memory.mentioned]))
 
         facts = search_facts(
-            needle, FactGraph(facts=memory.facts, entities=memory.entities), seeds=seeds
+            needle,
+            FactGraph(facts=memory.facts, entities=memory.entities),
+            seeds=seeds,
+            on_trace=memory.searches.append,
         )
 
         # The graph is an index. Her own words are the thing worth reaching --
