@@ -30,6 +30,10 @@ function short(text: string): string {
   return `${cut}…`;
 }
 
+/* Label metrics, in viewBox units: 9px mono with half a pixel of tracking. */
+const CHAR = 6;
+const LINE = 11;
+
 interface Placed {
   id: string;
   name: string;
@@ -38,6 +42,43 @@ interface Placed {
   hops: number | null;
   seed: boolean;
   invented: boolean;
+}
+
+/* Nudge labels off each other, leaving the dots where the rings put them.
+ *
+ * Two nodes a ring apart can still land within a few pixels vertically, and
+ * their labels then print on top of one another — "toast the bread, charcoal…"
+ * straight through "coffee shop". Moving the dots would be worse: their
+ * positions carry the hop distance, which is the one thing the picture is for.
+ * So only the text moves, by whole lines, and only when it has to.
+ *
+ * Deterministic by construction: labels are considered top to bottom with x as
+ * the tiebreak, so the same query lays out identically every time. A demo whose
+ * headline claim is reproducibility cannot have a drawing that wanders. */
+function spread(placed: Placed[], size: number): (Placed & { dy: number })[] {
+  const out = placed.map((p) => ({ ...p, dy: 0 }));
+  const taken: { x1: number; x2: number; y: number }[] = [];
+  for (const p of [...out].sort((a, b) => a.y - b.y || a.x - b.x)) {
+    const width = short(p.name).length * CHAR;
+    const x1 = p.x > size / 2 ? p.x - 12 - width : p.x + 12;
+    const x2 = x1 + width;
+    /* 0, then a line down, a line up, two down, two up … and if eight tries
+       cannot find a gap, leave it where it was rather than fling it across
+       the drawing to somewhere that reads as a different node's label. */
+    for (let step = 0; step < 8; step++) {
+      const dy = step === 0 ? 0 : Math.ceil(step / 2) * LINE * (step % 2 ? 1 : -1);
+      const y = p.y + 4 + dy;
+      const clash = taken.some(
+        (t) => Math.abs(t.y - y) < LINE && x1 < t.x2 && x2 > t.x1,
+      );
+      if (!clash || step === 7) {
+        p.dy = clash ? 0 : dy;
+        taken.push({ x1, x2, y: p.y + 4 + p.dy });
+        break;
+      }
+    }
+  }
+  return out;
 }
 
 export function place(nodes: SearchResult['nodes'], size: number): Placed[] {
@@ -78,7 +119,7 @@ export function place(nodes: SearchResult['nodes'], size: number): Placed[] {
 
 export function Graph({ result }: { result: SearchResult }) {
   const size = 560;
-  const placed = place(result.nodes, size);
+  const placed = spread(place(result.nodes, size), size);
   const at = new Map(placed.map((p) => [p.id, p]));
   const fresh = new Set(
     result.edges.filter((e) => e.fact_id.startsWith('demo_')).map((e) => e.fact_id),
@@ -122,7 +163,7 @@ export function Graph({ result }: { result: SearchResult }) {
               </circle>
               <text
                 x={right ? p.x - 12 : p.x + 12}
-                y={p.y + 4}
+                y={p.y + 4 + p.dy}
                 textAnchor={right ? 'end' : 'start'}
               >
                 {short(p.name)}
