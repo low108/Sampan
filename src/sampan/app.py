@@ -86,7 +86,10 @@ class DraftFact(BaseModel):
     # never heard of, and rejecting that surfaced as "could not reach the
     # archive", which is both wrong and unhelpful.
     subject_id: str = Field(default="", max_length=120)
-    predicate: str = Field(default="worked_at", max_length=40)
+    # Typed as the enum so an unknown verb is a 422 at the boundary. As a bare
+    # string it reached `Predicate(...)` inside the handler and raised, which
+    # the client saw as a 500 and reported as "could not reach the archive".
+    predicate: Predicate = Predicate.WORKED_AT
     object_literal: str = Field(default="", max_length=200)
     statement: str = Field(min_length=1, max_length=400)
 
@@ -713,18 +716,20 @@ def create_app() -> FastAPI:
             target = f"demo_node_{i}"
             invented[target] = draft.object_literal or draft.statement
             subject = draft.subject_id
-            if not subject:
-                # Nobody named, so both ends are invented. The edge floats
-                # rather than being quietly attached to whichever node
-                # happened to be first, which would draw a relationship the
-                # sentence does not claim.
+            if subject not in names:
+                # Nobody named -- or named somebody who does not exist, which
+                # amounts to the same thing and used to draw a node labelled
+                # with the raw id. Both ends are invented, so the edge floats
+                # rather than being quietly attached to whichever node happened
+                # to be first, which would draw a relationship the sentence
+                # does not claim.
                 subject = f"demo_subject_{i}"
                 invented[subject] = "someone new"
             working.append(
                 Fact(
                     fact_id=f"demo_{i}",
                     subject_id=subject,
-                    predicate=Predicate(draft.predicate),
+                    predicate=draft.predicate,
                     object_id=target,
                     object_literal=draft.object_literal,
                     statement=draft.statement,

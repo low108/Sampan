@@ -196,6 +196,48 @@ class TestCreate:
         assert edge["source"] in invented
         assert edge["target"] in invented
 
+    def test_a_subject_the_archive_does_not_have_is_treated_as_nobody(
+        self, client: TestClient
+    ) -> None:
+        """It used to be drawn as a node labelled with the raw id."""
+        body = search(
+            client,
+            "who is Ah Chwee",
+            added=[
+                {
+                    "subject_id": "ghost",
+                    "predicate": "worked_at",
+                    "statement": "Someone new arrived from the village.",
+                }
+            ],
+        )
+
+        assert "ghost" not in {n["id"] for n in body["nodes"]}
+        edge = next(e for e in body["edges"] if e["fact_id"] == "demo_0")
+        assert edge["source"] in {n["id"] for n in body["nodes"] if n["invented"]}
+
+    def test_an_unknown_predicate_is_refused_at_the_boundary(
+        self, client: TestClient
+    ) -> None:
+        """As a bare string it reached the enum inside the handler and 500'd,
+        which the panel reported as 'could not reach the archive'."""
+        response = client.post(
+            f"/api/family/{NARRATOR}/search",
+            json={
+                "question": "who is Ah Chwee",
+                "added": [
+                    {
+                        "subject_id": "",
+                        "predicate": "not_a_predicate",
+                        "statement": "Someone new arrived.",
+                    }
+                ],
+            },
+            headers={API_KEY_HEADER: GOOD_KEY},
+        )
+
+        assert response.status_code == 422
+
     def test_a_created_edge_is_drawn_even_when_it_does_not_rank(
         self, client: TestClient
     ) -> None:

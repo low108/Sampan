@@ -122,7 +122,12 @@ export function Demo({ narratorId, name, onClose }: {
     void run({ added: next });
   };
 
+  /* Clicking an already-retired row is a no-op, not a second retirement. The
+     server reports it once either way; it was only the change counter that
+     double-counted, and a Reset button claiming two changes for one click is
+     the kind of small lie that makes someone doubt the rest of the panel. */
   const retire = (factId: string) => {
+    if (retired.includes(factId)) return;
     const next = [...retired, factId];
     setRetired(next);
     void run({ retired: next });

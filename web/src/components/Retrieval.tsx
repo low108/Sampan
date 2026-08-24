@@ -151,8 +151,13 @@ export function Retrieval({ narratorId, name }: { narratorId: string; name: stri
                     <div key={r.fact_id} className="quote retired">
                       <div>
                         <q>{r.statement}</q>
+                        {/* `superseded_by` is a fact id, not a sentence. It
+                            was being printed raw, which nobody has seen only
+                            because her archive has no retired facts yet — the
+                            first real contradiction would have put a
+                            `fact_conv_…` string in front of the family. */}
                         <div className="lbl dim by">
-                          Superseded by {r.superseded_by || 'a later telling'} · kept, not deleted
+                          Superseded by a later telling · kept, not deleted
                         </div>
                       </div>
                     </div>
