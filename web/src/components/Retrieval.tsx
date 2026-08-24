@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
 import type { SearchResult } from '../types';
+import { Graph } from './Graph';
 
 /* What the agent's memory does when it is asked something.
  *
@@ -16,47 +17,6 @@ import type { SearchResult } from '../types';
  * rings put the seeds in the middle and everything the question reached around
  * them, which is what the exploration stage actually did.
  */
-
-const RING = [0, 96, 176, 240];
-
-interface Placed {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  hops: number | null;
-  seed: boolean;
-}
-
-/** Concentric rings by hop distance. Deterministic: same query, same picture. */
-function place(nodes: SearchResult['nodes'], size: number): Placed[] {
-  const mid = size / 2;
-  const byRing = new Map<number, SearchResult['nodes']>();
-  for (const node of nodes) {
-    /* Unreached nodes sit on the outermost ring. They are in the drawing
-       because an edge touches them, not because the seeds found them. */
-    const ring = node.hops === null ? RING.length - 1 : Math.min(node.hops, RING.length - 1);
-    byRing.set(ring, [...(byRing.get(ring) ?? []), node]);
-  }
-
-  const out: Placed[] = [];
-  for (const [ring, members] of byRing) {
-    const radius = RING[ring] ?? RING[RING.length - 1] ?? 240;
-    members.forEach((node, i) => {
-      /* Offset each ring so nodes do not line up radially and overlap. */
-      const angle = (2 * Math.PI * i) / members.length - Math.PI / 2 + ring * 0.4;
-      out.push({
-        id: node.id,
-        name: node.name,
-        hops: node.hops,
-        seed: node.seed,
-        x: mid + (radius === 0 && members.length === 1 ? 0 : radius) * Math.cos(angle),
-        y: mid + (radius === 0 && members.length === 1 ? 0 : radius) * Math.sin(angle),
-      });
-    });
-  }
-  return out;
-}
 
 export function Retrieval({ narratorId, name }: { narratorId: string; name: string }) {
   const [query, setQuery] = useState('');
@@ -78,10 +38,10 @@ export function Retrieval({ narratorId, name }: { narratorId: string; name: stri
     }
   };
 
-  const size = 520;
-  const placed = result ? place(result.nodes, size) : [];
-  const at = new Map(placed.map((p) => [p.id, p]));
   const trace = result?.trace;
+  const reached = result
+    ? result.nodes.filter((n) => n.hops !== null).sort((a, b) => (a.hops ?? 0) - (b.hops ?? 0))
+    : [];
 
   return (
     <>
@@ -142,14 +102,11 @@ export function Retrieval({ narratorId, name }: { narratorId: string; name: stri
                 note={`${trace.seeds.length} entities named · ${Object.keys(trace.reached).length} reached within 2 hops`}
               >
                 <div className="pills">
-                  {placed
-                    .filter((p) => p.hops !== null)
-                    .sort((a, b) => (a.hops ?? 0) - (b.hops ?? 0))
-                    .map((p) => (
-                      <span key={p.id} className={p.seed ? 'pill accent' : 'pill'}>
-                        {p.name} · {p.hops} hop
-                      </span>
-                    ))}
+                  {reached.map((n) => (
+                    <span key={n.id} className={n.seed ? 'pill accent' : 'pill'}>
+                      {n.name} · {n.hops} hop
+                    </span>
+                  ))}
                 </div>
               </Stage>
 
@@ -209,37 +166,7 @@ export function Retrieval({ narratorId, name }: { narratorId: string; name: stri
               )}
             </div>
 
-            {/* The graph. Rings are hop distance from what the question named. */}
-            <div className="graph">
-              <div className="lbl dim">
-                {placed.length} nodes · {result.edges.length} edges · rings are hops from the question
-              </div>
-              <svg viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Retrieved subgraph">
-                {RING.filter((r) => r > 0).map((r) => (
-                  <circle key={r} cx={size / 2} cy={size / 2} r={r} className="ring" />
-                ))}
-                {result.edges.map((e) => {
-                  const a = at.get(e.source);
-                  const b = at.get(e.target);
-                  if (!a || !b) return null;
-                  return (
-                    <line
-                      key={e.fact_id}
-                      x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                      className="edge"
-                      data-returned={e.rank !== null}
-                      data-retired={e.retired}
-                    />
-                  );
-                })}
-                {placed.map((p) => (
-                  <g key={p.id} className="node" data-seed={p.seed}>
-                    <circle cx={p.x} cy={p.y} r={p.seed ? 9 : 6} />
-                    <text x={p.x + 12} y={p.y + 4}>{p.name}</text>
-                  </g>
-                ))}
-              </svg>
-            </div>
+            <Graph result={result} />
           </div>
         )}
       </div>

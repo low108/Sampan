@@ -39,6 +39,7 @@ from sampan.corrections import (
     needs_confirmation,
 )
 from sampan.fact_extraction import GeminiFactExtractor
+from sampan.facts import Fact, Predicate
 from sampan.family import build_cards, build_map, feed, stats, timeline
 from sampan.household import (
     cards_for,
@@ -76,6 +77,29 @@ MAX_VOICE_NOTE_CHARS = 700_000
 
 class SeenRequest(BaseModel):
     ids: list[str] = Field(default_factory=list)
+
+
+class DraftFact(BaseModel):
+    """A fact the demo invented. Never stored."""
+
+    subject_id: str = Field(min_length=1, max_length=120)
+    predicate: str = Field(default="worked_at", max_length=40)
+    object_literal: str = Field(default="", max_length=200)
+    statement: str = Field(min_length=1, max_length=400)
+
+
+class SearchRequest(BaseModel):
+    """A question, plus whatever the demo has added or retired.
+
+    The sandbox rides on the request rather than living on the server. Nothing
+    is written, so a demo cannot leave marks on her archive -- and the whole
+    product rests on the family being able to correct the system and never her.
+    Stateless also means reproducible: the same request always answers the same.
+    """
+
+    question: str = Field(min_length=1, max_length=300)
+    added: list[DraftFact] = Field(default_factory=list, max_length=20)
+    retired: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ChooseAskRequest(BaseModel):
@@ -642,7 +666,7 @@ def create_app() -> FastAPI:
     )
     def search_archive(
         narrator_id: str,
-        body: AboutRequest,
+        body: SearchRequest,
         store: Annotated[DocumentStore, Depends(get_store)],
     ) -> dict[str, Any]:
         """Run the agent's own retrieval, and return its working.
@@ -662,10 +686,43 @@ def create_app() -> FastAPI:
 
         # Retired facts are loaded too: the trace names what it stopped
         # asserting, which is the thing a flat index cannot report.
-        graph = FactGraph(
-            facts=repository.load_facts(narrator_id, current_only=False),
-            entities=entities,
-        )
+        stored = repository.load_facts(narrator_id, current_only=False)
+
+        # The sandbox, applied in memory only. `retired` expires a fact the way
+        # a later telling would -- transaction time, leaving valid time exactly
+        # as she said it, because even a demo does not get to imply she was
+        # wrong. `added` invents new edges so a node can be watched appearing.
+        expiring = set(body.retired)
+        working = [
+            f.model_copy(
+                update={"t_expired": datetime.now(UTC), "superseded_by": "demo"}
+            )
+            if f.fact_id in expiring
+            else f
+            for f in stored
+        ]
+        # An invented edge gets an invented node at the far end. Without one
+        # it has a subject and nothing to point at, so the count goes up and
+        # the drawing does not change -- which is the one thing a create demo
+        # has to show.
+        invented: dict[str, str] = {}
+        for i, draft in enumerate(body.added):
+            target = f"demo_node_{i}"
+            invented[target] = draft.object_literal or draft.statement
+            working.append(
+                Fact(
+                    fact_id=f"demo_{i}",
+                    subject_id=draft.subject_id,
+                    predicate=Predicate(draft.predicate),
+                    object_id=target,
+                    object_literal=draft.object_literal,
+                    statement=draft.statement,
+                    quote=draft.statement,
+                    episode_id="demo",
+                )
+            )
+
+        graph = FactGraph(facts=working, entities=entities)
 
         needle = body.question.strip()
 
@@ -712,9 +769,10 @@ def create_app() -> FastAPI:
             "nodes": [
                 {
                     "id": entity_id,
-                    "name": names.get(entity_id, entity_id),
+                    "name": invented.get(entity_id) or names.get(entity_id, entity_id),
                     "hops": trace.reached.get(entity_id),
                     "seed": entity_id in trace.seeds,
+                    "invented": entity_id in invented,
                 }
                 for entity_id in sorted(touched)
             ],
@@ -734,6 +792,94 @@ def create_app() -> FastAPI:
                 for fact in drawn
             ],
         }
+
+    @app.get(
+        "/api/family/{narrator_id}/changes", dependencies=[Depends(require_api_key)]
+    )
+    def graph_changes(
+        narrator_id: str,
+        store: Annotated[DocumentStore, Depends(get_store)],
+        limit: int = 6,
+    ) -> dict[str, Any]:
+        """What each call did to the graph: nodes created, edges added, edges retired.
+
+        Reconstructed from stored data rather than read from the live
+        `GraphChange` record, so it works on the calls already in the archive
+        instead of only on ones made from now on. Nothing here is inferred:
+        `first_mentioned_in` is written when an entity is created and
+        `episode_id` when a fact is, so both answers come from the same
+        conversation that produced them.
+
+        What reconstruction cannot recover is *how* a mention was matched --
+        alias, kin role, containment -- because resolution records that at the
+        moment it happens. Calls made from now on carry it on the conversation.
+        """
+        repository = Repository(store)
+        entities = repository.load_entities(narrator_id)
+        facts = repository.load_facts(narrator_id, current_only=False)
+        names = {e.entity_id: e.canonical_name for e in entities}
+
+        rows = store.list(f"conversations__{narrator_id}")
+        rows.sort(key=lambda raw: raw.get("occurred_at") or "", reverse=True)
+
+        calls: list[dict[str, Any]] = []
+        for raw in rows[: max(1, min(limit, 30))]:
+            conversation_id = raw.get("conversation_id", "")
+            created = [e for e in entities if e.first_mentioned_in == conversation_id]
+            added = [f for f in facts if f.episode_id == conversation_id]
+            # Retired *by* this call: the fact that replaced it came from here.
+            replaced_by = {f.fact_id for f in added}
+            retired = [
+                f
+                for f in facts
+                if not f.is_current and (f.superseded_by or "") in replaced_by
+            ]
+            if not (created or added or retired):
+                continue
+            calls.append(
+                {
+                    "conversation_id": conversation_id,
+                    "occurred_at": raw.get("occurred_at", ""),
+                    "turns": raw.get("turns", 0),
+                    # Recorded live from rev 10 onward; absent on older calls.
+                    "recorded": raw.get("graph_change") or None,
+                    "created": [
+                        {
+                            "id": e.entity_id,
+                            "name": e.canonical_name,
+                            "type": e.type.value,
+                            "role": e.role or "",
+                        }
+                        for e in created
+                    ],
+                    "added": [
+                        {
+                            "fact_id": f.fact_id,
+                            "subject": names.get(f.subject_id, f.subject_id),
+                            "object": names.get(f.object_id or "", f.object_literal),
+                            "predicate": f.predicate.value,
+                            "statement": f.statement,
+                            "quote": f.quote,
+                        }
+                        for f in added
+                    ],
+                    "retired": [
+                        {
+                            "fact_id": f.fact_id,
+                            "statement": f.statement,
+                            "superseded_by": f.superseded_by or "",
+                            # Which clock moved. valid_to means the world
+                            # changed; t_expired means she told it differently.
+                            "clock": "valid time"
+                            if f.valid_to
+                            else "transaction time",
+                        }
+                        for f in retired
+                    ],
+                }
+            )
+
+        return {"calls": calls}
 
     @app.get("/api/talk/{narrator_id}/calls", dependencies=[Depends(require_api_key)])
     def call_log(

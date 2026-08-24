@@ -3,6 +3,7 @@ import { ApiError, api, givenName, initial, ME } from './api';
 import { SampanMap } from './SampanMap';
 import { BellSheet } from './components/BellSheet';
 import { ClusterSheet } from './components/ClusterSheet';
+import { Demo } from './components/Demo';
 import { MemberPage } from './components/MemberPage';
 import { StorySheet } from './components/StorySheet';
 import { UnplacedSheet } from './components/UnplacedSheet';
@@ -43,6 +44,9 @@ export function App() {
   /* Set when the teller has chosen "later". The question stays waiting on the
    * server; this only stops the app putting it in front of them again now. */
   const [deferred, setDeferred] = useState(false);
+  /* The graph demo, over everything: retrieve, create, retire, on a sandbox
+   * that is never written. */
+  const [demo, setDemo] = useState(false);
   /* Why there is no question here, when the bell said there was one. */
   const [recNote, setRecNote] = useState('');
 
@@ -247,6 +251,9 @@ export function App() {
              * control the parameter was invisible, so the app could only ever
              * be demonstrated as one person and the family half of the product
              * was unreachable. This is a demo affordance and says so. */}
+            <button className="asme" onClick={() => setDemo(true)}>
+              Inside the memory
+            </button>
             <button className="asme" onClick={() => setSheet('viewer')}>
               As {viewerName}
             </button>
@@ -398,6 +405,13 @@ export function App() {
         </button>
       )}
 
+      {demo && (
+        <Demo
+          narratorId={members.find((m) => m.records)?.narrator_id ?? ME}
+          name={givenName(members.find((m) => m.records)?.display_name ?? 'her')}
+          onClose={() => setDemo(false)}
+        />
+      )}
       {openStory && (
         <StorySheet
           pin={openStory}

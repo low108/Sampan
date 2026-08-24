@@ -6,6 +6,7 @@ import type {
   Household,
   MapView,
   PendingAsk,
+  DraftFact,
   SearchResult,
   TimelineView,
 } from './types';
@@ -73,10 +74,18 @@ export const api = {
     }),
 
   /** The agent's own retrieval, driven from a text box, with its working. */
-  search: (narrator: string, question: string) =>
+  search: (
+    narrator: string,
+    question: string,
+    sandbox: { added?: DraftFact[]; retired?: string[] } = {},
+  ) =>
     request<SearchResult>(`/api/family/${encodeURIComponent(narrator)}/search`, {
       method: 'POST',
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({
+        question,
+        added: sandbox.added ?? [],
+        retired: sandbox.retired ?? [],
+      }),
     }),
 
   about: (narrator: string, question: string) =>

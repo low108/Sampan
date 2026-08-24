@@ -184,9 +184,24 @@ export interface SearchTrace {
   retired: Passed[];
 }
 
+/** A fact the demo invented. Travels with the request; never stored. */
+export interface DraftFact {
+  subject_id: string;
+  predicate: string;
+  object_literal: string;
+  statement: string;
+}
+
 export interface SearchResult {
   trace: SearchTrace;
-  nodes: { id: string; name: string; hops: number | null; seed: boolean }[];
+  nodes: {
+    id: string;
+    name: string;
+    hops: number | null;
+    seed: boolean;
+    /** Added by the demo sandbox, not by her. Drawn differently. */
+    invented?: boolean;
+  }[];
   edges: {
     fact_id: string;
     source: string;
