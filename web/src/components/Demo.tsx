@@ -24,11 +24,19 @@ const MODES: [Mode, string, string][] = [
   ['update', 'Update', 'retire a telling and watch it step aside'],
 ];
 
-const SUGGESTED = [
-  'who is Ah Chwee',
-  'where did her father work',
-  'what did her mother cook',
-];
+/* The three questions the demo is built on, so it can be driven by clicking.
+ *
+ *   the first names two entities in one sentence -- a place directly, and a
+ *   person only by his role -- and its third row outscores its second on
+ *   keywords while ranking below it on graph distance, which is the clearest
+ *   evidence in the whole panel that the graph is doing work
+ *
+ *   the second puts the fact worth retiring at rank one
+ *
+ *   the third finds nothing, which is the case most worth explaining
+ */
+const OPENING = 'what did her father do at the coffee shop';
+const SUGGESTED = [OPENING, 'who lived in Sungai Siput', 'who is Ah Seng'];
 
 export function Demo({ narratorId, name, onClose }: {
   narratorId: string;
@@ -36,7 +44,7 @@ export function Demo({ narratorId, name, onClose }: {
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<Mode>('retrieve');
-  const [query, setQuery] = useState('who is Ah Chwee');
+  const [query, setQuery] = useState(OPENING);
   const [result, setResult] = useState<SearchResult | null>(null);
   const [asking, setAsking] = useState(false);
   const [failed, setFailed] = useState('');
@@ -193,7 +201,7 @@ export function Demo({ narratorId, name, onClose }: {
               </p>
               <input
                 value={draft}
-                placeholder="Her father worked at the tin mine before the shop."
+                placeholder="Ah Fatt drank his kopi at the coffee shop every afternoon."
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') create();

@@ -18,7 +18,7 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
-from sampan.app import _short, create_app, get_store
+from sampan.app import create_app, get_store
 from sampan.auth import API_KEY_HEADER
 from sampan.config import Settings, get_settings
 from sampan.entities import Entity, EntityType
@@ -234,8 +234,16 @@ class TestCreate:
         scored = {c["fact_id"] for c in body["trace"]["candidates"]}
         assert "demo_0" in scored
 
-    def test_the_invented_node_gets_a_label_that_fits(self, client: TestClient) -> None:
-        """It was labelled with the whole sentence, which ran off the drawing."""
+    def test_the_invented_node_carries_the_sentence_that_made_it(
+        self, client: TestClient
+    ) -> None:
+        """Full length, not shortened for the drawing.
+
+        Truncating here was tempting and wrong: the create panel finds its
+        subject by looking for a node name inside the typed sentence, so a
+        clipped name silently stops matching and the edge floats free.
+        """
+        sentence = "Ah Chwee sold noodles at the morning market in Ipoh."
         body = search(
             client,
             "who is Ah Chwee",
@@ -243,14 +251,14 @@ class TestCreate:
                 {
                     "subject_id": "e_chwee",
                     "predicate": "worked_at",
-                    "statement": "Ah Chwee sold noodles at the morning market in Ipoh.",
+                    "statement": sentence,
                 }
             ],
         )
 
-        label = next(n["name"] for n in body["nodes"] if n["id"] == "demo_node_0")
-        assert len(label) <= 27
-        assert label.endswith("…")
+        assert next(n["name"] for n in body["nodes"] if n["id"] == "demo_node_0") == (
+            sentence
+        )
 
     def test_nothing_is_written_to_her_archive(
         self, client: TestClient, store: InMemoryDocumentStore
@@ -308,14 +316,3 @@ class TestUpdate:
 
         kept = Repository(store).load_facts(NARRATOR)
         assert "f_siput" in {f.fact_id for f in kept}
-
-
-class TestShortLabel:
-    def test_leaves_a_name_alone(self) -> None:
-        assert _short("Sungai Siput") == "Sungai Siput"
-
-    def test_cuts_a_clause_at_a_word_boundary(self) -> None:
-        assert _short("Ah Chwee sold noodles at the market", 20) == "Ah Chwee sold…"
-
-    def test_cuts_a_single_long_word_rather_than_returning_nothing(self) -> None:
-        assert _short("a" * 40, 10) == "aaaaaaaaaa…"

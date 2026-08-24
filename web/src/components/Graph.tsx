@@ -11,6 +11,24 @@ import type { SearchResult } from '../types';
  */
 
 const RING = [0, 96, 176, 240];
+/* How far apart several seeds sit when they share the centre. */
+const CORE = 40;
+
+/* A label that fits beside a dot.
+ *
+ * The API returns real names at full length, because the create panel finds
+ * its subject by looking for one inside the typed sentence. Only the drawing
+ * needs them short: a food entity is named the way she said it — "toast the
+ * bread, charcoal fire one, spread butter" — which is a fine name and an
+ * impossible label, and an invented node falls back to the whole sentence
+ * that created it. The full text stays on the edge's tooltip. */
+const LABEL = 26;
+
+function short(text: string): string {
+  if (text.length <= LABEL) return text;
+  const cut = text.slice(0, LABEL).replace(/\s+\S*$/, '') || text.slice(0, LABEL);
+  return `${cut}…`;
+}
 
 interface Placed {
   id: string;
@@ -39,7 +57,11 @@ export function place(nodes: SearchResult['nodes'], size: number): Placed[] {
     members.forEach((node, i) => {
       /* Rotate each ring so nodes do not line up radially and collide. */
       const angle = (2 * Math.PI * i) / members.length - Math.PI / 2 + ring * 0.4;
-      const r = radius === 0 && members.length === 1 ? 0 : radius;
+      /* Ring zero has radius zero, which is right for one seed and wrong for
+         several — "what did her father do at the coffee shop" names two, and
+         they landed on the same point with their labels on top of each other.
+         Several seeds get a small huddle at the centre instead. */
+      const r = radius === 0 && members.length > 1 ? CORE : radius;
       out.push({
         id: node.id,
         name: node.name,
@@ -95,13 +117,15 @@ export function Graph({ result }: { result: SearchResult }) {
           const right = p.x > size / 2;
           return (
             <g key={p.id} className="node" data-seed={p.seed} data-invented={p.invented}>
-              <circle cx={p.x} cy={p.y} r={p.seed ? 9 : 6} />
+              <circle cx={p.x} cy={p.y} r={p.seed ? 9 : 6}>
+                <title>{p.name}</title>
+              </circle>
               <text
                 x={right ? p.x - 12 : p.x + 12}
                 y={p.y + 4}
                 textAnchor={right ? 'end' : 'start'}
               >
-                {p.name}
+                {short(p.name)}
               </text>
             </g>
           );

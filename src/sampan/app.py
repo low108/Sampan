@@ -190,21 +190,6 @@ _PLACE_CACHE = "_places"
 _LETTER_CACHE = "_letters"
 
 
-def _short(text: str, limit: int = 26) -> str:
-    """A node label that fits beside a dot.
-
-    Real entities are named in two or three words. An invented one falls back
-    to the sentence that created it, which is a whole clause and runs off the
-    edge of the drawing. Cut at a word boundary; the full sentence is still on
-    the edge, which is where it belongs.
-    """
-    text = text.strip()
-    if len(text) <= limit:
-        return text
-    cut = text[:limit].rsplit(" ", 1)[0] or text[:limit]
-    return f"{cut}…"
-
-
 def _letters_for(
     settings: Settings, store: DocumentStore, cards: list[Any]
 ) -> dict[str, dict[str, str]]:
@@ -804,14 +789,11 @@ def create_app() -> FastAPI:
             "nodes": [
                 {
                     "id": entity_id,
-                    # Truncated for the drawing, never in the archive. A food
-                    # entity is named the way she said it -- "toast the bread,
-                    # charcoal fire one, spread butter" -- which is a fine name
-                    # and an impossible label; an invented node falls back to
-                    # the whole sentence that created it, which is worse.
-                    "name": _short(
-                        invented.get(entity_id) or names.get(entity_id, entity_id)
-                    ),
+                    # The real name, at full length. Shortening it for the
+                    # drawing is the drawing's business: the create panel finds
+                    # its subject by looking for a node name inside the typed
+                    # sentence, and a truncated name would stop matching.
+                    "name": invented.get(entity_id) or names.get(entity_id, entity_id),
                     "hops": trace.reached.get(entity_id),
                     "seed": entity_id in trace.seeds,
                     "invented": entity_id in invented,
