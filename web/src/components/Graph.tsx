@@ -88,12 +88,24 @@ export function Graph({ result }: { result: SearchResult }) {
             </line>
           );
         })}
-        {placed.map((p) => (
-          <g key={p.id} className="node" data-seed={p.seed} data-invented={p.invented}>
-            <circle cx={p.x} cy={p.y} r={p.seed ? 9 : 6} />
-            <text x={p.x + 12} y={p.y + 4}>{p.name}</text>
-          </g>
-        ))}
+        {placed.map((p) => {
+          /* Labels on the right half grow inward. Anchoring everything at the
+             start is tidier to read but sends the outer-ring names off the
+             edge of the viewBox, where they are simply gone. */
+          const right = p.x > size / 2;
+          return (
+            <g key={p.id} className="node" data-seed={p.seed} data-invented={p.invented}>
+              <circle cx={p.x} cy={p.y} r={p.seed ? 9 : 6} />
+              <text
+                x={right ? p.x - 12 : p.x + 12}
+                y={p.y + 4}
+                textAnchor={right ? 'end' : 'start'}
+              >
+                {p.name}
+              </text>
+            </g>
+          );
+        })}
       </svg>
       <div className="key">
         <span><s className="seed" /> named by the question</span>

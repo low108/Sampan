@@ -41,14 +41,20 @@ export function Demo({ narratorId, name, onClose }: {
   const [asking, setAsking] = useState(false);
   const [failed, setFailed] = useState('');
 
-  /* The sandbox. Cleared when the mode changes, so each demo starts from her
-     archive as it actually is rather than from the last thing someone tried. */
+  /* The sandbox. It survives a mode change on purpose — creating an edge and
+     then retiring the one it disagrees with is the whole story, and clearing
+     between the two would break it in half. The Reset button is the way back,
+     and it says how many changes are being carried. */
   const [added, setAdded] = useState<DraftFact[]>([]);
   const [retired, setRetired] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
 
-  const run = async (over?: { added?: DraftFact[]; retired?: string[] }) => {
-    const asked = query.trim();
+  const run = async (over?: {
+    added?: DraftFact[];
+    retired?: string[];
+    ask?: string;
+  }) => {
+    const asked = (over?.ask ?? query).trim();
     if (!asked) return;
     setAsking(true);
     setFailed('');
@@ -80,17 +86,24 @@ export function Demo({ narratorId, name, onClose }: {
 
   /* Create: one sentence in, and the subject is whichever entity the sentence
      names — the same lexical grounding the query uses, so an invented fact
-     lands on a real node instead of floating. */
+     lands on a real node.
+     
+     When it names nobody the subject is left empty and the server invents one.
+     The first version fell back to whichever node happened to be first, which
+     silently drew a relationship the sentence never claimed. */
   const create = () => {
     const sentence = draft.trim();
     if (!sentence || !result) return;
     const named = result.nodes.find(
-      (n) => n.name.length >= 4 && sentence.toLowerCase().includes(n.name.toLowerCase()),
+      (n) =>
+        !n.invented &&
+        n.name.length >= 4 &&
+        sentence.toLowerCase().includes(n.name.toLowerCase()),
     );
     const next = [
       ...added,
       {
-        subject_id: named?.id ?? result.nodes[0]?.id ?? '',
+        subject_id: named?.id ?? '',
         predicate: 'worked_at',
         object_literal: '',
         statement: sentence,
@@ -149,7 +162,17 @@ export function Demo({ narratorId, name, onClose }: {
           />
           <div className="pills" style={{ marginTop: 10 }}>
             {SUGGESTED.map((q) => (
-              <button key={q} className="pill" onClick={() => { setQuery(q); }}>
+              <button
+                key={q}
+                className="pill"
+                onClick={() => {
+                  setQuery(q);
+                  /* Passed through rather than read back from state: this
+                     render still holds the old query. A suggestion that fills
+                     the box and does nothing looks broken. */
+                  void run({ ask: q });
+                }}
+              >
                 {q}
               </button>
             ))}

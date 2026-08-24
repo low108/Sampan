@@ -82,7 +82,10 @@ class SeenRequest(BaseModel):
 class DraftFact(BaseModel):
     """A fact the demo invented. Never stored."""
 
-    subject_id: str = Field(min_length=1, max_length=120)
+    # Empty is allowed: a demo may invent a fact about someone the archive has
+    # never heard of, and rejecting that surfaced as "could not reach the
+    # archive", which is both wrong and unhelpful.
+    subject_id: str = Field(default="", max_length=120)
     predicate: str = Field(default="worked_at", max_length=40)
     object_literal: str = Field(default="", max_length=200)
     statement: str = Field(min_length=1, max_length=400)
@@ -185,6 +188,21 @@ def find_static_dir() -> Path | None:
 
 _PLACE_CACHE = "_places"
 _LETTER_CACHE = "_letters"
+
+
+def _short(text: str, limit: int = 26) -> str:
+    """A node label that fits beside a dot.
+
+    Real entities are named in two or three words. An invented one falls back
+    to the sentence that created it, which is a whole clause and runs off the
+    edge of the drawing. Cut at a word boundary; the full sentence is still on
+    the edge, which is where it belongs.
+    """
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0] or text[:limit]
+    return f"{cut}…"
 
 
 def _letters_for(
@@ -709,10 +727,18 @@ def create_app() -> FastAPI:
         for i, draft in enumerate(body.added):
             target = f"demo_node_{i}"
             invented[target] = draft.object_literal or draft.statement
+            subject = draft.subject_id
+            if not subject:
+                # Nobody named, so both ends are invented. The edge floats
+                # rather than being quietly attached to whichever node
+                # happened to be first, which would draw a relationship the
+                # sentence does not claim.
+                subject = f"demo_subject_{i}"
+                invented[subject] = "someone new"
             working.append(
                 Fact(
                     fact_id=f"demo_{i}",
-                    subject_id=draft.subject_id,
+                    subject_id=subject,
                     predicate=Predicate(draft.predicate),
                     object_id=target,
                     object_literal=draft.object_literal,
@@ -756,7 +782,16 @@ def create_app() -> FastAPI:
 
         rank_by_id = {f.fact_id: i for i, f in enumerate(found)}
         scored = {c.fact_id: c for c in trace.candidates}
-        drawn = [f for f in graph.facts if f.fact_id in scored or not f.is_current]
+        # Demo edges are always drawn, ranked or not. They are the thing that
+        # was just added, and an edge that vanishes because it does not match
+        # the current question is indistinguishable from one that failed.
+        drawn = [
+            f
+            for f in graph.facts
+            if f.fact_id in scored
+            or not f.is_current
+            or f.fact_id.startswith("demo_")
+        ]
 
         touched: set[str] = {*trace.seeds}
         for fact in drawn:
@@ -769,7 +804,14 @@ def create_app() -> FastAPI:
             "nodes": [
                 {
                     "id": entity_id,
-                    "name": invented.get(entity_id) or names.get(entity_id, entity_id),
+                    # Truncated for the drawing, never in the archive. A food
+                    # entity is named the way she said it -- "toast the bread,
+                    # charcoal fire one, spread butter" -- which is a fine name
+                    # and an impossible label; an invented node falls back to
+                    # the whole sentence that created it, which is worse.
+                    "name": _short(
+                        invented.get(entity_id) or names.get(entity_id, entity_id)
+                    ),
                     "hops": trace.reached.get(entity_id),
                     "seed": entity_id in trace.seeds,
                     "invented": entity_id in invented,
