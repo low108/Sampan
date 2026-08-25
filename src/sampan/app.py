@@ -763,10 +763,16 @@ def create_app() -> FastAPI:
             )
 
         # A supersession: she says it differently now. The replacement takes the
-        # old fact's subject and predicate -- which is exactly the pair
-        # `contradiction.candidates` uses to decide two facts are about the same
-        # thing -- so the new edge lands on the same node and the two can be
-        # seen side by side, one current and one not.
+        # old fact's subject and predicate by copying them, so the new edge
+        # lands on the same node and the two can be seen side by side, one
+        # current and one not.
+        #
+        # Nothing here decides *which* fact conflicts. `swap.fact_id` came from
+        # a click, and this is a dict lookup. On a real call that step is a
+        # deterministic narrowing to the same subject and predicate followed by
+        # a model deciding whether the two genuinely disagree and which of the
+        # two clocks should move. Neither runs in the demo, and the demo should
+        # never be described as if they did.
         #
         # The retirement itself goes through `apply_conflicting_testimony`, the
         # same function a real call uses. Reimplementing it here would let the

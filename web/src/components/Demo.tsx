@@ -161,10 +161,14 @@ export function Demo({ narratorId, name, onClose }: {
 
   /* Update: she says it differently now.
 
-     The replacement inherits the old fact's subject and predicate on the
-     server — the same pair `contradiction.candidates` uses to decide two facts
-     are about the same thing — so the new edge lands on the same node and both
-     tellings are visible at once, one current and one not. */
+     The fact being replaced is the one that was clicked. Nothing infers it, and
+     nothing compares the new sentence against the old — the server takes this
+     id and looks it up. On a real call a model does that work, and saying so
+     out loud is cheaper than being caught assuming otherwise.
+
+     The replacement copies the old fact's subject and predicate on the server,
+     so the new edge lands on the same node and both tellings are visible at
+     once, one current and one not. */
   const supersede = () => {
     const sentence = later.trim();
     if (!sentence || !replacing) return;
