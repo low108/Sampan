@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sampan — System Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #F4EBDC;
+      --color-paper-2: #FDF8EF;
+      --color-ink:     #251A11;
+      --color-body:    #4B3A2B;
+      --color-muted:   #A28E76;
+      --color-accent:  #F2A93C;
+      --color-link:    #002FA7;
+      --font-sans:  'Archivo', system-ui, sans-serif;
+      --font-serif: Georgia, 'Times New Roman', serif;
+      --font-mono:  'DM Mono', ui-monospace, 'SF Mono', monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1280px; width: 100%; }
+    .eyebrow {
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--color-muted); margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400; letter-spacing: -0.02em; line-height: 1.15;
+      color: var(--color-ink); margin-bottom: 0.5rem;
+    }
+    .sub {
+      font-family: var(--font-sans); font-size: 0.86rem; color: var(--color-body);
+      max-width: 62ch; margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 900px; display: block; }
+    .cards {
+      display: grid; grid-template-columns: 1.15fr 1fr 0.9fr;
+      gap: 1rem; margin-top: 2rem;
+    }
+    .card {
+      background: #ffffff; border: 1px solid rgba(37,26,17,0.12);
+      border-radius: 6px; padding: 1.25rem;
+    }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
+    .card-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .card-dot.accent { background: var(--color-accent); }
+    .card-dot.link   { background: var(--color-link); }
+    .card-dot.ink    { background: var(--color-ink); }
+    .card h3 { font-size: 0.82rem; font-weight: 600; letter-spacing: -0.01em; }
+    .card ul { list-style: none; }
+    .card li {
+      font-size: 0.76rem; color: var(--color-body); line-height: 1.55;
+      padding-left: 0.85rem; position: relative;
+    }
+    .card li::before {
+      content: '·'; position: absolute; left: 0.2rem; color: var(--color-muted);
+    }
+    .card code {
+      font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink);
+    }
+    footer {
+      margin-top: 2rem; padding-top: 0.9rem;
+      border-top: 1px solid rgba(37,26,17,0.12);
+      font-family: var(--font-mono); font-size: 0.66rem;
+      letter-spacing: 0.1em; color: var(--color-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Architecture · Sampan</p>
+    <h1>A voice call becomes a family memory graph</h1>
+    <p class="sub">
+      One narrator speaks; three Google AI models turn the call into durable,
+      bi-temporal memory. Everything below the browser runs on Google Cloud.
+    </p>
+
+    <svg viewBox="0 0 1280 780" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sampan-arch-title sampan-arch-desc">
+      <title id="sampan-arch-title">Sampan system architecture</title>
+      <desc id="sampan-arch-desc">A browser talks to a FastAPI service on Cloud Run, which streams audio to Gemini Live for the conversation, screens the transcript through Model Armor, then uses Gemini 3.7 Flash to extract facts and judge contradictions before writing a bi-temporal graph to Firestore; Veo generates story-card video asynchronously via Pub/Sub and Cloud Storage.</desc>
+
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#A28E76"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#F2A93C"/></marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#002FA7"/></marker>
+      </defs>
+
+      <rect width="100%" height="100%" fill="#F4EBDC"/>
+
+      <!-- ═══ ZONES (drawn first) ═══ -->
+
+      <!-- Browser -->
+      <rect x="40" y="88" width="200" height="368" rx="8" fill="rgba(37,26,17,0.02)" stroke="rgba(37,26,17,0.10)" stroke-width="0.8"/>
+      <rect x="60" y="92" width="76" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="98" y="101" fill="rgba(37,26,17,0.40)" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.14em">BROWSER</text>
+
+      <!-- Cloud Run -->
+      <rect x="304" y="88" width="304" height="440" rx="8" fill="rgba(37,26,17,0.02)" stroke="rgba(37,26,17,0.10)" stroke-width="0.8"/>
+      <rect x="324" y="92" width="216" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="432" y="101" fill="rgba(37,26,17,0.40)" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.14em">CLOUD RUN · ASIA-SOUTHEAST1 · TIMEOUT 3600s</text>
+
+      <!-- Vertex AI -->
+      <rect x="672" y="88" width="248" height="424" rx="8" fill="rgba(37,26,17,0.02)" stroke="rgba(37,26,17,0.10)" stroke-width="0.8"/>
+      <rect x="692" y="92" width="168" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="776" y="101" fill="rgba(37,26,17,0.40)" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.14em">VERTEX AI · GOOGLE AI MODELS</text>
+
+      <!-- ═══ ARROWS (before boxes) ═══ -->
+
+      <!-- Her side → Companion -->
+      <line x1="216" y1="176" x2="332" y2="176" stroke="#F2A93C" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="238" y="156" width="76" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="276" y="165" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PCM 16kHz</text>
+
+      <!-- Family side → Retrieval -->
+      <path d="M 216,392 H 266 Q 274,392 274,400 V 464 Q 274,472 282,472 H 332"
+            fill="none" stroke="#002FA7" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <rect x="282" y="408" width="68" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="316" y="417" fill="#002FA7" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">REST</text>
+
+      <!-- Companion → Gemini Live -->
+      <line x1="576" y1="160" x2="700" y2="160" stroke="#F2A93C" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="600" y="140" width="76" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="638" y="149" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">BIDI AUDIO</text>
+
+      <!-- Gemini Live → Companion : tool calls come back -->
+      <line x1="700" y1="200" x2="576" y2="200" stroke="#A28E76" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <rect x="608" y="208" width="60" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="638" y="217" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">TOOLS</text>
+
+      <!-- Companion → finish_call -->
+      <line x1="440" y1="216" x2="440" y2="252" stroke="#A28E76" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="452" y="222" width="88" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="496" y="231" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ON HANGUP</text>
+
+      <!-- finish_call → Veo : fire and forget -->
+      <path d="M 576,272 H 632 Q 640,272 640,280 V 296 Q 640,304 648,304 H 700"
+            fill="none" stroke="#A28E76" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <rect x="584" y="246" width="60" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="614" y="255" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ASYNC</text>
+
+      <!-- finish_call → Model Armor -->
+      <line x1="440" y1="308" x2="440" y2="340" stroke="#A28E76" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+      <!-- Model Armor → Gemini 3.7 Flash -->
+      <path d="M 576,368 H 616 Q 624,368 624,376 V 416 Q 624,424 632,424 H 700"
+            fill="none" stroke="#A28E76" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="544" y="404" width="72" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="580" y="413" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">EXTRACT</text>
+
+      <!-- Model Armor → Firestore : the only write path -->
+      <path d="M 576,388 H 592 Q 600,388 600,396 V 622 Q 600,630 608,630 H 700"
+            fill="none" stroke="#F2A93C" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="488" y="508" width="104" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="540" y="517" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CLEAN WRITE</text>
+
+      <!-- Retrieval → Firestore : bridges over the write path -->
+      <path d="M 576,472 H 632 Q 640,472 640,480 V 622 a 8,8 0 0,0 0,16 V 640 Q 640,648 648,648 H 700"
+            fill="none" stroke="#002FA7" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-link)"/>
+      <rect x="648" y="560" width="60" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="678" y="569" fill="#002FA7" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">READ</text>
+
+      <!-- Veo → Cloud Storage -->
+      <path d="M 900,320 H 952 Q 960,320 960,328 V 632 Q 960,640 968,640 H 1004"
+            fill="none" stroke="#A28E76" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <rect x="968" y="470" width="60" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="998" y="479" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">MP4</text>
+
+      <!-- ═══ NODES ═══ -->
+
+      <!-- Her side -->
+      <rect x="56" y="128" width="160" height="96" rx="6" fill="#F4EBDC"/>
+      <rect x="56" y="128" width="160" height="96" rx="6" fill="rgba(162,142,118,0.10)" stroke="#A28E76" stroke-width="1"/>
+      <rect x="64" y="134" width="40" height="12" rx="2" fill="transparent" stroke="rgba(162,142,118,0.40)" stroke-width="0.8"/>
+      <text x="84" y="143" fill="rgba(162,142,118,0.90)" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.08em">TELLER</text>
+      <text x="136" y="176" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Her side</text>
+      <text x="136" y="192" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">one button</text>
+      <text x="136" y="208" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">no login</text>
+
+      <!-- Family side -->
+      <rect x="56" y="344" width="160" height="96" rx="6" fill="#F4EBDC"/>
+      <rect x="56" y="344" width="160" height="96" rx="6" fill="rgba(162,142,118,0.10)" stroke="#A28E76" stroke-width="1"/>
+      <rect x="64" y="350" width="44" height="12" rx="2" fill="transparent" stroke="rgba(162,142,118,0.40)" stroke-width="0.8"/>
+      <text x="86" y="359" fill="rgba(162,142,118,0.90)" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.08em">FAMILY</text>
+      <text x="136" y="392" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Family side</text>
+      <text x="136" y="408" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">map · bell</text>
+      <text x="136" y="424" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">memory panel</text>
+
+      <!-- Companion -->
+      <rect x="332" y="128" width="244" height="88" rx="6" fill="#F4EBDC"/>
+      <rect x="332" y="128" width="244" height="88" rx="6" fill="#ffffff" stroke="#251A11" stroke-width="1"/>
+      <rect x="340" y="134" width="24" height="12" rx="2" fill="transparent" stroke="rgba(37,26,17,0.40)" stroke-width="0.8"/>
+      <text x="352" y="143" fill="rgba(37,26,17,0.80)" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WS</text>
+      <text x="454" y="172" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Companion · /ws/talk</text>
+      <text x="454" y="190" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">FastAPI duplex pump</text>
+      <text x="454" y="204" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">5 ADK tools</text>
+
+      <!-- finish_call -->
+      <rect x="332" y="252" width="244" height="56" rx="6" fill="#F4EBDC"/>
+      <rect x="332" y="252" width="244" height="56" rx="6" fill="#ffffff" stroke="#251A11" stroke-width="1"/>
+      <text x="454" y="278" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">finish_call</text>
+      <text x="454" y="294" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">stories · facts · entities</text>
+
+      <!-- Model Armor -->
+      <rect x="332" y="340" width="244" height="56" rx="6" fill="#F4EBDC"/>
+      <rect x="332" y="340" width="244" height="56" rx="6" fill="rgba(242,169,60,0.05)" stroke="rgba(242,169,60,0.50)" stroke-width="1" stroke-dasharray="4,4"/>
+      <text x="454" y="366" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Model Armor + DLP</text>
+      <text x="454" y="382" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">screen before every write</text>
+
+      <!-- Retrieval -->
+      <rect x="332" y="444" width="244" height="56" rx="6" fill="#F4EBDC"/>
+      <rect x="332" y="444" width="244" height="56" rx="6" fill="#ffffff" stroke="#251A11" stroke-width="1"/>
+      <text x="454" y="470" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Retrieval · no model</text>
+      <text x="454" y="486" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">BM25 + 2-hop BFS + RRF</text>
+
+      <!-- Gemini Live  ◆ FOCAL -->
+      <rect x="700" y="128" width="200" height="96" rx="6" fill="#F4EBDC"/>
+      <rect x="700" y="128" width="200" height="96" rx="6" fill="rgba(242,169,60,0.12)" stroke="#F2A93C" stroke-width="1"/>
+      <rect x="708" y="134" width="44" height="12" rx="2" fill="transparent" stroke="rgba(242,169,60,0.50)" stroke-width="0.8"/>
+      <text x="730" y="143" fill="#B8791F" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GEMINI</text>
+      <text x="800" y="172" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Gemini Live 2.5 Flash</text>
+      <text x="800" y="188" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">native-audio · us-central1</text>
+      <text x="800" y="204" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">the conversation</text>
+
+      <!-- Veo -->
+      <rect x="700" y="256" width="200" height="96" rx="6" fill="#F4EBDC"/>
+      <rect x="700" y="256" width="200" height="96" rx="6" fill="rgba(37,26,17,0.02)" stroke="rgba(37,26,17,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+      <rect x="708" y="262" width="28" height="12" rx="2" fill="transparent" stroke="rgba(37,26,17,0.40)" stroke-width="0.8"/>
+      <text x="722" y="271" fill="rgba(37,26,17,0.80)" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.08em">VEO</text>
+      <text x="800" y="300" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Veo 3.1 Fast</text>
+      <text x="800" y="316" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">Pub/Sub push · off-call</text>
+      <text x="800" y="332" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">story-card video</text>
+
+      <!-- Gemini 3.7 Flash -->
+      <rect x="700" y="384" width="200" height="96" rx="6" fill="#F4EBDC"/>
+      <rect x="700" y="384" width="200" height="96" rx="6" fill="#ffffff" stroke="#251A11" stroke-width="1"/>
+      <rect x="708" y="390" width="44" height="12" rx="2" fill="transparent" stroke="rgba(37,26,17,0.40)" stroke-width="0.8"/>
+      <text x="730" y="399" fill="rgba(37,26,17,0.80)" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GEMINI</text>
+      <text x="800" y="428" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Gemini 3.7 Flash</text>
+      <text x="800" y="444" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">global · temperature 0.0</text>
+      <text x="800" y="460" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">facts · judge · affect</text>
+
+      <!-- Firestore  ◆ FOCAL -->
+      <rect x="700" y="612" width="220" height="72" rx="6" fill="#F4EBDC"/>
+      <rect x="700" y="612" width="220" height="72" rx="6" fill="rgba(242,169,60,0.12)" stroke="#F2A93C" stroke-width="1"/>
+      <rect x="708" y="618" width="28" height="12" rx="2" fill="transparent" stroke="rgba(242,169,60,0.50)" stroke-width="0.8"/>
+      <text x="722" y="627" fill="#B8791F" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.08em">DB</text>
+      <text x="810" y="652" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Firestore · bi-temporal graph</text>
+      <text x="810" y="668" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">valid time + transaction time</text>
+
+      <!-- Cloud Storage -->
+      <rect x="1004" y="612" width="200" height="72" rx="6" fill="#F4EBDC"/>
+      <rect x="1004" y="612" width="200" height="72" rx="6" fill="rgba(37,26,17,0.05)" stroke="#A28E76" stroke-width="1"/>
+      <rect x="1012" y="618" width="28" height="12" rx="2" fill="transparent" stroke="rgba(162,142,118,0.40)" stroke-width="0.8"/>
+      <text x="1026" y="627" fill="rgba(162,142,118,0.90)" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GCS</text>
+      <text x="1104" y="652" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Cloud Storage</text>
+      <text x="1104" y="668" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">mp4 + poster</text>
+
+      <!-- ═══ LEGEND ═══ -->
+      <line x1="40" y1="756" x2="1240" y2="756" stroke="rgba(37,26,17,0.10)" stroke-width="0.8"/>
+      <text x="40" y="772" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.14em">LEGEND</text>
+
+      <line x1="128" y1="768" x2="152" y2="768" stroke="#F2A93C" stroke-width="1.2"/>
+      <text x="160" y="772" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.06em">LIVE CALL PATH</text>
+
+      <line x1="300" y1="768" x2="324" y2="768" stroke="#002FA7" stroke-width="1.2"/>
+      <text x="332" y="772" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.06em">FAMILY READ</text>
+
+      <line x1="460" y1="768" x2="484" y2="768" stroke="#A28E76" stroke-width="1.2"/>
+      <text x="492" y="772" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.06em">POST-CALL</text>
+
+      <line x1="608" y1="768" x2="632" y2="768" stroke="#A28E76" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="640" y="772" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.06em">ASYNC</text>
+
+      <rect x="740" y="762" width="12" height="12" rx="2" fill="rgba(242,169,60,0.12)" stroke="#F2A93C" stroke-width="1"/>
+      <text x="760" y="772" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.06em">FOCAL</text>
+
+      <rect x="856" y="762" width="12" height="12" rx="2" fill="rgba(242,169,60,0.05)" stroke="rgba(242,169,60,0.50)" stroke-width="1" stroke-dasharray="4,4"/>
+      <text x="876" y="772" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.06em">SECURITY BOUNDARY</text>
+    </svg>
+
+    <div class="cards">
+      <div class="card">
+        <p class="eyebrow">Google AI models</p>
+        <div class="card-header"><span class="card-dot accent"></span><h3>Three, each doing one job</h3></div>
+        <ul>
+          <li><code>gemini-live-2.5-flash-native-audio</code> — the call itself, duplex audio, us-central1</li>
+          <li><code>gemini-3.7-flash</code> — story + fact extraction, contradiction judge, affect monitor, place resolver</li>
+          <li><code>veo-3.1-fast-generate-001</code> — story-card video, off the call path</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">Where the model is not</p>
+        <div class="card-header"><span class="card-dot link"></span><h3>Retrieval is deterministic</h3></div>
+        <ul>
+          <li>BM25 lexical + 2-hop BFS + reciprocal rank fusion</li>
+          <li>No model in the read path, so the same question returns the same numbers every time</li>
+          <li>That reproducibility is what makes the working showable</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="eyebrow">Memory shape</p>
+        <div class="card-header"><span class="card-dot ink"></span><h3>Bi-temporal</h3></div>
+        <ul>
+          <li><code>valid_from/to</code> — when it was true in her life</li>
+          <li><code>t_created/expired</code> — when the archive believed it</li>
+          <li>A correction moves one clock, never both</li>
+        </ul>
+      </div>
+    </div>
+
+    <footer>SAMPAN · CLOUD RUN ASIA-SOUTHEAST1 · FIRESTORE · VERTEX AI</footer>
+  </div>
+</body>
+</html>
