@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sampan — The round trip</title>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #F4EBDC; --color-ink: #251A11; --color-body: #4B3A2B;
+      --color-muted: #A28E76; --color-accent: #F2A93C;
+      --font-sans: 'Archivo', system-ui, sans-serif;
+      --font-serif: Georgia, 'Times New Roman', serif;
+      --font-mono: 'DM Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans); background: var(--color-paper);
+      color: var(--color-ink); min-height: 100vh;
+      display: flex; align-items: center; justify-content: center; padding: 3rem 2rem;
+    }
+    .frame { max-width: 1280px; width: 100%; }
+    .eyebrow {
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--color-muted); margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 0.5rem;
+    }
+    .sub { font-size: 0.86rem; color: var(--color-body); max-width: 68ch; margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 900px; display: block; }
+    footer {
+      margin-top: 2rem; padding-top: 0.9rem; border-top: 1px solid rgba(37,26,17,0.12);
+      font-family: var(--font-mono); font-size: 0.66rem;
+      letter-spacing: 0.1em; color: var(--color-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Sequence · Sampan</p>
+    <h1>One question, one call, one afternoon</h1>
+    <p class="sub">
+      The whole product in nine messages. A son leaves a question; his mother
+      presses one button and hears it in his name; what she says comes back to
+      him as a story — and, when it matters, as a warning.
+    </p>
+
+    <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="round-trip-title round-trip-desc">
+      <title id="round-trip-title">The round trip: son to mother and back</title>
+      <desc id="round-trip-desc">A son leaves a question that is queued in the archive; his mother starts a call with one button, hears his question read to her by name, tells a story, has a concern flagged from her tone, and the screened result returns to him as a notification.</desc>
+
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#A28E76"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#F2A93C"/></marker>
+        <marker id="arrow-back" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="8 0, 0 3, 8 6" fill="#A28E76"/></marker>
+        <marker id="arrow-open" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polyline points="0 0, 8 3, 0 6" fill="none" stroke="#A28E76" stroke-width="1.2"/></marker>
+      </defs>
+
+      <rect width="100%" height="100%" fill="#F4EBDC"/>
+
+      <!-- ═══ ACTORS ═══ -->
+      <rect x="60" y="64" width="200" height="56" rx="6" fill="rgba(162,142,118,0.10)" stroke="#A28E76" stroke-width="1"/>
+      <text x="160" y="88" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Wei Lun</text>
+      <text x="160" y="106" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">her son, in KL</text>
+
+      <rect x="300" y="64" width="200" height="56" rx="6" fill="#ffffff" stroke="#251A11" stroke-width="1"/>
+      <text x="400" y="88" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Sampan</text>
+      <text x="400" y="106" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">Cloud Run</text>
+
+      <rect x="540" y="64" width="200" height="56" rx="6" fill="rgba(242,169,60,0.12)" stroke="#F2A93C" stroke-width="1"/>
+      <text x="640" y="88" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Xiao Chuan</text>
+      <text x="640" y="106" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">Gemini Live</text>
+
+      <rect x="780" y="64" width="200" height="56" rx="6" fill="rgba(162,142,118,0.10)" stroke="#A28E76" stroke-width="1"/>
+      <text x="880" y="88" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Ah Khim</text>
+      <text x="880" y="106" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">80, in Ipoh</text>
+
+      <rect x="1020" y="64" width="200" height="56" rx="6" fill="rgba(37,26,17,0.05)" stroke="#A28E76" stroke-width="1"/>
+      <text x="1120" y="88" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">The archive</text>
+      <text x="1120" y="106" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">Firestore</text>
+
+      <!-- ═══ LIFELINES ═══ -->
+      <line x1="160" y1="120" x2="160" y2="616" stroke="rgba(37,26,17,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="400" y1="120" x2="400" y2="616" stroke="rgba(37,26,17,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="640" y1="120" x2="640" y2="616" stroke="rgba(37,26,17,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="880" y1="120" x2="880" y2="616" stroke="rgba(37,26,17,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="1120" y1="120" x2="1120" y2="616" stroke="rgba(37,26,17,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
+
+      <!-- ═══ TIME DIVIDERS ═══ -->
+      <line x1="60" y1="236" x2="1220" y2="236" stroke="rgba(37,26,17,0.12)" stroke-width="1" stroke-dasharray="4,4"/>
+      <rect x="60" y="230" width="176" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="60" y="239" fill="rgba(37,26,17,0.45)" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.14em">LATER THAT AFTERNOON</text>
+
+      <line x1="60" y1="452" x2="1220" y2="452" stroke="rgba(37,26,17,0.12)" stroke-width="1" stroke-dasharray="4,4"/>
+      <rect x="60" y="446" width="152" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="60" y="455" fill="rgba(37,26,17,0.45)" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.14em">WHEN SHE HANGS UP</text>
+
+      <!-- ═══ ACTIVATION BARS ═══ -->
+      <rect x="396" y="264" width="8" height="176" fill="rgba(37,26,17,0.06)" stroke="#A28E76" stroke-width="0.8"/>
+      <rect x="636" y="304" width="8" height="120" fill="rgba(37,26,17,0.06)" stroke="#A28E76" stroke-width="0.8"/>
+
+      <!-- ═══ MESSAGES ═══ -->
+      <line x1="160" y1="168" x2="400" y2="168" stroke="#A28E76" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="400" y1="208" x2="1120" y2="208" stroke="#A28E76" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-open)"/>
+      <line x1="880" y1="264" x2="400" y2="264" stroke="#A28E76" stroke-width="1.2" marker-end="url(#arrow-back)"/>
+      <line x1="400" y1="304" x2="640" y2="304" stroke="#A28E76" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="640" y1="344" x2="880" y2="344" stroke="#F2A93C" stroke-width="2" marker-end="url(#arrow-accent)"/>
+      <line x1="880" y1="384" x2="640" y2="384" stroke="#A28E76" stroke-width="1.2" marker-end="url(#arrow-back)"/>
+      <line x1="640" y1="424" x2="400" y2="424" stroke="#A28E76" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-back)"/>
+      <line x1="400" y1="488" x2="1120" y2="488" stroke="#A28E76" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="1120" y1="544" x2="160" y2="544" stroke="#A28E76" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-back)"/>
+
+      <!-- ═══ MESSAGE LABELS ═══ -->
+      <rect x="228" y="148" width="104" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="280" y="157" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">HIS QUESTION</text>
+
+      <rect x="708" y="188" width="104" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="760" y="197" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">QUEUED</text>
+
+      <rect x="588" y="244" width="104" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="640" y="253" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ONE BUTTON</text>
+
+      <rect x="468" y="284" width="104" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="520" y="293" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">OPEN SESSION</text>
+
+      <rect x="704" y="322" width="112" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="760" y="331" fill="#B8791F" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">"WEI LUN ASKED…"</text>
+
+      <rect x="708" y="364" width="104" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="760" y="373" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">HER STORY</text>
+
+      <rect x="468" y="404" width="104" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="520" y="413" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FLAG CONCERN</text>
+
+      <rect x="708" y="468" width="112" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="764" y="477" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SCREEN + WRITE</text>
+
+      <rect x="588" y="524" width="112" height="12" rx="2" fill="#F4EBDC"/>
+      <text x="644" y="533" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">STORY + CONCERN</text>
+
+      <!-- ═══ THE POINT ═══ -->
+      <text x="60" y="592" fill="#4B3A2B" font-size="14" font-style="italic" font-family="Georgia, serif">She never opened an app, and she never spoke to a stranger — she answered her son.</text>
+
+      <!-- ═══ LEGEND ═══ -->
+      <line x1="60" y1="648" x2="1220" y2="648" stroke="rgba(37,26,17,0.10)" stroke-width="0.8"/>
+      <text x="60" y="664" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.14em">LEGEND</text>
+
+      <line x1="152" y1="662" x2="176" y2="662" stroke="#F2A93C" stroke-width="2"/>
+      <text x="184" y="666" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.06em">THE BRIDGE, IN HIS NAME</text>
+
+      <line x1="424" y1="662" x2="448" y2="662" stroke="#A28E76" stroke-width="1.2"/>
+      <text x="456" y="666" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.06em">DIRECT CALL</text>
+
+      <line x1="612" y1="662" x2="636" y2="662" stroke="#A28E76" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="644" y="666" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.06em">ASYNC OR RETURNING</text>
+
+      <rect x="856" y="656" width="8" height="12" fill="rgba(37,26,17,0.06)" stroke="#A28E76" stroke-width="0.8"/>
+      <text x="876" y="666" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" letter-spacing="0.06em">HOLDING THE CALL OPEN</text>
+    </svg>
+
+    <footer>SAMPAN · 9 MESSAGES · THE WHOLE PRODUCT</footer>
+  </div>
+</body>
+</html>
