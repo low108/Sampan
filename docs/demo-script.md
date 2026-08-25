@@ -157,12 +157,27 @@ SHE SAYS THIS NOW
 > stopped asserting it. Her own dates are untouched, because **valid time** is
 > what *she* said, and she was not wrong. Ah Chwee *did* live in Sungai Siput.
 
-### Key point I — the graph knows the two facts are about the same thing
+### Key point I — the two facts are about the same thing, and the archive can tell
 
 > The new edge landed on **the same node with the same predicate** — Ah Chwee,
-> `lived_at`. That pairing is not something I picked for the demo: it is exactly
-> how the system decides two facts are in conflict on a real call, and the
-> retirement runs through the same function the real path calls.
+> `lived_at`. That pairing is how a real call *finds* the facts a new one might
+> disagree with, before anything decides whether it actually does. And the
+> retirement runs through the same function the real path calls, so the clock
+> that moves here is the clock that moves in production.
+
+**Be precise about what is and is not running.** On a real call the pipeline does
+two things, and only the first is in this demo:
+
+| | On a real call | In this demo |
+|---|---|---|
+| Find plausible conflicts | `candidates()` — same subject, same predicate. Deterministic. | you click the row |
+| Decide *whether* they conflict, and *which kind* | **Gemini** — returns state change, conflicting testimony, or none | fixed to conflicting testimony |
+
+> I am supplying the judgement a model normally makes. What the demo is showing
+> you is the mechanics underneath it — which clock moves, and what survives.
+
+Say this before you are asked. It costs ten seconds and it is the difference
+between a demo that is trusted and one that gets picked apart.
 
 ### Key point J — this is why the archive can hold a person changing
 
@@ -219,7 +234,7 @@ Keep **B** and **H**. They are the two claims nothing else in the project makes.
 | F | An invented edge lands on a real node |
 | G | It entered at rank 5 and pushed a real fact out of the top five |
 | H | Transaction time moved; her valid time did not |
-| I | Same subject, same predicate — the graph knows they conflict |
+| I | Same subject, same predicate — how a real call finds candidates (the *verdict* is a model, and is not running here) |
 | J | A flat index cannot report what it stopped believing |
 | K | The family may correct the system, and never her |
 
@@ -240,6 +255,15 @@ a busier drawing, so it is the alternate rather than the opener.
 No. BM25 for lexical match, breadth-first hops for structure, reciprocal rank
 fusion to combine them. Deterministic end to end — which is why the numbers are
 on screen at all.
+
+**"Is a model deciding which fact conflicts?"**
+Not in this panel — no model runs anywhere in it. On a real call, a deterministic
+filter narrows to facts with the same subject and predicate, and then Gemini
+decides whether they genuinely disagree and which kind of disagreement it is: a
+state change (the shop opened, then closed — both true, valid time closes) or
+conflicting testimony (one event, two accounts — transaction time moves). Here
+you click the fact and the verdict is fixed to the second kind. The demo shows
+the mechanics, not the judgement.
 
 **"Did the BM25 scores just change?"**
 Yes, and that is a good catch — 5.07 became 5.20 after the create. Adding a
