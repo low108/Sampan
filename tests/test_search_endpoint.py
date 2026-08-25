@@ -14,6 +14,7 @@ archive would break the promise the whole thing rests on.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -512,7 +513,10 @@ class TestTheJudge:
         assert verdict["clock"] == "valid time"
         old = next(e for e in body["edges"] if e["fact_id"] == "f_siput")
         assert old["retired"] is False
-        assert old["valid_to"] == "now"
+        # The year, not "now": this phrase becomes the old interval's end date
+        # on the page, and "until 2026" is a sentence about Ah Chwee where
+        # "until now" is a sentence about the demo.
+        assert old["valid_to"] == str(datetime.now(UTC).year)
         assert body["trace"]["retired"] == []
 
     def test_conflicting_testimony_moves_transaction_time_instead(

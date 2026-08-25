@@ -834,7 +834,11 @@ def create_app() -> FastAPI:
                 # opens, so a state change needs somewhere to close it to. She
                 # is describing how things stand now, which is what this says.
                 valid_from=When(
-                    raw_phrase="now",
+                    # The year rather than "now", because this phrase is what
+                    # closes the old interval and ends up on the page as its
+                    # end date. "until now" is a statement about the demo;
+                    # "until 2026" is a statement about Ah Chwee.
+                    raw_phrase=str(datetime.now(UTC).year),
                     start_year=datetime.now(UTC).year,
                     precision=Precision.YEAR,
                     confidence=0.6,

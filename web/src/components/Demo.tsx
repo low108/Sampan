@@ -49,12 +49,17 @@ function stamp(iso?: string): string {
     : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-/* One clock, as an interval. An open end is an arrow into nothing, which is
-   what "still true" and "still asserted" both look like. */
+/* One clock, as an interval.
+ *
+ * An open end is an arrow into nothing — that is what "still true" and "still
+ * asserted" both look like. A closed one with no start reads "until 1969"
+ * rather than "— → 1969", because the first is a sentence about her and the
+ * second is a sentence about a missing field. */
 function span(from?: string, to?: string): string {
   if (!from && !to) return '—';
   if (!to) return `${from} →`;
-  return `${from || '—'} → ${to}`;
+  if (!from) return `until ${to}`;
+  return `${from} → ${to}`;
 }
 
 export function Demo({ narratorId, name, onClose }: {

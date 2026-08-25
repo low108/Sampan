@@ -145,9 +145,20 @@ export function Graph({ result }: { result: SearchResult }) {
               className="edge"
               data-returned={e.rank !== null}
               data-retired={e.retired}
+              /* Closed is not retired, and drawing them the same was wrong.
+                 A retired edge is one the archive withdrew. A closed one it
+                 still stands behind — the thing simply stopped being true, the
+                 way a shop that opened in 1958 and shut in 1969 is not a
+                 correction. Without a third state a state change changed
+                 nothing in the picture, which made the beat look broken. */
+              data-closed={!e.retired && !!e.valid_to}
               data-fresh={fresh.has(e.fact_id)}
             >
-              <title>{e.statement}</title>
+              <title>
+                {e.statement}
+                {e.valid_to ? ` — no longer true (until ${e.valid_to})` : ''}
+                {e.retired ? ' — no longer asserted' : ''}
+              </title>
             </line>
           );
         })}
@@ -175,6 +186,7 @@ export function Graph({ result }: { result: SearchResult }) {
       <div className="key">
         <span><s className="seed" /> named by the question</span>
         <span><s className="ret" /> returned</span>
+        <span><s className="shut" /> no longer true</span>
         <span><s className="exp" /> no longer asserted</span>
       </div>
     </div>
