@@ -20,10 +20,10 @@ the three beats, so the whole demo is five clicks and one typed sentence.
 | 1 | Retrieve | nothing — it opens on the query | 30 s |
 | 2 | The empty case | pill → `who is Ah Seng` | 20 s |
 | 3 | Create | pill → back to the coffee shop, **Create**, type, Enter | 35 s |
-| 4 | Update | pill → `who lived in Sungai Siput`, **Update**, click row 1 | 35 s |
+| 4 | Update | pill → `who lived in Sungai Siput`, **Update**, click row 1, type | 45 s |
 | 5 | Close | Reset | 10 s |
 
-**Total 2 min 10 s.** A 60-second cut is at the bottom.
+**Total 2 min 20 s.** A 60-second cut is at the bottom.
 
 ---
 
@@ -126,39 +126,64 @@ Ah Fatt drank his kopi at the coffee shop every afternoon.
 
 ---
 
-## 4 · UPDATE — two clocks
+## 4 · UPDATE — she says it differently now
 
 **Do:** click the pill **`who lived in Sungai Siput`**. Click **UPDATE**.
-Rank 1 is `Ah Chwee lives in Sungai Siput.` (bm25 5.20). **Click that row.**
+Rank 1 is `Ah Chwee lives in Sungai Siput.` (bm25 5.07). **Click that row** — the
+panel says *Replacing "Ah Chwee lives in Sungai Siput."* Then type and Enter:
 
-> Say she tells us next month that Ah Chwee moved to her daughter's place in Ipoh.
-> The old telling does not get deleted.
+```
+Ah Chwee lives in Kampung Baru now.
+```
 
-**On screen:** scored **9 → 8**, edges held **19 → 18**. The row leaves the
-ranking; `She grew up on a rubber estate in Sungai Siput` takes rank 1. The
-retired statement reappears at the bottom under **4 · NO LONGER ASSERTED**, and
-the edge is still in the drawing, greyed and dashed.
+> Say she tells us next month that Ah Chwee has moved. What should the archive do
+> with what it already holds?
+
+**On screen:** the drawing goes **9 nodes → 10**. `Kampung Baru` appears, joined
+to Ah Chwee by a fresh dashed edge. The old row leaves the ranking, and stage 4
+shows both tellings — the old one dimmed, the new one accented underneath:
+
+```
+"Ah Chwee lives in Sungai Siput."
+TRANSACTION TIME MOVED · HER DATES UNTOUCHED
+
+SHE SAYS THIS NOW
+"Ah Chwee lives in Kampung Baru now."
+```
 
 ### Key point H — valid time and transaction time are different clocks
 
-> It moved in **transaction time** — the archive stopped asserting it. Her own
-> dates are untouched, because **valid time** is what *she* said, and she was not
-> wrong. She was right in 1952 and she is right now.
+> The old telling is not deleted. It moved in **transaction time** — the archive
+> stopped asserting it. Her own dates are untouched, because **valid time** is
+> what *she* said, and she was not wrong. Ah Chwee *did* live in Sungai Siput.
 
-### Key point I — this is why the archive can hold a person changing
+### Key point I — the graph knows the two facts are about the same thing
 
-> A flat index cannot tell you what it stopped believing. This is the only reason
-> the archive can hold thirty years of someone's memory shifting without quietly
-> overwriting them — and without ever recording that she made a mistake.
+> The new edge landed on **the same node with the same predicate** — Ah Chwee,
+> `lived_at`. That pairing is not something I picked for the demo: it is exactly
+> how the system decides two facts are in conflict on a real call, and the
+> retirement runs through the same function the real path calls.
+
+### Key point J — this is why the archive can hold a person changing
+
+> A flat index cannot tell you what it stopped believing. It would overwrite the
+> old row and you would never know it had been there. This is the only reason the
+> archive can hold thirty years of someone's memory shifting — and it never once
+> records that she made a mistake.
+
+**If asked "what if she is just wrong, not moved?"** — that is the distinction the
+system draws between a **state change** (the shop opened, then closed: both true,
+valid time closes) and **conflicting testimony** (she told it two ways: transaction
+time moves, valid time untouched). This beat is the second kind.
 
 ---
 
 ## 5 · Close — nothing here is written
 
-**Do:** point at **RESET · 2 CHANGES**, then at the subtitle top-left:
+**Do:** point at **RESET · 1 CHANGE**, then at the subtitle top-left:
 *Siew Khim's graph · nothing here is written.* Click Reset. Everything returns.
 
-### Key point J — the rule the whole product rests on
+### Key point K — the rule the whole product rests on
 
 > Nothing I just did touched her archive. The sandbox rides on the request and
 > dies with it. That is deliberate: **the family may correct the system, and never
@@ -174,9 +199,11 @@ Keep **B** and **H**. They are the two claims nothing else in the project makes.
 1. **(30 s)** It opens on the coffee shop question. Rows 2 and 3: higher keyword
    score, lower rank, because of graph distance. Then: no model in this path,
    same numbers every time.
-2. **(30 s)** Pill → `who lived in Sungai Siput` → **Update** → click row 1. It
-   leaves the ranking; it does not leave the archive. Transaction time moved, her
-   dates did not. Land on *nothing here is written*.
+2. **(30 s)** Pill → `who lived in Sungai Siput` → **Update** → click row 1 →
+   type `Ah Chwee lives in Kampung Baru now.` The new place appears on the graph
+   joined to Ah Chwee; the old telling drops out of the ranking and is kept
+   underneath. Transaction time moved, her dates did not. Land on *nothing here
+   is written*.
 
 ---
 
@@ -192,8 +219,9 @@ Keep **B** and **H**. They are the two claims nothing else in the project makes.
 | F | An invented edge lands on a real node |
 | G | It entered at rank 5 and pushed a real fact out of the top five |
 | H | Transaction time moved; her valid time did not |
-| I | A flat index cannot report what it stopped believing |
-| J | The family may correct the system, and never her |
+| I | Same subject, same predicate — the graph knows they conflict |
+| J | A flat index cannot report what it stopped believing |
+| K | The family may correct the system, and never her |
 
 ---
 
@@ -229,9 +257,15 @@ because they are inspectable, and on a few hundred facts about one family, a nam
 matching a name is a strong signal.
 
 **"Can I break it by typing anything?"**
-Please do. A sentence naming nobody invents a node instead of attaching itself to
-a real one, so it floats unconnected — the honest picture. And none of it is
-written down.
+Please do. In Create, a sentence naming nobody invents a node instead of attaching
+itself to a real one, so it floats unconnected — the honest picture. And none of
+it is written down.
+
+**"How does it know which fact I am correcting?"**
+You told it, by clicking the row. On a real call a model makes that judgement,
+comparing the new fact against every current one with the same subject and
+predicate. The demo does not run that model, so it does not pretend to: picking
+the row by hand is the honest version.
 
 ---
 
