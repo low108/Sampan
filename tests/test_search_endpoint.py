@@ -358,3 +358,114 @@ class TestUpdate:
 
         kept = Repository(store).load_facts(NARRATOR)
         assert "f_siput" in {f.fact_id for f in kept}
+
+
+class TestSupersede:
+    """She says it differently now.
+
+    Retiring alone answers "stop asserting this". A supersession carries the
+    replacement, which is the thing worth showing: the archive holds both
+    tellings, on the same subject, and knows which one it stands behind.
+    """
+
+    LATER = "Ah Chwee lives in Kampung Baru now."
+
+    def replace(self, client: TestClient, question: str = "who is Ah Chwee") -> dict:
+        return search(
+            client,
+            question,
+            replaced=[
+                {
+                    "fact_id": "f_siput",
+                    "statement": self.LATER,
+                    "object_literal": "Kampung Baru",
+                }
+            ],
+        )
+
+    def test_the_old_telling_stops_being_asserted(self, client: TestClient) -> None:
+        body = self.replace(client)
+
+        old = next(e for e in body["edges"] if e["fact_id"] == "f_siput")
+        assert old["retired"] is True
+
+    def test_it_names_what_replaced_it(self, client: TestClient) -> None:
+        """`superseded_by` points at the new fact, so the page can say what she
+        says now instead of only that she stopped saying the old thing."""
+        body = self.replace(client)
+
+        retired = next(r for r in body["trace"]["retired"] if r["fact_id"] == "f_siput")
+        assert retired["superseded_by"] == "demo_super_0"
+        new = next(e for e in body["edges"] if e["fact_id"] == "demo_super_0")
+        assert new["statement"] == self.LATER
+
+    def test_the_replacement_lands_on_the_same_subject(
+        self, client: TestClient
+    ) -> None:
+        """The point of the beat: Ah Chwee is now joined to the new place, and
+        the old edge is still there, greyed."""
+        body = self.replace(client)
+
+        old = next(e for e in body["edges"] if e["fact_id"] == "f_siput")
+        new = next(e for e in body["edges"] if e["fact_id"] == "demo_super_0")
+        assert new["source"] == old["source"] == "e_chwee"
+        assert new["target"] != old["target"]
+
+    def test_the_replacement_keeps_the_old_predicate(self, client: TestClient) -> None:
+        """Same subject and same predicate is exactly the pair
+        `contradiction.candidates` uses to decide two facts are about the same
+        thing, so the demo and the real path agree on what a conflict is."""
+        body = self.replace(client)
+
+        new = next(e for e in body["edges"] if e["fact_id"] == "demo_super_0")
+        assert new["predicate"] == "lived_at"
+
+    def test_the_new_place_is_drawn_as_its_own_node(self, client: TestClient) -> None:
+        body = self.replace(client)
+
+        new = next(e for e in body["edges"] if e["fact_id"] == "demo_super_0")
+        node = next(n for n in body["nodes"] if n["id"] == new["target"])
+        assert node["name"] == "Kampung Baru"
+        assert node["invented"] is True
+
+    def test_only_transaction_time_moves(
+        self, client: TestClient, store: InMemoryDocumentStore
+    ) -> None:
+        """Valid time is what she said. The archive stops standing behind the
+        older telling without ever recording that she was wrong."""
+        was = next(
+            f
+            for f in Repository(store).load_facts(NARRATOR, current_only=False)
+            if f.fact_id == "f_siput"
+        )
+
+        body = self.replace(client)
+
+        old = next(e for e in body["edges"] if e["fact_id"] == "f_siput")
+        assert old["superseded_by"] == "demo_super_0"
+        now = next(
+            f
+            for f in Repository(store).load_facts(NARRATOR, current_only=False)
+            if f.fact_id == "f_siput"
+        )
+        assert (now.valid_from, now.valid_to) == (was.valid_from, was.valid_to)
+
+    def test_replacing_a_fact_that_does_not_exist_is_ignored(
+        self, client: TestClient
+    ) -> None:
+        body = search(
+            client,
+            "who is Ah Chwee",
+            replaced=[{"fact_id": "ghost", "statement": "Something else."}],
+        )
+
+        assert "demo_super_0" not in {e["fact_id"] for e in body["edges"]}
+
+    def test_nothing_is_written_to_her_archive(
+        self, client: TestClient, store: InMemoryDocumentStore
+    ) -> None:
+        before = Repository(store).load_facts(NARRATOR, current_only=False)
+
+        self.replace(client)
+
+        assert Repository(store).load_facts(NARRATOR, current_only=False) == before

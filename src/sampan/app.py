@@ -31,7 +31,10 @@ from sampan.armor import build_screen
 from sampan.auth import require_api_key
 from sampan.callflow import Transcript, finish_call, prepare_call
 from sampan.config import Settings, apply_genai_env, get_settings
-from sampan.contradiction import GeminiContradictionJudge
+from sampan.contradiction import (
+    GeminiContradictionJudge,
+    apply_conflicting_testimony,
+)
 from sampan.corrections import (
     Correction,
     apply_correction,
@@ -94,8 +97,28 @@ class DraftFact(BaseModel):
     statement: str = Field(min_length=1, max_length=400)
 
 
+class Supersession(BaseModel):
+    """A later telling that replaces an earlier one.
+
+    Retiring a fact on its own answers "stop asserting this". It does not show
+    the thing worth showing, which is that the archive holds *both* tellings and
+    knows which one it currently stands behind. A supersession carries the
+    replacement with it, so the drawing gets a retired edge and a fresh one on
+    the same subject and you can see the belief move.
+    """
+
+    # The telling being replaced. Named explicitly rather than inferred: the
+    # real path asks a model which fact a new one disagrees with, and a demo
+    # that guessed would be claiming a capability it is not exercising.
+    fact_id: str = Field(min_length=1, max_length=200)
+    statement: str = Field(min_length=1, max_length=400)
+    # What the new edge points at. The client extracts it from the sentence for
+    # a readable label; empty is fine and falls back to the sentence.
+    object_literal: str = Field(default="", max_length=200)
+
+
 class SearchRequest(BaseModel):
-    """A question, plus whatever the demo has added or retired.
+    """A question, plus whatever the demo has added, retired or replaced.
 
     The sandbox rides on the request rather than living on the server. Nothing
     is written, so a demo cannot leave marks on her archive -- and the whole
@@ -106,6 +129,7 @@ class SearchRequest(BaseModel):
     question: str = Field(min_length=1, max_length=300)
     added: list[DraftFact] = Field(default_factory=list, max_length=20)
     retired: list[str] = Field(default_factory=list, max_length=20)
+    replaced: list[Supersession] = Field(default_factory=list, max_length=20)
 
 
 class ChooseAskRequest(BaseModel):
@@ -737,6 +761,40 @@ def create_app() -> FastAPI:
                     episode_id="demo",
                 )
             )
+
+        # A supersession: she says it differently now. The replacement takes the
+        # old fact's subject and predicate -- which is exactly the pair
+        # `contradiction.candidates` uses to decide two facts are about the same
+        # thing -- so the new edge lands on the same node and the two can be
+        # seen side by side, one current and one not.
+        #
+        # The retirement itself goes through `apply_conflicting_testimony`, the
+        # same function a real call uses. Reimplementing it here would let the
+        # demo drift from the product, and this is the one claim worth being
+        # careful about: `t_expired` moves, `valid_to` does not, and the archive
+        # never records that she was wrong.
+        by_id = {f.fact_id: f for f in working}
+        for i, swap in enumerate(body.replaced):
+            old = by_id.get(swap.fact_id)
+            if old is None or not old.is_current:
+                continue
+            target = f"demo_super_node_{i}"
+            invented[target] = swap.object_literal or swap.statement
+            fresh = Fact(
+                fact_id=f"demo_super_{i}",
+                subject_id=old.subject_id,
+                predicate=old.predicate,
+                object_id=target,
+                object_literal=swap.object_literal,
+                statement=swap.statement,
+                quote=swap.statement,
+                episode_id="demo",
+            )
+            working = [
+                apply_conflicting_testimony(f, fresh) if f.fact_id == old.fact_id else f
+                for f in working
+            ]
+            working.append(fresh)
 
         graph = FactGraph(facts=working, entities=entities)
 

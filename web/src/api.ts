@@ -7,6 +7,7 @@ import type {
   MapView,
   PendingAsk,
   DraftFact,
+  Supersession,
   SearchResult,
   TimelineView,
 } from './types';
@@ -77,7 +78,11 @@ export const api = {
   search: (
     narrator: string,
     question: string,
-    sandbox: { added?: DraftFact[]; retired?: string[] } = {},
+    sandbox: {
+      added?: DraftFact[];
+      retired?: string[];
+      replaced?: Supersession[];
+    } = {},
   ) =>
     request<SearchResult>(`/api/family/${encodeURIComponent(narrator)}/search`, {
       method: 'POST',
@@ -85,6 +90,7 @@ export const api = {
         question,
         added: sandbox.added ?? [],
         retired: sandbox.retired ?? [],
+        replaced: sandbox.replaced ?? [],
       }),
     }),
 

@@ -192,6 +192,15 @@ export interface DraftFact {
   statement: string;
 }
 
+/** A later telling replacing an earlier one. The replacement inherits the old
+ *  fact's subject and predicate, so it lands on the same node and the two can
+ *  be seen side by side — one current, one no longer asserted. */
+export interface Supersession {
+  fact_id: string;
+  statement: string;
+  object_literal: string;
+}
+
 export interface SearchResult {
   trace: SearchTrace;
   nodes: {

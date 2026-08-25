@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import type { DraftFact, SearchResult } from '../types';
+import type { DraftFact, Scored, SearchResult, Supersession } from '../types';
 import { Graph } from './Graph';
 
 /* Inside the memory: retrieve, create, update.
@@ -21,7 +21,7 @@ type Mode = 'retrieve' | 'create' | 'update';
 const MODES: [Mode, string, string][] = [
   ['retrieve', 'Retrieve', 'ask the graph and watch it rank'],
   ['create', 'Create', 'add an edge and watch it compete'],
-  ['update', 'Update', 'retire a telling and watch it step aside'],
+  ['update', 'Update', 'replace a telling and watch the belief move'],
 ];
 
 /* The three questions the demo is built on, so it can be driven by clicking.
@@ -55,11 +55,18 @@ export function Demo({ narratorId, name, onClose }: {
      and it says how many changes are being carried. */
   const [added, setAdded] = useState<DraftFact[]>([]);
   const [retired, setRetired] = useState<string[]>([]);
+  const [replaced, setReplaced] = useState<Supersession[]>([]);
   const [draft, setDraft] = useState('');
+  /* The telling being corrected, chosen by clicking a row. Held rather than
+     inferred: the real path asks a model which fact a new one disagrees with,
+     and a demo that guessed would be claiming a capability it is not running. */
+  const [replacing, setReplacing] = useState<Scored | null>(null);
+  const [later, setLater] = useState('');
 
   const run = async (over?: {
     added?: DraftFact[];
     retired?: string[];
+    replaced?: Supersession[];
     ask?: string;
   }) => {
     const asked = (over?.ask ?? query).trim();
@@ -71,6 +78,7 @@ export function Demo({ narratorId, name, onClose }: {
         await api.search(narratorId, asked, {
           added: over?.added ?? added,
           retired: over?.retired ?? retired,
+          replaced: over?.replaced ?? replaced,
         }),
       );
     } catch {
@@ -89,7 +97,10 @@ export function Demo({ narratorId, name, onClose }: {
   const reset = () => {
     setAdded([]);
     setRetired([]);
-    void run({ added: [], retired: [] });
+    setReplaced([]);
+    setReplacing(null);
+    setLater('');
+    void run({ added: [], retired: [], replaced: [] });
   };
 
   /* Create: one sentence in, and the subject is whichever entity the sentence
@@ -130,11 +141,49 @@ export function Demo({ narratorId, name, onClose }: {
     if (retired.includes(factId)) return;
     const next = [...retired, factId];
     setRetired(next);
+    setReplacing(null);
     void run({ retired: next });
   };
 
+  /* What the new edge should point at, for a label that reads like a place
+     rather than a whole claim. "Ah Chwee lives in Kampung Baru now" → "Kampung
+     Baru". A demo convenience and nothing more: the real archive gets its
+     objects from the fact extractor, which is a model call on the transcript.
+     When this finds nothing the server falls back to the sentence. */
+  const objectOf = (sentence: string): string => {
+    const m = /\b(?:in|at|to|on)\s+(.+)$/i.exec(sentence.trim());
+    if (!m?.[1]) return '';
+    return m[1]
+      .replace(/\b(now|these days|nowadays|today)\b/gi, '')
+      .replace(/[.!?,]+\s*$/, '')
+      .trim();
+  };
+
+  /* Update: she says it differently now.
+
+     The replacement inherits the old fact's subject and predicate on the
+     server — the same pair `contradiction.candidates` uses to decide two facts
+     are about the same thing — so the new edge lands on the same node and both
+     tellings are visible at once, one current and one not. */
+  const supersede = () => {
+    const sentence = later.trim();
+    if (!sentence || !replacing) return;
+    const next = [
+      ...replaced,
+      {
+        fact_id: replacing.fact_id,
+        statement: sentence,
+        object_literal: objectOf(sentence),
+      },
+    ];
+    setReplaced(next);
+    setReplacing(null);
+    setLater('');
+    void run({ replaced: next });
+  };
+
   const trace = result?.trace;
-  const touched = added.length + retired.length;
+  const touched = added.length + retired.length + replaced.length;
 
   return (
     <div className="demo">
@@ -220,12 +269,42 @@ export function Demo({ narratorId, name, onClose }: {
 
           {mode === 'update' && (
             <div className="panel">
-              <div className="lbl dim">Retire a telling</div>
-              <p className="prose">
-                Retiring moves a fact in <em>transaction time</em> — the archive
-                stops asserting it and keeps it, with her own dates untouched.
-                It is not a delete, and it never records that she was wrong.
-              </p>
+              <div className="lbl dim">She says it differently now</div>
+              {replacing === null ? (
+                <p className="prose">
+                  Pick the telling she is correcting — click any row below. Then
+                  say what she says now. The archive keeps both and stops
+                  standing behind the older one; it never records that she was
+                  wrong.
+                </p>
+              ) : (
+                <>
+                  <p className="prose">
+                    Replacing <q>{replacing.statement}</q>
+                  </p>
+                  <input
+                    value={later}
+                    placeholder="Ah Chwee lives in Kampung Baru now."
+                    autoFocus
+                    onChange={(e) => setLater(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') supersede();
+                      if (e.key === 'Escape') setReplacing(null);
+                    }}
+                  />
+                  <div className="row">
+                    <button className="btn ghost" onClick={supersede}>
+                      She said this instead
+                    </button>
+                    <button
+                      className="btn ghost"
+                      onClick={() => retire(replacing.fact_id)}
+                    >
+                      Just stop asserting it
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -258,7 +337,7 @@ export function Demo({ narratorId, name, onClose }: {
                 <div className="lbl dim">3 · Focus</div>
                 <p className="lbl dim step">
                   {trace.candidates.length} scored · {trace.returned.length} returned
-                  {mode === 'update' && ' · click a row to retire it'}
+                  {mode === 'update' && ' · click the telling she is correcting'}
                 </p>
                 <table className="scores">
                   <thead>
@@ -270,7 +349,8 @@ export function Demo({ narratorId, name, onClose }: {
                         key={c.fact_id}
                         data-returned={c.rank !== null}
                         data-clickable={mode === 'update'}
-                        onClick={() => mode === 'update' && retire(c.fact_id)}
+                        data-picked={replacing?.fact_id === c.fact_id}
+                        onClick={() => mode === 'update' && setReplacing(c)}
                       >
                         <td>{c.rank === null ? '—' : c.rank + 1}</td>
                         <td>{c.bm25.toFixed(2)}</td>
@@ -289,16 +369,39 @@ export function Demo({ narratorId, name, onClose }: {
                   <p className="lbl dim step">
                     matched the question · kept, and no longer standing behind it
                   </p>
-                  {trace.retired.map((r) => (
-                    <div key={r.fact_id} className="quote retired">
-                      <div>
-                        <q>{r.statement}</q>
-                        <div className="lbl dim by">
-                          transaction time · her dates untouched
+                  {trace.retired.map((r) => {
+                    /* `superseded_by` is a fact id. Resolve it against the
+                       edges in this same response so the page can say what
+                       replaced it, which is the only part of a supersession
+                       anyone actually cares about. */
+                    const by = result?.edges.find(
+                      (e) => e.fact_id === r.superseded_by,
+                    );
+                    return (
+                      <div key={r.fact_id} className="swap">
+                        <div className="quote retired">
+                          <div>
+                            <q>{r.statement}</q>
+                            <div className="lbl dim by">
+                              transaction time moved · her dates untouched
+                            </div>
+                          </div>
                         </div>
+                        {/* The replacement is the current belief, so it is not
+                            dimmed with the telling it replaced. Showing them at
+                            the same weight was the mistake: the archive stands
+                            behind exactly one of these two. */}
+                        {by && (
+                          <div className="quote later">
+                            <div>
+                              <div className="lbl dim">she says this now</div>
+                              <q>{by.statement}</q>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </section>
               )}
             </div>

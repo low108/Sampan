@@ -553,6 +553,13 @@ sampan-map { display: block; width: 100%; height: 100%; }
 .demo .stage { border-top-color: var(--line-cream); }
 .demo .quote { border-color: var(--line-cream); background: none; }
 .demo .quote q { color: var(--cream); }
+/* A supersession: the telling that was replaced, then the one that
+   replaced it. Kept apart so the current belief is not dimmed with
+   the old one -- the archive stands behind exactly one of them. */
+.demo .swap { margin-bottom: 18px; }
+.demo .quote.later { border-left: 2px solid var(--accent); opacity: 1;
+  margin-top: 6px; }
+.demo .quote.later .lbl { margin-bottom: 4px; }
 
 .panel { border: 1px solid var(--line-cream); border-radius: var(--radius-s);
          padding: 18px; margin-top: 24px; }
@@ -566,6 +573,9 @@ sampan-map { display: block; width: 100%; height: 100%; }
 /* Only clickable in update mode, and it has to look it. */
 .demo .scores tr[data-clickable='true'] { cursor: pointer; }
 .demo .scores tr[data-clickable='true']:hover td { color: var(--accent); }
+/* The row being corrected, held while the replacement is typed. */
+.demo .scores tr[data-picked='true'] td { color: var(--accent); }
+.demo .scores tr[data-picked='true'] { background: rgba(242, 169, 60, .07); }
 
 .key { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px;
        font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.5px;
