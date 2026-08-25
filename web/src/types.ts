@@ -222,7 +222,28 @@ export interface SearchResult {
     rank: number | null;
     retired: boolean;
     superseded_by: string;
+    /** Set when a state change closed this interval. The fact is still
+     *  current: it was true, then it stopped being true, which is not the
+     *  same as the archive withdrawing it. */
+    valid_to: string;
   }[];
+  /** What the contradiction judge made of each correction. The only part of
+   *  a search response that came from a model. */
+  verdicts: Verdict[];
+}
+
+/** One correction, as the judge saw it. */
+export interface Verdict {
+  fact_id: string;
+  /** state_change | conflicting_testimony | none */
+  kind: string;
+  reason: string;
+  confidence: number;
+  /** "valid time" or "transaction time" — which clock moved. */
+  clock: string;
+  /** False when the model did not run and the conservative default was used. */
+  judged: boolean;
+  replacement: string;
 }
 
 export type Tab = 'map' | 'record' | 'family';

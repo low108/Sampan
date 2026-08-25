@@ -557,6 +557,11 @@ sampan-map { display: block; width: 100%; height: 100%; }
    replaced it. Kept apart so the current belief is not dimmed with
    the old one -- the archive stands behind exactly one of them. */
 .demo .swap { margin-bottom: 18px; }
+/* The verdict. The only thing on this page a model produced, so it is the
+   one block allowed to look like an answer rather than a working. */
+.demo .stage.verdict { border-left: 2px solid var(--accent); padding-left: 18px; }
+.demo .stage.verdict .ttl { font-size: 22px; margin: 6px 0 10px; }
+.demo .stage.verdict .ttl .lbl { font-size: 11px; }
 .demo .quote.later { border-left: 2px solid var(--accent); opacity: 1;
   margin-top: 6px; }
 .demo .quote.later .lbl { margin-bottom: 4px; }

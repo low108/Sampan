@@ -57,9 +57,11 @@ export function Demo({ narratorId, name, onClose }: {
   const [retired, setRetired] = useState<string[]>([]);
   const [replaced, setReplaced] = useState<Supersession[]>([]);
   const [draft, setDraft] = useState('');
-  /* The telling being corrected, chosen by clicking a row. Held rather than
-     inferred: the real path asks a model which fact a new one disagrees with,
-     and a demo that guessed would be claiming a capability it is not running. */
+  /* The telling being corrected, chosen by clicking a row rather than inferred.
+     On a real call the pipeline narrows to facts with the same subject and
+     predicate and a model reads them; here you point at one. What the model
+     does decide, once you have, is which *kind* of disagreement it is — and
+     that half is real, because it is the half that picks the clock. */
   const [replacing, setReplacing] = useState<Scored | null>(null);
   const [later, setLater] = useState('');
 
@@ -161,14 +163,16 @@ export function Demo({ narratorId, name, onClose }: {
 
   /* Update: she says it differently now.
 
-     The fact being replaced is the one that was clicked. Nothing infers it, and
-     nothing compares the new sentence against the old — the server takes this
-     id and looks it up. On a real call a model does that work, and saying so
-     out loud is cheaper than being caught assuming otherwise.
+     Which fact is being replaced came from a click; the server looks it up by
+     id and nothing compares the two statements to find it. What happens next
+     is a real model call — the same contradiction judge a real call uses reads
+     both statements and says whether she moved (a state change, valid time
+     closes) or misremembered (conflicting testimony, transaction time moves).
 
-     The replacement copies the old fact's subject and predicate on the server,
-     so the new edge lands on the same node and both tellings are visible at
-     once, one current and one not. */
+     That is why this request is slow where the others are instant, and why the
+     button says so. Around three seconds, and worth every one of them: the
+     verdict is the only thing in this panel that could not have been worked
+     out from the numbers. */
   const supersede = () => {
     const sentence = later.trim();
     if (!sentence || !replacing) return;
@@ -276,10 +280,10 @@ export function Demo({ narratorId, name, onClose }: {
               <div className="lbl dim">She says it differently now</div>
               {replacing === null ? (
                 <p className="prose">
-                  Pick the telling she is correcting — click any row below. Then
-                  say what she says now. The archive keeps both and stops
-                  standing behind the older one; it never records that she was
-                  wrong.
+                  Pick the telling she is correcting — click any row below.
+                  Then say what she says now, and a model decides which kind of
+                  disagreement it is: she moved, or she remembers it
+                  differently. The two move different clocks.
                 </p>
               ) : (
                 <>
@@ -297,8 +301,8 @@ export function Demo({ narratorId, name, onClose }: {
                     }}
                   />
                   <div className="row">
-                    <button className="btn ghost" onClick={supersede}>
-                      She said this instead
+                    <button className="btn ghost" disabled={asking} onClick={supersede}>
+                      {asking ? 'Asking the judge…' : 'She said this instead'}
                     </button>
                     <button
                       className="btn ghost"
@@ -366,6 +370,52 @@ export function Demo({ narratorId, name, onClose }: {
                   </tbody>
                 </table>
               </section>
+
+              {/* The verdict. Placed before stage 4 because on a state change
+                  stage 4 is empty — nothing was withdrawn — and without this
+                  the correction would look like it did nothing at all. */}
+              {(result?.verdicts ?? []).map((v) => {
+                const was = result?.edges.find((e) => e.fact_id === v.fact_id);
+                const now = result?.edges.find(
+                  (e) => e.fact_id === v.replacement,
+                );
+                const moved = v.kind === 'state_change';
+                return (
+                  <section className="stage verdict" key={v.fact_id}>
+                    <div className="lbl dim">
+                      {v.judged
+                        ? 'the judge decided · gemini'
+                        : 'the judge did not run · using the careful default'}
+                    </div>
+                    <p className="ttl">
+                      {moved ? 'State change' : 'Conflicting testimony'}
+                      {v.judged && (
+                        <span className="lbl dim"> · confidence {v.confidence}</span>
+                      )}
+                    </p>
+                    {v.reason && <p className="prose">{v.reason}</p>}
+                    <p className="prose">
+                      {moved ? (
+                        <>
+                          Both were true, one after the other, so <em>valid
+                          time</em> is what moved: <q>{was?.statement}</q> closes
+                          where <q>{now?.statement}</q> opens. Neither is
+                          withdrawn, and the archive is not asserting that she
+                          was wrong — because she was not.
+                        </>
+                      ) : (
+                        <>
+                          One event, two accounts, so <em>transaction time</em>
+                          {' '}is what moved. The archive stops asserting the
+                          older telling and keeps it. Her own dates are
+                          untouched, and nothing anywhere records that she made
+                          a mistake.
+                        </>
+                      )}
+                    </p>
+                  </section>
+                );
+              })}
 
               {trace.retired.length > 0 && (
                 <section className="stage">

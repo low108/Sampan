@@ -18,9 +18,11 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
+from sampan import app as app_module
 from sampan.app import create_app, get_store
 from sampan.auth import API_KEY_HEADER
 from sampan.config import Settings, get_settings
+from sampan.contradiction import Disagreement, Judgement
 from sampan.entities import Entity, EntityType
 from sampan.facts import Fact, Predicate
 from sampan.repository import Repository
@@ -469,3 +471,124 @@ class TestSupersede:
         self.replace(client)
 
         assert Repository(store).load_facts(NARRATOR, current_only=False) == before
+
+
+class TestTheJudge:
+    """Which kind of disagreement, and therefore which clock moves.
+
+    This is the one place in the panel a model runs, and it is the half worth
+    running: hardcoding conflicting testimony made "Ah Chwee lives in Kampung
+    Baru now" -- someone moving house -- read as her misremembering, which
+    collapses the two clocks the whole bi-temporal design exists to separate.
+    """
+
+    SWAP = [
+        {
+            "fact_id": "f_siput",
+            "statement": "Ah Chwee lives in Kampung Baru now.",
+            "object_literal": "Kampung Baru",
+        }
+    ]
+
+    def verdict(self, client: TestClient) -> tuple[dict, dict]:
+        body = search(client, "who is Ah Chwee", replaced=self.SWAP)
+        return body, body["verdicts"][0]
+
+    def test_a_state_change_closes_valid_time_and_retires_nothing(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """She moved. Both tellings were true, one after the other."""
+        monkeypatch.setattr(
+            app_module,
+            "_judge_swap",
+            lambda settings, new, old: Judgement(
+                kind=Disagreement.STATE_CHANGE, reason="She moved.", confidence=0.95
+            ),
+        )
+
+        body, verdict = self.verdict(client)
+
+        assert verdict["kind"] == "state_change"
+        assert verdict["clock"] == "valid time"
+        old = next(e for e in body["edges"] if e["fact_id"] == "f_siput")
+        assert old["retired"] is False
+        assert old["valid_to"] == "now"
+        assert body["trace"]["retired"] == []
+
+    def test_conflicting_testimony_moves_transaction_time_instead(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """One event, two accounts. Her own dates stay as she said them."""
+        monkeypatch.setattr(
+            app_module,
+            "_judge_swap",
+            lambda settings, new, old: Judgement(
+                kind=Disagreement.CONFLICTING_TESTIMONY, confidence=0.9
+            ),
+        )
+
+        body, verdict = self.verdict(client)
+
+        assert verdict["clock"] == "transaction time"
+        old = next(e for e in body["edges"] if e["fact_id"] == "f_siput")
+        assert old["retired"] is True
+        assert old["valid_to"] == ""
+
+    def test_the_reason_reaches_the_page(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            app_module,
+            "_judge_swap",
+            lambda settings, new, old: Judgement(
+                kind=Disagreement.STATE_CHANGE,
+                reason="Ah Chwee appears to have moved.",
+                confidence=0.95,
+            ),
+        )
+
+        _, verdict = self.verdict(client)
+
+        assert verdict["reason"] == "Ah Chwee appears to have moved."
+        assert verdict["judged"] is True
+
+    def test_without_cloud_it_falls_back_and_says_so(self, client: TestClient) -> None:
+        """The test client is unconfigured, so no model runs. The demo still
+        works, and the page can tell the audience nothing was judged."""
+        body, verdict = self.verdict(client)
+
+        assert verdict["judged"] is False
+        assert verdict["kind"] == "conflicting_testimony"
+        old = next(e for e in body["edges"] if e["fact_id"] == "f_siput")
+        assert old["retired"] is True
+
+    def test_a_judge_that_raises_does_not_take_the_demo_down(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """This runs live in front of an audience. A flat network should cost
+        the explanation, not the beat."""
+
+        class Broken:
+            def judge(self, new: object, old: object) -> Judgement:
+                raise RuntimeError("no network")
+
+        monkeypatch.setattr(app_module, "GeminiContradictionJudge", lambda s: Broken())
+        monkeypatch.setattr(
+            app_module.Settings, "configured", property(lambda self: True)
+        )
+
+        body, verdict = self.verdict(client)
+
+        assert verdict["judged"] is False
+        assert verdict["kind"] == "conflicting_testimony"
+        assert len(body["edges"]) > 0
+
+    def test_the_fallback_never_implies_she_was_wrong_about_her_own_dates(
+        self, client: TestClient
+    ) -> None:
+        """Conflicting testimony is the conservative half of the pair: it moves
+        transaction time only, so an unjudged correction cannot rewrite her."""
+        body, _ = self.verdict(client)
+
+        old = next(e for e in body["edges"] if e["fact_id"] == "f_siput")
+        assert old["valid_to"] == ""

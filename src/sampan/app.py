@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import uuid
 from datetime import UTC, datetime
@@ -32,8 +33,11 @@ from sampan.auth import require_api_key
 from sampan.callflow import Transcript, finish_call, prepare_call
 from sampan.config import Settings, apply_genai_env, get_settings
 from sampan.contradiction import (
+    Disagreement,
     GeminiContradictionJudge,
+    Judgement,
     apply_conflicting_testimony,
+    apply_state_change,
 )
 from sampan.corrections import (
     Correction,
@@ -52,7 +56,7 @@ from sampan.household import (
 )
 from sampan.live import ToolLog, open_session, pump
 from sampan.memories import BucketBlobs, VeoGenerator, decode_push, render
-from sampan.models import AffectState, Ask
+from sampan.models import AffectState, Ask, Precision, When
 from sampan.notifications import mark_seen, notifications_for, unseen_count
 from sampan.places import GeminiPlaceResolver
 from sampan.quiet import is_quiet
@@ -60,6 +64,8 @@ from sampan.repository import Repository
 from sampan.retrieval import FactGraph, SearchTrace, search_facts
 from sampan.store import DocumentStore, get_document_store
 from sampan.tools import CallMemory
+
+log = logging.getLogger("sampan.app")
 
 SMOKE_COLLECTION = "_smoke"
 
@@ -215,6 +221,27 @@ def find_static_dir() -> Path | None:
 
 _PLACE_CACHE = "_places"
 _LETTER_CACHE = "_letters"
+
+
+def _judge_swap(settings: Settings, new: Fact, old: Fact) -> Judgement:
+    """Which kind of disagreement, decided by the model a real call uses.
+
+    Falls back to conflicting testimony, which is the conservative half of the
+    pair: it moves transaction time and leaves her own dates untouched, so a
+    demo running without cloud credentials still refuses to imply she was
+    wrong. The verdict says `confidence=0` so the page can be honest that
+    nothing was actually judged, rather than showing a fallback as a finding.
+
+    Failing open matters more here than elsewhere: this runs live in front of
+    an audience, and a flat network should cost the explanation, not the demo.
+    """
+    if not settings.configured:
+        return Judgement(kind=Disagreement.CONFLICTING_TESTIMONY, confidence=0.0)
+    try:
+        return GeminiContradictionJudge(settings).judge(new, old)
+    except Exception:
+        log.exception("contradiction judge failed in the graph demo")
+        return Judgement(kind=Disagreement.CONFLICTING_TESTIMONY, confidence=0.0)
 
 
 def _letters_for(
@@ -698,6 +725,7 @@ def create_app() -> FastAPI:
         narrator_id: str,
         body: SearchRequest,
         store: Annotated[DocumentStore, Depends(get_store)],
+        settings: Annotated[Settings, Depends(get_settings)],
     ) -> dict[str, Any]:
         """Run the agent's own retrieval, and return its working.
 
@@ -764,21 +792,28 @@ def create_app() -> FastAPI:
 
         # A supersession: she says it differently now. The replacement takes the
         # old fact's subject and predicate by copying them, so the new edge
-        # lands on the same node and the two can be seen side by side, one
-        # current and one not.
+        # lands on the same node and the two can be seen side by side.
         #
-        # Nothing here decides *which* fact conflicts. `swap.fact_id` came from
-        # a click, and this is a dict lookup. On a real call that step is a
-        # deterministic narrowing to the same subject and predicate followed by
-        # a model deciding whether the two genuinely disagree and which of the
-        # two clocks should move. Neither runs in the demo, and the demo should
-        # never be described as if they did.
+        # *Which* fact is being corrected came from a click -- on a real call
+        # that is a deterministic narrowing to the same subject and predicate,
+        # and this is a dict lookup instead.
         #
-        # The retirement itself goes through `apply_conflicting_testimony`, the
-        # same function a real call uses. Reimplementing it here would let the
-        # demo drift from the product, and this is the one claim worth being
-        # careful about: `t_expired` moves, `valid_to` does not, and the archive
-        # never records that she was wrong.
+        # *Which kind* of disagreement it is, though, is decided here by the
+        # same judge a real call uses, because it is the question that matters
+        # and the answer is not obvious:
+        #
+        #   state change          she moved. Both tellings were true, one after
+        #                         the other, so `valid_to` closes on the old one
+        #                         and both stay current.
+        #   conflicting testimony one event, two accounts. `t_expired` moves and
+        #                         her valid time is left exactly as she said it.
+        #
+        # Hardcoding the second was wrong: "Ah Chwee lives in Kampung Baru now"
+        # is a state change, and calling it conflicting testimony collapses the
+        # two clocks -- the precise error the whole bi-temporal design exists to
+        # prevent. Guessing it in a panel built to explain the difference would
+        # have been the worst place in the product to get it wrong.
+        verdicts: list[dict[str, Any]] = []
         by_id = {f.fact_id: f for f in working}
         for i, swap in enumerate(body.replaced):
             old = by_id.get(swap.fact_id)
@@ -795,10 +830,38 @@ def create_app() -> FastAPI:
                 statement=swap.statement,
                 quote=swap.statement,
                 episode_id="demo",
+                # `apply_state_change` closes the old interval where the new one
+                # opens, so a state change needs somewhere to close it to. She
+                # is describing how things stand now, which is what this says.
+                valid_from=When(
+                    raw_phrase="now",
+                    start_year=datetime.now(UTC).year,
+                    precision=Precision.YEAR,
+                    confidence=0.6,
+                ),
+            )
+            judged = _judge_swap(settings, fresh, old)
+            if judged.kind is Disagreement.STATE_CHANGE:
+                amended = apply_state_change(old, fresh)
+            else:
+                amended = apply_conflicting_testimony(old, fresh)
+            verdicts.append(
+                {
+                    "fact_id": old.fact_id,
+                    "kind": judged.kind.value,
+                    "reason": judged.reason,
+                    "confidence": judged.confidence,
+                    "clock": (
+                        "valid time"
+                        if judged.kind is Disagreement.STATE_CHANGE
+                        else "transaction time"
+                    ),
+                    "judged": judged.confidence > 0.0,
+                    "replacement": fresh.fact_id,
+                }
             )
             working = [
-                apply_conflicting_testimony(f, fresh) if f.fact_id == old.fact_id else f
-                for f in working
+                amended if f.fact_id == old.fact_id else f for f in working
             ]
             working.append(fresh)
 
@@ -855,6 +918,9 @@ def create_app() -> FastAPI:
 
         return {
             "trace": trace.model_dump(mode="json"),
+            # What the judge made of each correction. The only part of this
+            # response that came from a model, and the page says so.
+            "verdicts": verdicts,
             "nodes": [
                 {
                     "id": entity_id,
@@ -881,6 +947,10 @@ def create_app() -> FastAPI:
                     "rank": rank_by_id.get(fact.fact_id),
                     "retired": not fact.is_current,
                     "superseded_by": fact.superseded_by or "",
+                    # Set when a state change closed this interval. The fact is
+                    # still current -- it was true, and then it stopped being
+                    # true, which is a different thing from being withdrawn.
+                    "valid_to": fact.valid_to.raw_phrase if fact.valid_to else "",
                 }
                 for fact in drawn
             ],
