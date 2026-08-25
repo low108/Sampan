@@ -38,6 +38,25 @@ const MODES: [Mode, string, string][] = [
 const OPENING = 'what did her father do at the coffee shop';
 const SUGGESTED = [OPENING, 'who lived in Sungai Siput', 'who is Ah Seng'];
 
+/* An ISO timestamp as a date someone can read across a room. Times are
+   dropped: a demo run and a backfill three days earlier differ by days, and
+   the hour is noise at the back of the room. */
+function stamp(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+/* One clock, as an interval. An open end is an arrow into nothing, which is
+   what "still true" and "still asserted" both look like. */
+function span(from?: string, to?: string): string {
+  if (!from && !to) return '—';
+  if (!to) return `${from} →`;
+  return `${from || '—'} → ${to}`;
+}
+
 export function Demo({ narratorId, name, onClose }: {
   narratorId: string;
   name: string;
@@ -54,7 +73,6 @@ export function Demo({ narratorId, name, onClose }: {
      between the two would break it in half. The Reset button is the way back,
      and it says how many changes are being carried. */
   const [added, setAdded] = useState<DraftFact[]>([]);
-  const [retired, setRetired] = useState<string[]>([]);
   const [replaced, setReplaced] = useState<Supersession[]>([]);
   const [draft, setDraft] = useState('');
   /* The telling being corrected, chosen by clicking a row rather than inferred.
@@ -67,7 +85,6 @@ export function Demo({ narratorId, name, onClose }: {
 
   const run = async (over?: {
     added?: DraftFact[];
-    retired?: string[];
     replaced?: Supersession[];
     ask?: string;
   }) => {
@@ -79,7 +96,6 @@ export function Demo({ narratorId, name, onClose }: {
       setResult(
         await api.search(narratorId, asked, {
           added: over?.added ?? added,
-          retired: over?.retired ?? retired,
           replaced: over?.replaced ?? replaced,
         }),
       );
@@ -98,11 +114,10 @@ export function Demo({ narratorId, name, onClose }: {
 
   const reset = () => {
     setAdded([]);
-    setRetired([]);
     setReplaced([]);
     setReplacing(null);
     setLater('');
-    void run({ added: [], retired: [], replaced: [] });
+    void run({ added: [], replaced: [] });
   };
 
   /* Create: one sentence in, and the subject is whichever entity the sentence
@@ -133,18 +148,6 @@ export function Demo({ narratorId, name, onClose }: {
     setAdded(next);
     setDraft('');
     void run({ added: next });
-  };
-
-  /* Clicking an already-retired row is a no-op, not a second retirement. The
-     server reports it once either way; it was only the change counter that
-     double-counted, and a Reset button claiming two changes for one click is
-     the kind of small lie that makes someone doubt the rest of the panel. */
-  const retire = (factId: string) => {
-    if (retired.includes(factId)) return;
-    const next = [...retired, factId];
-    setRetired(next);
-    setReplacing(null);
-    void run({ retired: next });
   };
 
   /* What the new edge should point at, for a label that reads like a place
@@ -191,7 +194,7 @@ export function Demo({ narratorId, name, onClose }: {
   };
 
   const trace = result?.trace;
-  const touched = added.length + retired.length + replaced.length;
+  const touched = added.length + replaced.length;
 
   return (
     <div className="demo">
@@ -304,12 +307,6 @@ export function Demo({ narratorId, name, onClose }: {
                     <button className="btn ghost" disabled={asking} onClick={supersede}>
                       {asking ? 'Asking the judge…' : 'She said this instead'}
                     </button>
-                    <button
-                      className="btn ghost"
-                      onClick={() => retire(replacing.fact_id)}
-                    >
-                      Just stop asserting it
-                    </button>
                   </div>
                 </>
               )}
@@ -349,26 +346,69 @@ export function Demo({ narratorId, name, onClose }: {
                 </p>
                 <table className="scores">
                   <thead>
-                    <tr><th>#</th><th>bm25</th><th>hops</th><th>rrf</th><th>fact</th></tr>
+                    <tr>
+                      <th>#</th><th>bm25</th><th>hops</th><th>rrf</th>
+                      {/* Both clocks, and only where they are the point. In
+                          retrieve they would be four columns of noise. */}
+                      {mode === 'update' && <th>valid</th>}
+                      {mode === 'update' && <th>asserted</th>}
+                      <th>fact</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    {trace.candidates.slice(0, 7).map((c) => (
-                      <tr
-                        key={c.fact_id}
-                        data-returned={c.rank !== null}
-                        data-clickable={mode === 'update'}
-                        data-picked={replacing?.fact_id === c.fact_id}
-                        onClick={() => mode === 'update' && setReplacing(c)}
-                      >
-                        <td>{c.rank === null ? '—' : c.rank + 1}</td>
-                        <td>{c.bm25.toFixed(2)}</td>
-                        <td>{c.hops === null ? '—' : c.hops}</td>
-                        <td>{c.rrf.toFixed(4)}</td>
-                        <td>{c.statement}</td>
-                      </tr>
-                    ))}
+                    {trace.candidates.slice(0, 7).map((c) => {
+                      const e = result?.edges.find((x) => x.fact_id === c.fact_id);
+                      /* Accent means "this correction moved it", not "this has
+                         a date". Half her facts already carry a `valid_to` she
+                         said herself — lighting those up would drown the one
+                         cell the beat is about. */
+                      const v = result?.verdicts.find(
+                        (x) => x.fact_id === c.fact_id,
+                      );
+                      return (
+                        <tr
+                          key={c.fact_id}
+                          data-returned={c.rank !== null}
+                          data-clickable={mode === 'update'}
+                          data-picked={replacing?.fact_id === c.fact_id}
+                          onClick={() => mode === 'update' && setReplacing(c)}
+                        >
+                          <td>{c.rank === null ? '—' : c.rank + 1}</td>
+                          <td>{c.bm25.toFixed(2)}</td>
+                          <td>{c.hops === null ? '—' : c.hops}</td>
+                          <td>{c.rrf.toFixed(4)}</td>
+                          {mode === 'update' && (
+                            <td
+                              className="clock"
+                              data-moved={v?.kind === 'state_change'}
+                            >
+                              {span(e?.valid_from, e?.valid_to)}
+                            </td>
+                          )}
+                          {mode === 'update' && (
+                            <td
+                              className="clock"
+                              data-moved={!!v && v.kind !== 'state_change'}
+                            >
+                              {span(stamp(e?.t_created), stamp(e?.t_expired))}
+                            </td>
+                          )}
+                          <td>{c.statement}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+                {mode === 'update' && (
+                  <p className="prose">
+                    Two clocks. <strong>Valid</strong> is her life, in her own
+                    words — mostly empty, because she speaks in "when I was
+                    small" far more often than in years.{' '}
+                    <strong>Asserted</strong> is when the archive began standing
+                    behind it. Correcting a telling fills in exactly one of
+                    them, and which one is the whole question.
+                  </p>
+                )}
               </section>
 
               {/* The verdict. Placed before stage 4 because on a state change
@@ -431,13 +471,27 @@ export function Demo({ narratorId, name, onClose }: {
                     const by = result?.edges.find(
                       (e) => e.fact_id === r.superseded_by,
                     );
+                    /* A retired fact leaves the score table entirely — nothing
+                       current matches it any more — so the interval that just
+                       closed has to be shown here or it is shown nowhere. */
+                    const was = result?.edges.find(
+                      (e) => e.fact_id === r.fact_id,
+                    );
                     return (
                       <div key={r.fact_id} className="swap">
                         <div className="quote retired">
                           <div>
                             <q>{r.statement}</q>
                             <div className="lbl dim by">
-                              transaction time moved · her dates untouched
+                              asserted{' '}
+                              <span className="clock moved">
+                                {span(stamp(was?.t_created), stamp(r.expired_at))}
+                              </span>
+                              {' · '}her own dates{' '}
+                              <span className="clock">
+                                {span(was?.valid_from, was?.valid_to)}
+                              </span>
+                              {' '}untouched
                             </div>
                           </div>
                         </div>

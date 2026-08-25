@@ -947,10 +947,22 @@ def create_app() -> FastAPI:
                     "rank": rank_by_id.get(fact.fact_id),
                     "retired": not fact.is_current,
                     "superseded_by": fact.superseded_by or "",
-                    # Set when a state change closed this interval. The fact is
-                    # still current -- it was true, and then it stopped being
-                    # true, which is a different thing from being withdrawn.
+                    # Both clocks, so the page can show them side by side.
+                    #
+                    # Valid time is her life: when a thing was true, in her own
+                    # words, and often absent because she rarely speaks in
+                    # dates. Transaction time is the archive's belief: when it
+                    # started asserting this and, if ever, when it stopped.
+                    #
+                    # A state change moves `valid_to`. Conflicting testimony
+                    # moves `t_expired`. Watching which field fills in is the
+                    # clearest way to see that they are not the same clock.
+                    "valid_from": fact.valid_from.raw_phrase
+                    if fact.valid_from
+                    else "",
                     "valid_to": fact.valid_to.raw_phrase if fact.valid_to else "",
+                    "t_created": fact.t_created.isoformat(),
+                    "t_expired": fact.t_expired.isoformat() if fact.t_expired else "",
                 }
                 for fact in drawn
             ],

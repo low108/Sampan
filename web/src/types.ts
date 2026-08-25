@@ -222,10 +222,14 @@ export interface SearchResult {
     rank: number | null;
     retired: boolean;
     superseded_by: string;
-    /** Set when a state change closed this interval. The fact is still
-     *  current: it was true, then it stopped being true, which is not the
-     *  same as the archive withdrawing it. */
+    /** Valid time — her life, in her own words, and often empty because she
+     *  rarely speaks in dates. A state change fills in `valid_to`. */
+    valid_from: string;
     valid_to: string;
+    /** Transaction time — when the archive began asserting this, and if ever,
+     *  when it stopped. Conflicting testimony fills in `t_expired`. */
+    t_created: string;
+    t_expired: string;
   }[];
   /** What the contradiction judge made of each correction. The only part of
    *  a search response that came from a model. */
