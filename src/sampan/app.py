@@ -153,6 +153,10 @@ class AskRequest(BaseModel):
     voice_note: str | None = Field(
         default=None, description="base64 data URL of a short recording"
     )
+    # Who is asking, so the service can refuse a question somebody addressed to
+    # themselves. Optional because the ask form has always sent only a name,
+    # and a missing id must not start rejecting questions that are fine.
+    from_id: str = Field(default="", max_length=120)
 
 
 class SmokeRequest(BaseModel):
@@ -649,6 +653,29 @@ def create_app() -> FastAPI:
                 detail="Voice note too long; ten seconds is the intended length.",
             )
 
+        # Nobody asks themselves a question. The call opened on "ah_khim wants
+        # to ask you something" and quoted her own words back at her, which is
+        # the agent talking to itself in her voice -- the opposite of a bridge
+        # to her family, which is the entire premise.
+        #
+        # Both forms are refused: the id, and the name as it would be rendered
+        # to her. Tapping one of her own stories is how it happened, and the
+        # name was the fallback the browser uses before the household loads.
+        repository = Repository(store)
+        display = repository.display_name(narrator_id)
+        mine = {
+            narrator_id.strip().lower(),
+            display.strip().lower(),
+            display.strip().lower().split(" ")[-1] if display else "",
+        } - {""}
+        if body.from_id.strip().lower() == narrator_id.strip().lower() or (
+            body.from_name.strip().lower() in mine
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="A question cannot be left for the person asking it.",
+            )
+
         ask = Ask(
             ask_id=f"ask_{uuid.uuid4().hex[:10]}",
             from_name=body.from_name,
@@ -657,7 +684,7 @@ def create_app() -> FastAPI:
             voice_note_url=body.voice_note,
             created_at=datetime.now(UTC).isoformat(),
         )
-        Repository(store).queue_ask(narrator_id, ask)
+        repository.queue_ask(narrator_id, ask)
         return {
             "ask_id": ask.ask_id,
             "queued": True,

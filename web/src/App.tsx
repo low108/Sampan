@@ -186,6 +186,10 @@ export function App() {
    * refreshes the bell, because a question you just sent that leaves the badge
    * unchanged looks like it went nowhere. */
   const askAboutStory = (pin: Pin) => {
+    /* Not on your own story. Tapping one of hers while signed in as her queued
+       a question from her to herself, and the next call opened with the agent
+       asking her to tell it more about something she had just told it. */
+    if (pin.narrator_id === ME) return;
     void api
       .ask(pin.narrator_id, viewerName, `Tell me more about ${pin.title}.`)
       .then(load)

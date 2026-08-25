@@ -100,10 +100,13 @@ export const api = {
       body: JSON.stringify({ question }),
     }),
 
+  /* `from_id` lets the service refuse a question addressed to its own asker.
+     The name alone could not: it arrives as whatever the browser had at the
+     time, which before the household loads is the raw viewer id. */
   ask: (narrator: string, from_name: string, question: string) =>
     request<unknown>(`/api/family/${encodeURIComponent(narrator)}/ask`, {
       method: 'POST',
-      body: JSON.stringify({ from_name, question }),
+      body: JSON.stringify({ from_name, question, from_id: ME }),
     }),
 
   correctPlace: (narrator: string, target: string, value: string, by: string) =>

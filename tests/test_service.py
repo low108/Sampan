@@ -269,6 +269,54 @@ class TestPendingAsk:
         assert body["quiet_hours"] is True
 
 
+class TestNobodyAsksThemselves:
+    """A question addressed to its own asker.
+
+    Tapping one of her own stories while signed in as her queued a question
+    from her to herself, and the next call opened with "ah_khim wants to ask
+    you something" quoting her own words back at her. That is the agent
+    talking to itself in her voice, which is the opposite of the one thing the
+    product claims to be.
+    """
+
+    def ask(self, client: TestClient, **body: object) -> int:
+        return client.post(
+            "/api/family/ah_khim/ask",
+            headers={API_KEY_HEADER: GOOD_KEY},
+            json={"question": "Tell me more about the shop.", **body},
+        ).status_code
+
+    def test_refused_when_the_asker_is_the_narrator(self, client: TestClient) -> None:
+        assert self.ask(client, from_name="Siew Khim", from_id="ah_khim") == 409
+
+    def test_refused_when_the_name_is_the_narrator_id(
+        self, client: TestClient
+    ) -> None:
+        """The browser sends the raw viewer id as the name until the household
+        loads, which is exactly how the bad question got in."""
+        assert self.ask(client, from_name="ah_khim") == 409
+
+    def test_a_question_from_somebody_else_still_goes_through(
+        self, client: TestClient
+    ) -> None:
+        assert self.ask(client, from_name="Wei Lun", from_id="wei_lun") == 200
+
+    def test_a_question_with_no_asker_id_still_goes_through(
+        self, client: TestClient
+    ) -> None:
+        """The ask form has only ever sent a name. A missing id must not start
+        rejecting questions that are fine."""
+        assert self.ask(client, from_name="Wei Lun") == 200
+
+    def test_nothing_is_queued_when_it_is_refused(self, client: TestClient) -> None:
+        self.ask(client, from_name="ah_khim")
+
+        body = client.get(
+            "/api/talk/ah_khim/pending", headers={API_KEY_HEADER: GOOD_KEY}
+        ).json()
+        assert body["waiting"] is False
+
+
 class TestExtractionIsFullyWired:
     """The memory-v2 pass has to actually run on a real call.
 
