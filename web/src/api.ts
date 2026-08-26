@@ -14,10 +14,38 @@ import type {
 
 const params = new URLSearchParams(location.search);
 
-/** Demo affordance: the key rides in the query string so a link is enough to
- *  open the archive. Stated as a limitation in the PRD; not an auth model. */
-export const KEY = params.get('key') ?? '';
-export const ME = params.get('user') ?? 'ah_khim';
+/* Demo affordance: the key rides in the query string so a link is enough to
+ * open the archive. Stated as a limitation in the PRD; not an auth model.
+ *
+ * Held in sessionStorage once seen, because the query string is fragile in
+ * exactly the moment it matters: a reload, a link that got truncated at the
+ * ampersand, or any in-app navigation drops it, and the page then says the
+ * link is missing its key while the key sits in the tab that just worked.
+ *
+ * sessionStorage rather than localStorage on purpose — it is per tab, so her
+ * side and the family side stay different people in different tabs instead of
+ * the last one opened winning. It also dies with the tab, which is the right
+ * lifetime for something handed out in a URL. */
+function sticky(name: string, fallback: string): string {
+  const key = `sampan.${name}`;
+  const fromUrl = params.get(name);
+  if (fromUrl) {
+    try {
+      sessionStorage.setItem(key, fromUrl);
+    } catch {
+      /* private mode, or storage disabled: the URL still works this once. */
+    }
+    return fromUrl;
+  }
+  try {
+    return sessionStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export const KEY = sticky('key', '');
+export const ME = sticky('user', 'ah_khim');
 
 export class ApiError extends Error {
   constructor(readonly status: number) {

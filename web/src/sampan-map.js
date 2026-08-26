@@ -117,15 +117,30 @@
       this._L = L;
       const map = L.map(this._host, {
         zoomControl: false, attributionControl: true, zoomSnap: 0.25,
-        tap: true, maxZoom: 18, minZoom: 3
+        /* 16, not 18: the Esri dark canvas has no tiles past 16, and a map
+           that keeps zooming into blank grey is worse than one that stops. */
+        tap: true, maxZoom: 16, minZoom: 3
       });
       this._map = map;
-      /* CARTO's unlabelled dark basemap: the pins are the only bright things
-         on it, which is the whole point of the frame. */
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '© OpenStreetMap contributors © CARTO',
-        subdomains: 'abcd', maxZoom: 19
-      }).addTo(map);
+      /* A dark basemap: the pins are the only bright things on it, which is
+         the whole point of the frame.
+
+         Esri rather than CARTO, and the reason is worth recording. CARTO
+         stamps "API KEY REQUIRED" diagonally across every tile served to a
+         Referer it does not recognise. Localhost is exempt, so the map looked
+         perfect for the entire build and only broke once it was deployed to a
+         real domain — the failure mode that costs you a demo recording rather
+         than a test run. Esri's dark canvas is keyless and does not check the
+         referrer. Note {z}/{y}/{x}: row before column, unlike every other
+         provider. */
+      L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/' +
+        'World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        {
+          attribution: 'Esri, HERE, Garmin, © OpenStreetMap contributors',
+          maxZoom: 16
+        }
+      ).addTo(map);
       map.attributionControl.setPrefix('');
       /* No zoom buttons: the legend already says drag to move and scroll to
          zoom, and Leaflet's white chrome is the one thing on this screen that
