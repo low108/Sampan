@@ -43,9 +43,18 @@ curl -s "$URL/" | grep -o 'index-[A-Za-z0-9_-]*\.js'   # matches static/index.ht
 The point of beat 3 is that the system learns something it was never seeded
 with. Use exactly this, and do not vary it between takes:
 
-> **"Last Sunday my neighbour Mrs Rajan took me to Pasar Besar. She bought
-> curry puffs, and the oil came through the paper bag, still warm. She lives in
-> the flat downstairs from me."**
+> **"Last Sunday my neighbour Mrs Rajan took me to the market in Ipoh. She
+> bought curry puffs, and the oil came through the paper bag, still warm. She
+> lives in the flat downstairs from me."**
+
+**Say "Ipoh", not "Pasar Besar".** Both work, and Pasar Besar is the better
+line — but it is the one thing here that depends on speech recognition getting
+a Malay place name right, and across four rehearsals it produced "Passa the
+saw", "Passa the sore" and "bahasa besar" before it landed. Ipoh is one
+syllable pair, already cached with coordinates, and pins the instant the family
+view loads. If you would rather have the nicer line, say *"the market at Pasar
+Besar, in Ipoh"* — then a mangled first name still leaves a clean second one
+for the extractor to use.
 
 Every clause is load-bearing, and the sentence was built backwards from what has
 to happen to it:
@@ -53,7 +62,7 @@ to happen to it:
 | Clause | Why it is there |
 |---|---|
 | *Last Sunday … took me to Pasar Besar* | The archivist only counts **one thing that happened, with a beginning and an end**. A habit ("she brings me curry puffs") is not a story and gets no pin. |
-| *Pasar Besar* | A pin needs a place that **resolves to coordinates**. Pasar Besar is Ipoh's central market — real, findable, and in the persona bible's place table. |
+| *the market in Ipoh* | A pin needs a place that **resolves to coordinates**. Ipoh is already in the place cache at 4.598, 101.090 — no resolver call, no chance of a mishearing costing the beat. |
 | *the oil came through the paper bag, still warm* | `sense_detail` is the extractor's most important field and it will not invent one. No sensory detail, weaker story. |
 | *Mrs Rajan … my neighbour* | The new person. |
 | *the flat downstairs from me* | The detail she contradicts in call 2 — deliberately **not** the same thing as the pin, so a failed contradiction cannot cost you the map beat. |
@@ -124,9 +133,9 @@ introduce itself.
 > always."
 
 **AS HER — line 2 (the new fact — say it slowly, all of it):**
-> "Oh — last Sunday my neighbour Mrs Rajan took me to Pasar Besar. She bought
-> curry puffs, and the oil came through the paper bag, still warm. She lives in
-> the flat downstairs from me."
+> "Oh — last Sunday my neighbour Mrs Rajan took me to the market in Ipoh. She
+> bought curry puffs, and the oil came through the paper bag, still warm. She
+> lives in the flat downstairs from me."
 
 Do not paraphrase this between takes. Each clause is doing a job (see pre-flight
 §2), and dropping the market kills the map beat.
@@ -188,8 +197,8 @@ filming before you roll:
 
 | Outcome | What to do |
 |---|---|
-| **New pin at Pasar Besar** | Beat 1:20 as written. Best case. |
-| **Pin, marked provisional** | Even better. Pasar Besar resolving at *town* precision makes it *"the system guessed"* — point at the legend and say the family can confirm it. That is the correction path, free. |
+| **New pin near Ipoh** | Beat 1:20 as written. Expected: Ipoh is cached, so it pins on the first family-view load. |
+| **Pin, marked provisional** | Even better. Ipoh is cached at *town* precision, so it draws as *"the system guessed"* — point at the legend and say the family can confirm it. That is the correction path, free. |
 | **Lands in the unplaced tray** | Do **not** call this a failure on camera. The tray is currently **empty**, so hers will be the only card in it. Say: *"She told a story with no place it could pin. It does not guess — it holds it, and asks her next time."* |
 
 ---
@@ -311,7 +320,7 @@ It never does it behind her back. **Do not cut this line.**
 > the estate at Sungai Siput, the coffee shop on Jalan Bandar, her grandfather
 > landing in Penang.
 
-**DO** Click the new pin — **Pasar Besar**.
+**DO** Click the new pin — the market in **Ipoh**.
 
 > **SAY:** And this one is from ten minutes ago. She mentioned a market in
 > passing; the system pulled out the event, found the place, and put it in front
