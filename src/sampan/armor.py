@@ -227,6 +227,35 @@ def _read(result: Any, original: str) -> Screened:
                 )
                 continue
 
+        # Prompt injection and jailbreak. Its result is nested one level deeper
+        # than the generic branch below reaches, so the wrapper has no
+        # `match_state` and a detection read as nothing: Model Armor found it,
+        # reported it, and we discarded it. This is the filter DLP has no
+        # equivalent of, and the only reason to accept the extra hop.
+        #
+        # It matters here beyond storage. The transcript does not merely get
+        # written -- it is fed straight to the story extractor, the fact
+        # extractor and the contradiction judge, so anything in it becomes part
+        # of an LLM prompt.
+        pi = getattr(filter_result, "pi_and_jailbreak_filter_result", None)
+        if pi is not None:
+            if getattr(pi, "execution_state", None) == (
+                ma.FilterExecutionState.EXECUTION_SKIPPED
+            ):
+                skipped.extend(
+                    m.message for m in getattr(pi, "message_items", []) or []
+                )
+                continue
+            if getattr(pi, "match_state", None) == ma.FilterMatchState.MATCH_FOUND:
+                confidence = getattr(pi, "confidence_level", None)
+                findings.append(
+                    Finding(
+                        filter="pi_and_jailbreak",
+                        detail=str(getattr(confidence, "name", confidence or "")),
+                    )
+                )
+            continue
+
         matched = getattr(filter_result, "match_state", None)
         if matched == ma.FilterMatchState.MATCH_FOUND:
             findings.append(Finding(filter=str(name)))
