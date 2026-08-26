@@ -46,10 +46,26 @@ class Transcript:
         text = text.strip()
         if not text:
             return
-        # The Live API streams transcription incrementally, so consecutive
-        # fragments from one speaker are revisions rather than new turns.
+        # The Live API streams transcription in pieces, and this used to assume
+        # every piece was a full revision of the turn -- so it replaced. It is
+        # not: the pieces are often *deltas*, and replacing kept only the last
+        # one. A call where she said "Last Sunday my neighbour Mrs Rajan took
+        # me to Pasar Besar, and the oil came through the paper bag, still
+        # warm" was stored as `K: Still want?`. The model heard all of it and
+        # answered about the oil; the transcript kept the tail, and extraction
+        # reads the transcript, so the story never existed.
+        #
+        # Both shapes are handled, and where they are indistinguishable this
+        # errs toward keeping text. Losing her words is much worse than
+        # repeating them: a duplicated clause is untidy, a dropped one is a
+        # story she told that nobody will ever see.
         if self.turns and self.turns[-1][0] == speaker:
-            self.turns[-1] = (speaker, text)
+            held = self.turns[-1][1]
+            if text.startswith(held) or text in held:
+                # A revision, or a piece already accounted for.
+                self.turns[-1] = (speaker, text if len(text) > len(held) else held)
+            else:
+                self.turns[-1] = (speaker, f"{held} {text}")
             return
         self.turns.append((speaker, text))
 

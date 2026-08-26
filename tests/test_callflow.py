@@ -281,9 +281,7 @@ class TestMemorySurvives:
 
         # One entity, and it is themselves: everyone is in their own graph, or
         # no fact can be recorded about them. Nothing of hers crosses over.
-        assert [e.entity_id for e in other.memory.entities] == [
-            "ent_self_someone_else"
-        ]
+        assert [e.entity_id for e in other.memory.entities] == ["ent_self_someone_else"]
         hers = {e.entity_id for e in prepared.memory.entities}
         assert not hers & {e.entity_id for e in other.memory.entities}
         assert other.stored.session_count == 0
@@ -441,7 +439,7 @@ class TestFamilyAsks:
 
 
 class TestForgetting:
-    """"Don't keep that" has to survive the call that said it.
+    """ "Don't keep that" has to survive the call that said it.
 
     The tombstone in `forgotten__<id>` was written from the first release and
     read by nothing, so extraction rebuilt the subject on the very next call --
@@ -579,3 +577,69 @@ class TestForgetting:
         assert memory is not None
         assert len(repository.load_stories(NARRATOR)) == 1
         assert [t.topic for t in memory.threads] == ["father's coffee shop"]
+
+
+class TestTranscriptionArrivesInPieces:
+    """What the Live API streams, and what must survive it.
+
+    This is reconstructed from a real call. She said "Last Sunday my neighbour
+    Mrs Rajan took me to Pasar Besar, and the oil came through the paper bag,
+    still warm." The agent answered about the oil, so the model heard all of
+    it. The stored transcript read `K: Still want?` -- only the final piece --
+    and since extraction reads the transcript rather than the audio, the story
+    was never extracted and never reached the map.
+    """
+
+    def test_delta_pieces_are_joined_not_replaced(self) -> None:
+        transcript = Transcript()
+        transcript.add("user", "Last Sunday my neighbour Mrs Rajan")
+        transcript.add("user", "took me to Pasar Besar")
+        transcript.add("user", "and the oil came through the paper bag")
+
+        rendered = transcript.render()
+        assert "Mrs Rajan" in rendered
+        assert "Pasar Besar" in rendered
+        assert "paper bag" in rendered
+        assert len(transcript) == 1
+
+    def test_a_growing_revision_replaces_rather_than_doubling(self) -> None:
+        """When each piece restates the whole turn, joining would stutter."""
+        transcript = Transcript()
+        transcript.add("user", "I grew up")
+        transcript.add("user", "I grew up on the rubber estate")
+
+        assert transcript.render() == "K: I grew up on the rubber estate"
+
+    def test_a_repeated_piece_is_not_appended_twice(self) -> None:
+        transcript = Transcript()
+        transcript.add("user", "on the rubber estate")
+        transcript.add("user", "rubber estate")
+
+        assert transcript.render() == "K: on the rubber estate"
+
+    def test_the_speaker_changing_still_starts_a_turn(self) -> None:
+        transcript = Transcript()
+        transcript.add("user", "Last Sunday")
+        transcript.add("user", "we went to the market")
+        transcript.add("agent", "Which market?")
+        transcript.add("user", "Pasar Besar")
+
+        assert len(transcript) == 3
+        assert transcript.render().startswith("K: Last Sunday we went to the market")
+
+    def test_nothing_she_said_is_dropped(self) -> None:
+        """The property that matters, stated on its own: every piece she says
+        appears somewhere in what gets stored and extracted from."""
+        pieces = [
+            "Last Sunday",
+            "my neighbour Mrs Rajan",
+            "took me to Pasar Besar",
+            "she bought curry puffs",
+            "still warm",
+        ]
+        transcript = Transcript()
+        for piece in pieces:
+            transcript.add("user", piece)
+
+        rendered = transcript.render()
+        assert all(piece in rendered for piece in pieces)
