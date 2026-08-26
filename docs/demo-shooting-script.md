@@ -43,11 +43,23 @@ curl -s "$URL/" | grep -o 'index-[A-Za-z0-9_-]*\.js'   # matches static/index.ht
 The point of beat 3 is that the system learns something it was never seeded
 with. Use exactly this, and do not vary it between takes:
 
-> **Mrs Rajan, the neighbour, moved into the flat downstairs, and brings curry
-> puffs on Sunday.**
+> **"Last Sunday my neighbour Mrs Rajan took me to Pasar Besar. She bought
+> curry puffs, and the oil came through the paper bag, still warm. She lives in
+> the flat downstairs from me."**
 
-New person, new food, new place, one clean detail to contradict later
-(*downstairs*). Nothing in `docs/persona-bible.md` mentions any of it.
+Every clause is load-bearing, and the sentence was built backwards from what has
+to happen to it:
+
+| Clause | Why it is there |
+|---|---|
+| *Last Sunday … took me to Pasar Besar* | The archivist only counts **one thing that happened, with a beginning and an end**. A habit ("she brings me curry puffs") is not a story and gets no pin. |
+| *Pasar Besar* | A pin needs a place that **resolves to coordinates**. Pasar Besar is Ipoh's central market — real, findable, and in the persona bible's place table. |
+| *the oil came through the paper bag, still warm* | `sense_detail` is the extractor's most important field and it will not invent one. No sensory detail, weaker story. |
+| *Mrs Rajan … my neighbour* | The new person. |
+| *the flat downstairs from me* | The detail she contradicts in call 2 — deliberately **not** the same thing as the pin, so a failed contradiction cannot cost you the map beat. |
+
+Nothing in `docs/persona-bible.md` mentions Mrs Rajan, curry puffs, or that
+flat.
 
 ## 3 · Leave a fresh question from Wei Lun
 
@@ -95,23 +107,48 @@ introduce itself.
 > "Tell him I am eating, don't worry. Coffee and bread every morning, same as
 > always."
 
-**AS HER — line 2 (the new fact — say it clearly):**
-> "Oh — and my neighbour Mrs Rajan moved into the flat downstairs. She brings me
-> curry puffs on Sunday. Very kind woman."
+**AS HER — line 2 (the new fact — say it slowly, all of it):**
+> "Oh — last Sunday my neighbour Mrs Rajan took me to Pasar Besar. She bought
+> curry puffs, and the oil came through the paper bag, still warm. She lives in
+> the flat downstairs from me."
+
+Do not paraphrase this between takes. Each clause is doing a job (see pre-flight
+§2), and dropping the market kills the map beat.
 
 **DO** End the call.
 
-### GATE 1 — do not start call 2 until this returns Mrs Rajan
+### GATE 1a — the fact must exist before call 2
 
 ```bash
 curl -s -X POST "$URL/api/family/ah_khim/search" \
   -H "X-Sampan-Key: $SAMPAN_API_KEY" -H 'Content-Type: application/json' \
-  -d '{"question":"who is Mrs Rajan"}' | python3 -m json.tool | head -30
+  -d '{"question":"who is Mrs Rajan"}' | python3 -m json.tool | grep statement
 ```
 
-Wait for a fact whose statement names Mrs Rajan. If nothing appears after two
-minutes, the extraction did not take — **redo call 1 and say the sentence more
-slowly.** Everything downstream depends on this.
+Wait for a statement naming Mrs Rajan. Nothing after two minutes means the
+extraction did not take — **redo call 1 and say the sentence more slowly.**
+Everything downstream depends on this one.
+
+### GATE 1b — does it pin?
+
+**Load the family view first** (tab 2). Place resolution runs on that request,
+not at extraction, so the pin cannot exist until somebody has looked.
+
+```bash
+curl -s "$URL/api/household" -H "X-Sampan-Key: $SAMPAN_API_KEY" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); \
+print('PINS'); [print('  ',p['title']) for p in d['pins']]; \
+print('UNPLACED'); [print('  ',u['title'],'| where_said=',repr(u['where_said'])) for u in d['unplaced']]"
+```
+
+Three outcomes, and **all three are shootable** — decide which beat you are
+filming before you roll:
+
+| Outcome | What to do |
+|---|---|
+| **New pin at Pasar Besar** | Beat 1:20 as written. Best case. |
+| **Pin, marked provisional** | Even better. Pasar Besar resolving at *town* precision makes it *"the system guessed"* — point at the legend and say the family can confirm it. That is the correction path, free. |
+| **Lands in the unplaced tray** | Do **not** call this a failure on camera. The tray is currently **empty**, so hers will be the only card in it. Say: *"She told a story with no place it could pin. It does not guess — it holds it, and asks her next time."* |
 
 ---
 
@@ -228,12 +265,23 @@ It never does it behind her back. **Do not cut this line.**
 
 **DO** Tab 2 (Wei Lun) → the map.
 
-> **SAY:** Sixteen stories, placed where they happened, across sixty years. And
-> now the one she just told — extracted, placed, and waiting for her son.
+> **SAY:** Sixteen stories, placed where they happened, across sixty years —
+> the estate at Sungai Siput, the coffee shop on Jalan Bandar, her grandfather
+> landing in Penang.
 
-**DO** Click the newest pin / story card.
+**DO** Click the new pin — **Pasar Besar**.
 
-> **SAY:** Her words, kept exactly as she said them.
+> **SAY:** And this one is from ten minutes ago. She mentioned a market in
+> passing; the system pulled out the event, found the place, and put it in front
+> of her son. Her words, kept exactly as she said them.
+
+*(If it resolved at town precision, add:)*
+
+> **SAY:** And note the dashed ring — *the system guessed*. It will not pass off
+> a guess as something she said. Her son can confirm it, and correcting the
+> system is his job, never hers.
+
+*(If it went to the unplaced tray instead, run that beat — see GATE 1b.)*
 
 ---
 
