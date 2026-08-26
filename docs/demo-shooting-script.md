@@ -61,6 +61,22 @@ to happen to it:
 Nothing in `docs/persona-bible.md` mentions Mrs Rajan, curry puffs, or that
 flat.
 
+**Scored against the pinnability rubric before you say it** — six fields, *where*
+and *when* mandatory, four of six to pin:
+
+| Field | This line | |
+|---|---|---|
+| where | Pasar Besar | ✓ **mandatory** |
+| when | "last Sunday" | ✓ **mandatory** |
+| who | Mrs Rajan | ✓ |
+| what | took her to the market, bought curry puffs | ✓ |
+| sense | the oil came through the paper bag, still warm | ✓ |
+| why it mattered | not said | ✗ |
+
+**5 / 6, both mandatory fields present → pinnable**, with a field to spare. That
+margin is the point: drop the market and you lose *where*, and no score can save
+it.
+
 ## 3 · Leave a fresh question from Wei Lun
 
 The queued one reads *"how are you doing"* from lowercase `wei lun` — weak on
@@ -282,6 +298,35 @@ It never does it behind her back. **Do not cut this line.**
 > system is his job, never hers.
 
 *(If it went to the unplaced tray instead, run that beat — see GATE 1b.)*
+
+### Say this while the story card is open — it is the most credible ten seconds in the video
+
+**DO** Keep the card on screen.
+
+> **SAY:** And not everything she says ends up here. A call has to clear a
+> rubric first, and the rubric is deliberately strict.
+>
+> Six fields — **where, when, who, what, a sensory detail, and why it mattered.**
+> **Where and when are mandatory**, and it needs **four of the six** to earn a
+> pin. Miss either mandatory one and it is kept as a *fragment* instead — still
+> stored, still searchable, just not asserted onto the map.
+>
+> This one scored five. It was missing *why it mattered* — she did not say, so
+> the system did not invent one.
+>
+> And that rubric is **arithmetic in our code, not a judgement we asked the
+> model for** — because a model scoring its own output drifts, and we would
+> never be able to tell.
+
+**Why this beat earns its place:** everything else in the video shows the system
+working. This is the one moment that shows it *declining* to work, on purpose —
+and a judge who has watched twenty demos has not seen anyone volunteer their own
+threshold.
+
+**If asked what else stops a pin:** a call under four turns is not extracted at
+all — a misdial is not a memory. And a story can pass the rubric and still not
+pin if the place will not resolve to coordinates, which is why the unplaced tray
+exists.
 
 ---
 
