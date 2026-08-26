@@ -133,6 +133,32 @@ Do not paraphrase this between takes. Each clause is doing a job (see pre-flight
 
 **DO** End the call.
 
+### GATE 1-screen — confirm screening actually ran (first rehearsal call only)
+
+Screening was configured on revision `sampan-00015-5wm` and every revision
+before it stored transcripts **unscreened**. The templates work — verified
+directly — but whether the Cloud Run service account can reach DLP is only
+proven by a real call. Check it once:
+
+```bash
+python3 - <<'EOF'
+from google.cloud import firestore
+db = firestore.Client()
+docs = sorted(db.collection("conversations__ah_khim").stream(),
+              key=lambda d: d.to_dict().get("occurred_at") or "")
+r = docs[-1].to_dict()
+print("conversation:", docs[-1].id)
+print("  unscreened:", r.get("unscreened"), " <- must be False")
+print("  screen_error:", r.get("screen_error") or "(none)")
+print("  findings:", len(r.get("screened") or []))
+EOF
+```
+
+`unscreened: False` means the screen ran and objected to nothing — which is the
+expected result, since she does not read out account numbers. `unscreened: True`
+with a `screen_error` means it failed open: the transcript is safe and stored,
+but **do not claim screening on camera** until it is fixed.
+
 ### GATE 1a — the fact must exist before call 2
 
 ```bash
