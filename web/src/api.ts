@@ -17,35 +17,43 @@ const params = new URLSearchParams(location.search);
 /* Demo affordance: the key rides in the query string so a link is enough to
  * open the archive. Stated as a limitation in the PRD; not an auth model.
  *
- * Held in sessionStorage once seen, because the query string is fragile in
- * exactly the moment it matters: a reload, a link that got truncated at the
- * ampersand, or any in-app navigation drops it, and the page then says the
- * link is missing its key while the key sits in the tab that just worked.
+ * Remembered once seen, because the query string is fragile in exactly the
+ * moment it matters: a reload, a link truncated at the ampersand, or a new tab
+ * opened on the bare URL all drop it, and the page then says the link is
+ * missing its key.
  *
- * sessionStorage rather than localStorage on purpose — it is per tab, so her
- * side and the family side stay different people in different tabs instead of
- * the last one opened winning. It also dies with the tab, which is the right
- * lifetime for something handed out in a URL. */
-function sticky(name: string, fallback: string): string {
-  const key = `sampan.${name}`;
+ * The two halves want different lifetimes, and using one store for both was
+ * the bug in the first attempt:
+ *
+ *   key   localStorage — there is one key for the whole demo, so once any tab
+ *                        has seen it every other tab should work. Per-tab
+ *                        storage meant a fresh tab still failed, which is the
+ *                        case that actually happens.
+ *   user  sessionStorage — per tab on purpose, so her side and the family side
+ *                        stay different people side by side rather than the
+ *                        last one opened winning.
+ */
+function remembered(
+  name: string,
+  store: () => Storage,
+  fallback: string,
+): string {
+  const slot = `sampan.${name}`;
   const fromUrl = params.get(name);
-  if (fromUrl) {
-    try {
-      sessionStorage.setItem(key, fromUrl);
-    } catch {
-      /* private mode, or storage disabled: the URL still works this once. */
-    }
-    return fromUrl;
-  }
   try {
-    return sessionStorage.getItem(key) ?? fallback;
+    if (fromUrl) {
+      store().setItem(slot, fromUrl);
+      return fromUrl;
+    }
+    return store().getItem(slot) ?? fallback;
   } catch {
-    return fallback;
+    /* Private mode, or storage disabled. The URL still works this once. */
+    return fromUrl ?? fallback;
   }
 }
 
-export const KEY = sticky('key', '');
-export const ME = sticky('user', 'ah_khim');
+export const KEY = remembered('key', () => localStorage, '');
+export const ME = remembered('user', () => sessionStorage, 'ah_khim');
 
 export class ApiError extends Error {
   constructor(readonly status: number) {
