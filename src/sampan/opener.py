@@ -290,9 +290,21 @@ def render_plan(plan: SessionPlan) -> str:
 
     if plan.ask is not None:
         who = plan.ask.from_name
+        # Say who they are to her, when we know. Without it the agent has only
+        # a name to go on and guesses the rest: the first live call produced
+        # "Wei Lun was asking … *she* said she keeps thinking about you" about
+        # her son. One wrong pronoun in the one line the whole product exists
+        # for, and she is the person least likely to let it pass.
+        kin = f", her {plan.ask.relation}" if plan.ask.relation else ""
         lines.append(
-            f"2. Play {who}'s recording, then say plainly that {who} asked "
+            f"2. Play {who}'s recording, then say plainly that {who}{kin} asked "
             f'— "{who} was asking…". The credit is {who}\'s, not yours.'
+            + (
+                f" {who} is her {plan.ask.relation}; never guess otherwise."
+                if plan.ask.relation
+                else " You have not been told how they are related to her, so"
+                " do not imply it, and do not guess a pronoun for them."
+            )
         )
 
     lines.append("3. Listen to her first two turns and judge how she is today.")

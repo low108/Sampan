@@ -676,10 +676,26 @@ def create_app() -> FastAPI:
                 detail="A question cannot be left for the person asking it.",
             )
 
+        # The ask form does not collect a relation, so fill it from the
+        # household when the asker is a member. It reaches the agent's
+        # instruction, and without it the agent has only a name: the first live
+        # call said "Wei Lun was asking … *she* said she keeps thinking about
+        # you" about her son. The household already knows he is her son.
+        relation = body.relation
+        if not relation and body.from_id:
+            relation = next(
+                (
+                    m.relation
+                    for m in list_members(repository)
+                    if m.narrator_id == body.from_id
+                ),
+                "",
+            )
+
         ask = Ask(
             ask_id=f"ask_{uuid.uuid4().hex[:10]}",
             from_name=body.from_name,
-            relation=body.relation,
+            relation=relation,
             question=body.question,
             voice_note_url=body.voice_note,
             created_at=datetime.now(UTC).isoformat(),
