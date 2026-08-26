@@ -112,8 +112,7 @@ There is no login, no account, no menu. The session carries:
 - **Preference capture** — that she is hard of hearing, that her sister is a
   sore subject. Learned from behaviour, never recited to her. An agent that
   announces what it has learned about you is unsettling rather than attentive.
-- **Model Armor + Cloud DLP** screens every transcript *before* anything is
-  written.
+- **Cloud DLP** screens every transcript *before* anything is written.
 
 ### The family side
 
@@ -196,7 +195,7 @@ row is storage. The orange path is a live call; the blue path is the family
 reading; the dashed paths happen after she has hung up and nobody is waiting.
 
 The dashed orange box is the one security boundary that matters: **nothing
-reaches the database without passing through Model Armor first.**
+reaches the database without passing through DLP first.**
 
 ### Google AI models — three, each doing one job
 
@@ -217,7 +216,14 @@ neither appears in the architecture diagram.
   `facts__`, `entities__`, `stories__`, `conversations__`, `asks__`,
   `concerns__`, `communities__`, `memories__`, `private__`, `forgotten__`.
 - **Vertex AI** — all model calls, via `google-genai`.
-- **Model Armor + Sensitive Data Protection (DLP)** — screening before write.
+- **Sensitive Data Protection (DLP)** — screening before every write. Two
+  templates: `CREDIT_CARD_NUMBER` plus a custom `BANK_ACCOUNT_NUMBER` regex,
+  and a de-identify template that replaces both.
+- **Model Armor** — provisioned and wired, but **not the running backend.** It
+  detects nothing itself: with only its SDP filter enabled it forwards to the
+  same two DLP templates, so it costs a hop and a failure mode for no added
+  detection (R18). Opt-in via `SAMPAN_SCREEN_BACKEND=armor`, which also brings
+  its prompt-injection filter.
 - **Pub/Sub** — the Veo generation queue, push-subscribed to
   `/internal/memories`.
 - **Cloud Storage** — mp4 and poster for story cards.

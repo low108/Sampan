@@ -472,7 +472,7 @@ Ah Chwee moved to Kampung Baru in 2026.
 
 **DO** Point at `screened`, then `turns`.
 
-> **SAY:** And `screened` — Model Armor inspects every transcript before it
+> **SAY:** And `screened` — Cloud DLP inspects every transcript before it
 > reaches this. An account number she reads aloud never gets here.
 
 **DO** Switch to `facts__ah_khim`, open the Mrs Rajan **downstairs** document.

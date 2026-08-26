@@ -187,8 +187,8 @@ Verdict lands: **State change · 0.95**.
 **Tab 5 — Firestore.**
 
 > And the archive itself. `facts__ah_khim` — eighteen facts, thirty-three
-> entities, each one carrying both timestamps. Also Model Armor sits in front of
-> every write, so an account number she reads aloud never reaches this.
+> entities, each one carrying both timestamps. And Cloud DLP screens every
+> write, so an account number she reads aloud never reaches this.
 
 ---
 

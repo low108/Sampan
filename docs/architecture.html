@@ -88,7 +88,7 @@
 
     <svg viewBox="0 0 1280 780" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sampan-arch-title sampan-arch-desc">
       <title id="sampan-arch-title">Sampan system architecture</title>
-      <desc id="sampan-arch-desc">A browser talks to a FastAPI service on Cloud Run, which streams audio to Gemini Live for the conversation, screens the transcript through Model Armor, then uses Gemini 3.7 Flash to extract facts and judge contradictions before writing a bi-temporal graph to Firestore; Veo generates story-card video asynchronously via Pub/Sub and Cloud Storage.</desc>
+      <desc id="sampan-arch-desc">A browser talks to a FastAPI service on Cloud Run, which streams audio to Gemini Live for the conversation, screens the transcript through Cloud DLP, then uses Gemini 3.7 Flash to extract facts and judge contradictions before writing a bi-temporal graph to Firestore; Veo generates story-card video asynchronously via Pub/Sub and Cloud Storage.</desc>
 
       <defs>
         <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#A28E76"/></marker>
@@ -149,16 +149,16 @@
       <rect x="584" y="246" width="60" height="12" rx="2" fill="#F4EBDC"/>
       <text x="614" y="255" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ASYNC</text>
 
-      <!-- finish_call → Model Armor -->
+      <!-- finish_call → DLP -->
       <line x1="440" y1="308" x2="440" y2="340" stroke="#A28E76" stroke-width="1.2" marker-end="url(#arrow)"/>
 
-      <!-- Model Armor → Gemini 3.7 Flash -->
+      <!-- DLP → Gemini 3.7 Flash -->
       <path d="M 576,368 H 616 Q 624,368 624,376 V 416 Q 624,424 632,424 H 700"
             fill="none" stroke="#A28E76" stroke-width="1.2" marker-end="url(#arrow)"/>
       <rect x="544" y="404" width="72" height="12" rx="2" fill="#F4EBDC"/>
       <text x="580" y="413" fill="#4B3A2B" font-size="8" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.06em">EXTRACT</text>
 
-      <!-- Model Armor → Firestore : the only write path -->
+      <!-- DLP → Firestore : the only write path -->
       <path d="M 576,388 H 592 Q 600,388 600,396 V 622 Q 600,630 608,630 H 700"
             fill="none" stroke="#F2A93C" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
       <rect x="488" y="508" width="104" height="12" rx="2" fill="#F4EBDC"/>
@@ -211,11 +211,11 @@
       <text x="454" y="278" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">finish_call</text>
       <text x="454" y="294" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">stories · facts · entities</text>
 
-      <!-- Model Armor -->
+      <!-- DLP screening boundary -->
       <rect x="332" y="340" width="244" height="56" rx="6" fill="#F4EBDC"/>
       <rect x="332" y="340" width="244" height="56" rx="6" fill="rgba(242,169,60,0.05)" stroke="rgba(242,169,60,0.50)" stroke-width="1" stroke-dasharray="4,4"/>
-      <text x="454" y="366" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Model Armor + DLP</text>
-      <text x="454" y="382" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">screen before every write</text>
+      <text x="454" y="366" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Sensitive Data Protection</text>
+      <text x="454" y="382" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">DLP · screens every write</text>
 
       <!-- Retrieval -->
       <rect x="332" y="444" width="244" height="56" rx="6" fill="#F4EBDC"/>
