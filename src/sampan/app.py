@@ -292,18 +292,37 @@ def _resolve_places(
 
     names = sorted({c.where_said for c in cards if c.where_said})
     cached: list[Place] = []
-    missing: list[str] = []
+    # What to ask the resolver, keyed by the name the story actually used.
+    # A cached entry with no coordinates is retried rather than kept forever:
+    # the cache is here to avoid re-resolving a place that is already located,
+    # and holding an unlocatable one means a story can never reach the map
+    # however many times the family looks. When the family has given a better
+    # name for it, that is what gets asked.
+    missing: dict[str, str] = {}
     for name in names:
         raw = store.get(_PLACE_CACHE, name)
         if raw is None:
-            missing.append(name)
+            missing[name] = name
+            continue
+        place = Place.model_validate(raw)
+        if place.locatable:
+            cached.append(place)
         else:
-            cached.append(Place.model_validate(raw))
+            missing[name] = place.display_name or name
 
     if missing and settings.configured:
         with contextlib.suppress(Exception):
-            for place in GeminiPlaceResolver(settings).resolve(missing):
-                store.put(_PLACE_CACHE, place.raw_name, place.model_dump(mode="json"))
+            asked = list(missing.values())
+            resolved = GeminiPlaceResolver(settings).resolve(asked)
+            found = {p.raw_name: p for p in resolved}
+            for name, query in missing.items():
+                place = found.get(query) or found.get(name)
+                if place is None:
+                    continue
+                # Stored under the name the story used, so `to_pins` can find
+                # it, even when a better name was the one resolved.
+                place = place.model_copy(update={"raw_name": name})
+                store.put(_PLACE_CACHE, name, place.model_dump(mode="json"))
                 cached.append(place)
 
     resolved = {p.raw_name for p in cached}
@@ -907,9 +926,7 @@ def create_app() -> FastAPI:
                     "replacement": fresh.fact_id,
                 }
             )
-            working = [
-                amended if f.fact_id == old.fact_id else f for f in working
-            ]
+            working = [amended if f.fact_id == old.fact_id else f for f in working]
             working.append(fresh)
 
         graph = FactGraph(facts=working, entities=entities)
@@ -939,9 +956,7 @@ def create_app() -> FastAPI:
         ]
 
         held: list[SearchTrace] = []
-        found = search_facts(
-            needle, graph, seeds=seeds, limit=5, on_trace=held.append
-        )
+        found = search_facts(needle, graph, seeds=seeds, limit=5, on_trace=held.append)
         trace = held[0] if held else SearchTrace(query=needle)
 
         rank_by_id = {f.fact_id: i for i, f in enumerate(found)}
@@ -952,9 +967,7 @@ def create_app() -> FastAPI:
         drawn = [
             f
             for f in graph.facts
-            if f.fact_id in scored
-            or not f.is_current
-            or f.fact_id.startswith("demo_")
+            if f.fact_id in scored or not f.is_current or f.fact_id.startswith("demo_")
         ]
 
         touched: set[str] = {*trace.seeds}
@@ -1004,9 +1017,7 @@ def create_app() -> FastAPI:
                     # A state change moves `valid_to`. Conflicting testimony
                     # moves `t_expired`. Watching which field fills in is the
                     # clearest way to see that they are not the same clock.
-                    "valid_from": fact.valid_from.raw_phrase
-                    if fact.valid_from
-                    else "",
+                    "valid_from": fact.valid_from.raw_phrase if fact.valid_from else "",
                     "valid_to": fact.valid_to.raw_phrase if fact.valid_to else "",
                     "t_created": fact.t_created.isoformat(),
                     "t_expired": fact.t_expired.isoformat() if fact.t_expired else "",
@@ -1092,9 +1103,7 @@ def create_app() -> FastAPI:
                             "superseded_by": f.superseded_by or "",
                             # Which clock moved. valid_to means the world
                             # changed; t_expired means she told it differently.
-                            "clock": "valid time"
-                            if f.valid_to
-                            else "transaction time",
+                            "clock": "valid time" if f.valid_to else "transaction time",
                         }
                         for f in retired
                     ],

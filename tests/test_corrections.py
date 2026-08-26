@@ -215,11 +215,7 @@ class TestWhatNeedsAttention:
 
 
 class TestPlaces:
-    def test_a_confirmed_place_is_trusted_afterwards(
-        self, repository: Repository
-    ) -> None:
-        """Sungai Siput resolved to the wrong town. Once her son fixes it, the map
-        should stop guessing."""
+    def confirm(self, repository: Repository) -> dict:
         apply_correction(
             repository,
             NARRATOR,
@@ -230,8 +226,57 @@ class TestPlaces:
                 by="Wei Lun",
             ),
         )
+        return repository._store.get("_places", "Sungai Siput")  # noqa: SLF001
 
-        cached = repository._store.get("_places", "Sungai Siput")  # noqa: SLF001
-        assert cached is not None
+    def test_a_confirmed_place_is_trusted_afterwards(
+        self, repository: Repository
+    ) -> None:
+        """Sungai Siput resolved to the wrong town. Once her son fixes it, the map
+        should stop guessing."""
+        repository._store.put(  # noqa: SLF001
+            "_places",
+            "Sungai Siput",
+            {
+                "raw_name": "Sungai Siput",
+                "lat": 4.8,
+                "lng": 101.07,
+                "precision": "town",
+                "confidence": 0.6,
+            },
+        )
+
+        cached = self.confirm(repository)
+
         assert cached["precision"] == "exact"
         assert "Wei Lun" in cached["note"]
+
+    def test_confirming_keeps_the_coordinates(self, repository: Repository) -> None:
+        """Confirming used to write a fresh record and drop lat/lng, and a place
+        with no coordinates is not locatable -- so confirming a pin removed it
+        from the map, and `_resolve_places` never retries a cached name."""
+        repository._store.put(  # noqa: SLF001
+            "_places",
+            "Sungai Siput",
+            {
+                "raw_name": "Sungai Siput",
+                "lat": 4.8,
+                "lng": 101.07,
+                "precision": "town",
+                "confidence": 0.6,
+            },
+        )
+
+        cached = self.confirm(repository)
+
+        assert (cached["lat"], cached["lng"]) == (4.8, 101.07)
+
+    def test_confirming_something_never_located_is_not_called_exact(
+        self, repository: Repository
+    ) -> None:
+        """No coordinates, no exactness. Claiming it would freeze the place in
+        the cache as trusted-and-unmappable; left unknown, the better name the
+        family just supplied gets resolved on the next look."""
+        cached = self.confirm(repository)
+
+        assert cached["precision"] == "unknown"
+        assert cached["display_name"] == "Sungai Siput, Perak"
