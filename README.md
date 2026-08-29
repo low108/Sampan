@@ -343,22 +343,56 @@ with it. See `PRD.md` §9.3.
 **Cloud Run settings are part of the contract, not deployment detail.** `--timeout=3600`
 matters most: the 300s default kills calls mid-story and looks like a Live API bug.
 
-## Models
+## Models and services
 
-| Role | Model | Region |
-|---|---|---|
-| Voice | `gemini-live-2.5-flash-native-audio` | `us-central1` |
-| Archivist (extraction) | `gemini-3.7-flash` | `global` |
-| Affect monitor | `gemini-3.7-flash` | `global` |
+### Google AI models — three, doing nine jobs
 
-Three regions, each for a different reason: story data lives in `asia-southeast1` (PDPA),
-text models are served from `global`, and the Live API's native-audio model is only available
-from `us-central1`. Verified by probing; the documented model names do not
-all exist on Vertex.
+| Model | Region | Used for | Temp |
+|---|---|---|---|
+| `gemini-live-2.5-flash-native-audio` | `us-central1` | the call itself — duplex audio, interruption, five ADK tools | — |
+| `gemini-3.7-flash` | `global` | story extraction (`archivist.py`) | 0.2 |
+| | | fact extraction (`fact_extraction.py`) | **0.0** |
+| | | contradiction judge (`contradiction.py`) | **0.0** |
+| | | affect monitor (`affect.py`) | **0.0** |
+| | | place resolver and linker (`places.py`) | **0.0** |
+| | | community naming (`communities.py`) | 0.3 |
+| | | answering the family's questions (`ask_about.py`) | 0.3 |
+| | | letters (`letters.py`) | 0.6 |
+| `veo-3.1-fast-generate-001` | `us-central1` | four-second story-card clips, queued off the call path | — |
 
-The hackathon requires Gemini 3.5 or newer. No Live dialog model currently meets that bar, so
-the requirement is satisfied by the Archivist and affect monitor running on 3.7 — stated here
-explicitly rather than left for a reader to work out. See `PRD.md` §9.2.
+**Temperature is a decision each time, not a default.** Anything that must not
+drift runs at 0.0 — the fact pass was measured yielding a stored fact on one run
+and nothing on the next at 0.1, which made recording her correction a coin flip.
+Story extraction sits at 0.2 because the narrative has to read like prose, and
+letters at 0.6 because they are written once and read by people.
+
+**Where there is deliberately no model:** retrieval (BM25 + two-hop graph search
++ reciprocal rank fusion) and the pinnability rubric. Both decide what the family
+sees, so both are deterministic and show their working.
+
+Three regions, each for a reason: story data lives in `asia-southeast1` (PDPA),
+text models are served from `global`, and the Live API's native-audio model is
+only available from `us-central1`. Verified by probing; the documented model
+names do not all exist on Vertex.
+
+The hackathon requires Gemini 3.5 or newer. No Live dialog model currently meets
+that bar, so the requirement is satisfied by everything except the call itself
+running on 3.7 — stated here rather than left for a reader to work out. See
+`PRD.md` §9.2.
+
+### Google Cloud services
+
+| Service | Role |
+|---|---|
+| **Cloud Run** (`asia-southeast1`) | one FastAPI service. `--timeout=3600` because the 300s default kills a call mid-story; `--max-instances=3` caps spend |
+| **Firestore** (`asia-southeast1`) | the archive. Ten collections per narrator, bi-temporal facts |
+| **Vertex AI** | every model call, via `google-genai` |
+| **Google ADK 2.7.0** | agent runtime — tool dispatch, session management, the live audio loop |
+| **Sensitive Data Protection (DLP)** | screens every transcript before anything is written |
+| **Model Armor** | provisioned, opt-in, not the default backend — see below |
+| **Pub/Sub** | the Veo queue, push-subscribed to `/internal/memories` |
+| **Cloud Storage** | the generated mp4s, public-read so a card can use the URL directly |
+| **Cloud Scheduler** | weekly chapter refresh to `/internal/communities` — the only scheduled work in the product; everything else is written by the call that caused it |
 
 ## Limitations
 
