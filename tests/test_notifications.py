@@ -215,3 +215,64 @@ class TestAnsweringTheOneShePicked:
 
         assert isinstance(waiting, Ask)
         assert waiting.question == "how are you?"
+
+
+class TestAStoryRowOpensTheStory:
+    """A row that names a story should open that story.
+
+    "Siew Khim told: Buying curry puffs at Jalan Bandar" opened her profile
+    page: a different screen from the sentence the row had just quoted, leaving
+    the reader to go and find it on the map themselves. The client already knew
+    how to open a story -- `opens: "story"` sets the map tab and the sheet --
+    and the server had simply never sent it.
+    """
+
+    @staticmethod
+    def _members():
+        from sampan.household import Member
+
+        return [
+            Member(
+                narrator_id="ah_khim",
+                display_name="Lim Siew Khim",
+                relation="grandmother",
+            ),
+            Member(narrator_id="wei_lun", display_name="Tan Wei Lun", relation="son"),
+        ]
+
+    def _repo_with(self, count: int):
+        from sampan.repository import Repository
+        from sampan.store import InMemoryDocumentStore
+
+        store = InMemoryDocumentStore()
+        for index in range(count):
+            store.put(
+                "stories__ah_khim",
+                f"conv_x_{index}_00",
+                {
+                    "story_id": f"conv_x_{index}_00",
+                    "occurred_at": f"2026-08-2{index}T10:00:00+00:00",
+                    "candidate": {"title": f"story {index}"},
+                },
+            )
+        return Repository(store)
+
+    def _story_row(self, repo):
+        from sampan.notifications import notifications_for
+
+        rows = notifications_for(repo, "wei_lun", self._members())
+        return next(n for n in rows if n.kind == "new_story")
+
+    def test_one_new_story_opens_that_story(self) -> None:
+        row = self._story_row(self._repo_with(1))
+
+        assert row.opens == "story"
+        assert row.target == "conv_x_0_00"
+
+    def test_several_new_stories_still_open_her_page(self) -> None:
+        """A row that summarises several names no single story, so her page is
+        the honest destination rather than an arbitrary one of them."""
+        row = self._story_row(self._repo_with(3))
+
+        assert row.opens == "member"
+        assert row.target == "ah_khim"
