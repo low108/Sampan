@@ -3,8 +3,6 @@
 <head>
 <meta charset="utf-8">
 <title>Sampan — fanned-out call map</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   html,body{margin:0;background:#f7f6f3}
@@ -27,14 +25,13 @@
 </style>
 </head>
 <body>
-<svg viewBox="0 0 2520 1200" role="img" aria-labelledby="t d">
+<svg viewBox="0 0 2520 1296" role="img" aria-labelledby="t d">
   <title id="t">Sampan — fanned-out call map</title>
   <desc id="d">One spine timeline fanned into parallel per-thread timelines: ADK runtime, AI models, and one row per Firestore collection. Shared time columns keep every relation vertical. Orange marks what changed on 20 August: transcript screening before the first write, the fact pass and judge now running on the call rather than offline, and image generation queued onto Pub/Sub.</desc>
 
   <defs><marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#111"/></marker></defs>
 
-  <text class="title" x="80" y="56">Sampan — one call, fanned out</text>
-  <text class="subtitle" x="80" y="84">spine on top · each thread its own timeline · same time columns · relations stay vertical · orange = changed 20 Aug</text>
+  <text class="title" x="80" y="56">Sampan </text>
 
   <!-- legend -->
   <g class="legend">
@@ -47,11 +44,11 @@
 
   <!-- column guides (shared time) -->
   <g stroke="#d9d9d6" stroke-width="1" stroke-dasharray="3 5">
-    <line x1="220" y1="292" x2="220" y2="1160"/><line x1="450" y1="292" x2="450" y2="1160"/>
-    <line x1="680" y1="292" x2="680" y2="1160"/><line x1="910" y1="292" x2="910" y2="1160"/>
-    <line x1="1140" y1="292" x2="1140" y2="1160"/><line x1="1370" y1="292" x2="1370" y2="1160"/>
-    <line x1="1600" y1="292" x2="1600" y2="1160"/><line x1="1830" y1="292" x2="1830" y2="1160"/>
-    <line x1="2060" y1="292" x2="2060" y2="1160"/><line x1="2290" y1="292" x2="2290" y2="1160"/>
+    <line x1="220" y1="292" x2="220" y2="1196"/><line x1="450" y1="292" x2="450" y2="1196"/>
+    <line x1="680" y1="292" x2="680" y2="1196"/><line x1="910" y1="292" x2="910" y2="1196"/>
+    <line x1="1140" y1="292" x2="1140" y2="1196"/><line x1="1370" y1="292" x2="1370" y2="1196"/>
+    <line x1="1600" y1="292" x2="1600" y2="1196"/><line x1="1830" y1="292" x2="1830" y2="1196"/>
+    <line x1="2060" y1="292" x2="2060" y2="1196"/><line x1="2290" y1="292" x2="2290" y2="1196"/>
   </g>
 
   <!-- ============ SPINE ============ -->
@@ -225,9 +222,10 @@
     <text x="24" y="1040">private·forgotten</text>
     <text x="24" y="1086">facts</text>
     <text x="24" y="1132">memories</text>
+    <text x="24" y="1178">communities</text>
   </g>
   <g stroke="#e3e2de" stroke-width="1">
-    <line x1="160" y1="760" x2="2460" y2="760"/><line x1="160" y1="806" x2="2460" y2="806"/><line x1="160" y1="852" x2="2460" y2="852"/><line x1="160" y1="898" x2="2460" y2="898"/><line x1="160" y1="944" x2="2460" y2="944"/><line x1="160" y1="990" x2="2460" y2="990"/><line x1="160" y1="1036" x2="2460" y2="1036"/><line x1="160" y1="1082" x2="2460" y2="1082"/><line x1="160" y1="1128" x2="2460" y2="1128"/>
+    <line x1="160" y1="760" x2="2460" y2="760"/><line x1="160" y1="806" x2="2460" y2="806"/><line x1="160" y1="852" x2="2460" y2="852"/><line x1="160" y1="898" x2="2460" y2="898"/><line x1="160" y1="944" x2="2460" y2="944"/><line x1="160" y1="990" x2="2460" y2="990"/><line x1="160" y1="1036" x2="2460" y2="1036"/><line x1="160" y1="1082" x2="2460" y2="1082"/><line x1="160" y1="1128" x2="2460" y2="1128"/><line x1="160" y1="1174" x2="2460" y2="1174"/>
   </g>
   <g>
     <!-- profiles -->
@@ -275,13 +273,13 @@
     <!-- memories -->
     <rect x="2055" y="1123" width="10" height="10" fill="none" stroke="#eb6c36" stroke-width="1.5" stroke-dasharray="3 2"/>
     <text class="tagt" x="2072" y="1122">Pub/Sub -&gt; push worker -&gt; Veo -&gt; GCS -&gt; url here (minutes later)</text>
+    <!-- communities: the only row no call writes -->
+    <rect x="2400" y="1169" width="10" height="10" fill="none" stroke="#eb6c36" stroke-width="1.5" stroke-dasharray="3 2"/>
+    <text class="tagt" x="2460" y="1157" text-anchor="end">Cloud Scheduler · weekly</text>
+    <line x1="2300" y1="1174" x2="2392" y2="1174" stroke="#eb6c36" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <text class="tagk" x="180" y="1170">the only row no call writes · label propagation drifts, so the refresh runs on a clock, never on the call path</text>
   </g>
 
-  <!-- what moved today -->
-  <g>
-    <rect x="80" y="1150" width="2360" height="34" fill="none" stroke="#eb6c36" stroke-width="1" stroke-dasharray="4 4" rx="6"/>
-    <text class="tagt" x="96" y="1172">20 Aug · facts + judge were never wired to the call and ran only in a backfill script · transcripts are now screened before the first write · forgotten was write-only · the narrator had no node in her own graph · image generation moved onto a queue</text>
-  </g>
 </svg>
 </body>
 </html>

@@ -95,7 +95,7 @@ camera.
 curl -s -X POST "$URL/api/family/ah_khim/ask" \
   -H "X-Sampan-Key: $SAMPAN_API_KEY" -H 'Content-Type: application/json' \
   -d '{"from_name":"Wei Lun","from_id":"wei_lun","relation":"son",
-       "question":"Ma, are you eating properly? I keep thinking about you."}'
+       "question":"Ah Ma, are you eating properly? I keep thinking about you."}'
 
 curl -s "$URL/api/talk/ah_khim/pending" -H "X-Sampan-Key: $SAMPAN_API_KEY"
 # from_name must read "Wei Lun". If not, POST the ask_id to

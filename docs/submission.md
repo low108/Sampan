@@ -5,41 +5,8 @@ months, and hands it to her family as something they can walk through.*
 
 **Live:** `https://sampan-ig6xl5kf4q-as.a.run.app` ·
 **Track:** Collaborative Partner ·
-**Diagrams:** `architecture.png` · `round-trip.png` · `two-clocks.png`
-
----
-
-## If you read nothing else
-
-An eighty-year-old woman presses **one button** on a phone and talks. On the
-other end is a voice agent that already knows her — and that opens by asking her
-**her son's actual question, in his name**.
-
-Everything she says is turned into a map her family can walk through. If she
-says something worrying, her son is told. If she later says something different,
-the system works out whether **she changed** or **she misremembered** — because
-those are not the same thing, and treating them the same is how you quietly
-overwrite an old woman's memory.
-
-It is a bridge to her family. It is deliberately not a friend.
-
----
 
 ## 1. Description
-
-My grandmother is eighty. She lives in Ipoh; her son is in Kuala Lumpur, her
-granddaughter is at university. They call on Sundays and ask whether she has
-eaten.
-
-She knows things nobody else knows. Which year the coffee shop opened. What her
-mother put in the fried rice. Who lived in the next line-house on the rubber
-estate. None of it is written down, and the family finds out what they lost
-after she is gone.
-
-There are apps that will record an elderly person's memoir. They ask her to
-operate a phone, and they give the family a transcript. That is a filing
-cabinet, and the filing cabinet is not the problem. **The problem is that she is
-lonely and the family is busy, and nothing turns one into the other.**
 
 Sampan phones her. She talks to Xiao Chuan — no app, no screen, no password. It
 listens, remembers across months, and turns what she says into a map her family
@@ -90,7 +57,7 @@ answered her son.
 
 ## 2. Features and functionality
 
-### Her side — one button
+### Her side 
 
 She presses **Tell a story**. A live, bidirectional voice conversation opens.
 There is no login, no account, no menu. The session carries:
@@ -118,7 +85,7 @@ There is no login, no account, no menu. The session carries:
 
 | Feature | What it does |
 |---|---|
-| **The map** | Sixteen stories placed where they happened, 1946 → now. Pins distinguish *named in the telling* from *the system guessed*. |
+| **The map** | Her stories placed where they happened, 1946 → now. Pins distinguish *named in the telling* from *the system guessed*. |
 | **Story cards** | Her words, kept as she said them, with a Veo-generated card image |
 | **Chapters** | Entity communities, labelled — "the coffee shop years" |
 | **Letters** | A short written piece per story, generated once and kept |
@@ -129,15 +96,7 @@ There is no login, no account, no menu. The session carries:
 
 ### The rule that shapes the whole product
 
-**The family may correct the system. Nobody corrects her.**
-
-A wrong place, a duplicated person, a misheard name — those are the system's
-errors and the family fixes them. But when *she* says something that contradicts
-what the archive holds, the archive does not tell her she is wrong. It works out
-which of two clocks moved, and moves that one. She is right in 1952 and right
-again now.
-
-### The two clocks — the idea the whole archive rests on
+### The two clocks aka bi-temporal graph
 
 ![Two clocks: valid time versus transaction time](two-clocks.png)
 
@@ -146,7 +105,7 @@ timelines, and it is worth being slow about this because everything else follows
 from it:
 
 1. **Her life** — when a thing was actually true. She lived in Sungai Siput from
-   1952. That is a fact about the world.
+That is a fact about the world.
 2. **What the archive believes** — when the system started asserting it, and if
    ever, when it stopped. That is a fact about the *system*, not about her.
 
@@ -154,16 +113,16 @@ Now she says something that does not match. There are exactly two reasons that
 can happen, and they need opposite responses:
 
 - **She moved.** Both statements were true, one after the other. The *first*
-  timeline closes — Sungai Siput until 2026, Kampung Baru after. Nothing is
+  timeline closes . Sungai Siput until 2026, Kampung Baru after. Nothing is
   withdrawn, because nothing was ever wrong.
-- **She misremembered.** One event, two accounts. The *second* timeline closes —
+- **She misremembered.** One event, two accounts. The *second* timeline closes, 
   the archive stops asserting the older telling and keeps it. **Her own dates are
   not touched**, because the disagreement is about the account, not about her
   life.
 
 Collapse those two into a single "update" and you get a system that records an
 eighty-year-old as having been wrong every time she moved house. That is the
-error the design exists to prevent — and §6 records the day I shipped it anyway.
+error the design exists to prevent.
 
 ### Inside the memory — the explainability panel
 
@@ -197,7 +156,7 @@ reading; the dashed paths happen after she has hung up and nobody is waiting.
 The dashed orange box is the one security boundary that matters: **nothing
 reaches the database without passing through DLP first.**
 
-### Google AI models — three, each doing one job
+### Google AI models 
 
 | Model | Where | Job |
 |---|---|---|
@@ -205,8 +164,6 @@ reaches the database without passing through DLP first.**
 | `gemini-3.7-flash` | global, temperature 0.0 | Story extraction, fact extraction, contradiction judge, affect monitor, place resolver, letter writer, community labelling |
 | `veo-3.1-fast-generate-001` | Vertex AI | Story-card video, off the call path via Pub/Sub |
 
-**Not used, and not claimed:** Gemma and Lyria. Neither is integrated, so
-neither appears in the architecture diagram.
 
 ### Google Cloud
 
@@ -226,6 +183,9 @@ neither appears in the architecture diagram.
   its prompt-injection filter.
 - **Pub/Sub** — the Veo generation queue, push-subscribed to
   `/internal/memories`.
+- **Cloud Scheduler** — the weekly community refresh, posting to
+  `/internal/communities`. The only scheduled work in the product: everything
+  else is written by the call that caused it (§5.4).
 - **Cloud Storage** — mp4 and poster for story cards.
 - **Google ADK 2.7.0** — agent runtime, tool dispatch, session management.
 
@@ -340,6 +300,104 @@ This is the difference between an overwrite and a representation. Collapsing the
 two clocks is the exact error the bi-temporal design exists to prevent — and I
 shipped that error and had to fix it, which is in §6.
 
+### 5.2a The managed alternative — Vertex AI Agent Engine Memory Bank
+
+Google ships the thing we built. **Agent Engine Memory Bank** is GA, it is the
+first-party memory service for ADK — which we are already on — and wiring it
+would be three lines:
+
+```python
+memory_service = VertexAiMemoryBankService(
+    project=..., location=..., agent_engine_id=...
+)
+```
+
+It would replace roughly 1,600 lines of ours: extraction, contradiction,
+retrieval, entity resolution, communities. We evaluated it and did not use it.
+Not because it is weak — it is grounded in a Google Research method published at
+ACL 2025 (arXiv 2503.08026) and it solves its problem well. Because it solves a
+**different** problem, in three ways that are load-bearing here.
+
+**1. Its consolidation target is one current fact. Ours is two surviving
+tellings.**
+
+Memory Bank extracts facts with Gemini, then consolidates: for memories in the
+same scope it decides whether existing ones should be *deleted or updated*,
+checking whether new information is duplicative, complementary or contradictory.
+The stated design goal is that memories are *"continuously up to date"*.
+
+That is correct for a personal assistant and inverted for an archive. Ah Khim
+said Mrs. Rajan lived downstairs, then said upstairs. Memory Bank's job is to
+end up holding *upstairs*. Ours is to hold both, mark the first `t_expired` with
+`superseded_by` pointing forward, and **show the retired one in the family
+view**. The downstairs telling is not stale data superseded by better data. It
+is something an eighty-year-old said, and the product's central promise is that
+she is never corrected — only the system is.
+
+**2. Its revisions are an audit trail of a record. Our clocks are a model of the
+world.**
+
+Memory Bank does have versioning, and we should be precise about it: revisions
+are on by default, each `Memory` carries child `MemoryRevision` resources, and
+consolidation appends one. So the change history exists and is inspectable.
+
+But a revision answers *how did this record change*. Our `Judgement` answers a
+different question, and it is the one the product turns on:
+
+| | Memory Bank consolidation | This system |
+|---|---|---|
+| question asked of the model | is this duplicative, complementary, or contradictory? | **did the world change, or did her account of it change?** |
+| resolution | delete or update the memory; append a revision | `state_change` closes `valid_to`; `conflicting_testimony` sets `t_expired` and leaves valid time **untouched** |
+| what survives | one current memory + its revision history | two facts, both queryable, one visibly retired |
+
+A revision records that the record moved. It does not record *why*, in the only
+sense that matters here — whether Mrs. Rajan moved house, or whether Ah Khim
+misremembered. Those are different facts about the world and they must not be
+stored the same way. That distinction is §5.1 and §5.2, and it is the whole
+reason two clocks exist rather than one timestamp.
+
+**3. It stores model-written sentences. We store hers.**
+
+Memory Bank's own examples are the tell: *"My preferred temperature is 71
+degrees"*, *"I prefer aisle seats on flights."* Short, normalised, written by a
+model *about* what the user said. Every fact in our graph instead carries
+`quote` — the sentence she actually spoke — and the family view can open any
+claim down to it (§5.5, §5.6).
+
+For an assistant, the paraphrase is better: shorter, cleaner, cheaper in
+context. For something her grandchildren inherit, an archive made of sentences a
+model wrote about her is a different artifact from one made of sentences she
+said. That is not a performance argument and no benchmark would show it.
+
+**And a fourth, smaller: retrieval stops being showable.** Memory Bank retrieves
+by embedding similarity. Ours is BM25 + two-hop BFS + RRF with a stored
+`SearchTrace` (§5.3, §5.5) — the same query returns the same numbers, and the
+demo puts `bm25=4.9223` on screen. "Semantically close" cannot be audited by a
+family, or by a judge.
+
+**What we would gain, honestly.** Consolidation and deduplication is precisely
+where our bugs live — §6 documents a false entity merge that survived four
+resets and answered a question about her neighbour with the wrong person. That
+class of failure is Memory Bank's core competence, and adopting it would remove
+it along with the maintenance burden. We are choosing to own a harder problem
+because the representation is the product; that is a real cost, not a free win.
+
+**The defensible architecture, stated plainly.** These are two different jobs
+and conflating them is the error:
+
+> Memory Bank for **agent continuity** — what the companion needs in order to
+> feel like it knows her.
+> The bi-temporal graph for the **archive** — what the family inherits.
+
+We built the second. A production system might well run both, and nothing in
+our design prevents it: `CallMemory` is constructed at the start of every call
+from an injected repository, so a second memory source is an additive change,
+not a rewrite.
+
+*Caveat: Agent Engine's regional availability was not confirmed for
+`asia-southeast1` at time of writing. Our data-residency choice (§3) is
+deliberate, and would need verifying before any adoption.*
+
 ### 5.3 Retrieval — Zep §3, BM25, RRF
 
 **Research.** Zep's retrieval is several searches for recall, then a reranker
@@ -369,6 +427,44 @@ question about Ah Seng returns Ah Chwee, confidently and wrongly.
 propagation to convergence, and a single recursive step for incremental
 updates — the paper is explicit that the dynamic case is one step, not a rerun.
 These become the family-facing "chapters".
+
+**The half of it that is easy to skip.** Zep does not merely permit a periodic
+refresh, it says one is *"necessary"* — the cheap dynamic extension is what
+makes communities drift. Every other derived record in this system is written
+by `finish_call` while the transcript is still in hand: stories, facts,
+retirements, entities. Communities are the only one that cannot be, because a
+refresh is full label propagation over the whole graph plus a model call per
+chapter. That is seconds of work, and it must not happen while an
+eighty-year-old is holding a phone.
+
+So it is the one piece of scheduled work in the product:
+
+```
+Cloud Scheduler  ──weekly──▶  POST /internal/communities  ──▶  refresh_narrator()
+```
+
+Concretely: a Cloud Scheduler job (`scripts/setup_scheduler.sh`) posts weekly to
+`/internal/communities`, which clusters and re-names every narrator's chapters.
+Four decisions worth stating, because each is the kind that is usually made by
+accident:
+
+- **Weekly, not nightly.** One narrator produces a handful of new entities a
+  week. Re-clustering every night would spend a model call per chapter to
+  rediscover the same chapters. The job is idempotent, so the frequency is a
+  cost decision and can be raised as the archive grows.
+- **Header auth, not a key in the URL** — unlike `/internal/memories`, which is
+  a Pub/Sub push target and *cannot* set a header. Cloud Scheduler can, and a
+  key in a URL is a key in access logs and in screen recordings.
+- **200 with per-narrator errors in the body**, never a 5xx. Scheduler retries
+  on a non-2xx, and retrying a clustering pass that will fail identically only
+  bills for it again — the same reasoning as the Veo push endpoint (§5.x, D21).
+- **One narrator's failure does not stop the others.** The job runs unattended;
+  a single corrupt graph must not mean nobody's chapters are refreshed for a
+  week.
+
+`scripts/refresh_communities.py` remains for running it by hand, and both paths
+call the same `refresh_narrator()`. Two copies of a clustering pass would drift,
+and the unattended one is the copy nobody notices has drifted.
 
 ### 5.5 Retrieval explainability — TrustGraph
 
@@ -470,7 +566,8 @@ first-class rather than an admin screen. Retired facts are kept and visibly
 marked rather than deleted — which is also the answer to over-trusting stale
 memory: the archive knows what it has stopped asserting, and says so.
 
-**Where we depart from MemoryBank.** Zhong et al. (AAAI 2024, ~1,250 cit)
+**Where we depart from MemoryBank (Zhong et al., AAAI 2024** — the *paper*,
+not Google's Agent Engine Memory Bank, which is §5.2a**).** Zhong et al. (~1,250 cit)
 imports the Ebbinghaus forgetting curve as a decay policy. We do not implement
 decay, and the review is why: disagreement #2 records that *"decay policies that
 help benchmarks may harm the relationship"*, because elderly users **expect and
@@ -489,80 +586,94 @@ anything. It raises a **concern flag to her son**. A product that made an
 eighty-year-old feel less lonely while her family learned nothing would be a
 failure that looked like a success.
 
+### 5.12 How a call opens — scoring, trust gates, and the rule that voids it all
+
+**Research.** Lazar et al. (2014, ~315 cit) find reminiscence technology works
+as a *conversation catalyst* and fails as a replacement for one. CareCall (Jo et
+al., CHI 2023) reports users who over-attach and who disclose more than they
+meant to. Both point the same way: the system may **open a door**, and must never
+push anyone through it.
+
+**Implementation.** `opener.py` is deterministic given stored state — no model
+decides how a call begins. Candidates are scored, and the scores encode a
+product opinion:
+
+| | score | why |
+|---|---|---|
+| `SCORE_INTERRUPTED` | 100 | She was cut off mid-sentence last time. Saying so proves the agent was listening, and nothing available beats it. |
+| `SCORE_ASK` | 90 | A family question. One per call, always attributed by name. |
+| `SCORE_DATE` | 45 | A festival is near — Qingming routes to `ROOT`, the ancestor domain. |
+| `SCORE_THREAD` | 40 | Raised before, unfinished. |
+| `SCORE_DOMAIN` | 20 | Never covered, and deep enough for this session. |
+
+`MAX_OFFERS = 2`, because three options is a menu and a menu is an interview.
+
+**Trust is a gate, not a preference.** `DOMAIN_DEPTH` assigns each subject an
+intimacy level and `unlocked_depth()` opens them on a deliberately slow curve:
+
+```
+level 0  taste, play, work, home        available immediately
+level 1  people, events, tradition      from session 1
+level 2  love, roots, the journey       from session 3
+level 3  hardship, wisdom               from session 6
+```
+
+Ancestry is unreachable until the third call and the hard years until the sixth.
+That is a decision about earning intimacy, and steering **must not route around
+it** — `choose_target` only ever selects from unlocked, uncovered domains, and a
+subject she has refused is not merely deprioritised but permanently ineligible
+(`may_raise`).
+
+**And then the whole thing is disarmed.** `render_plan` ends every instruction
+with:
+
+> **"If she starts talking about something else, follow her. Everything above is
+> void, and you never steer back."**
+
+The target domain is introduced as *"somewhere she has not been, not somewhere
+she must go"*, and the never-steer-back rule is placed **after** it so it is the
+last thing the model reads. A plan that cannot be abandoned is an agenda, and an
+agenda run against an eighty-year-old is the failure mode this project exists to
+avoid. The system prepares carefully and then defers completely — which is the
+bridge thesis at the level of a single turn.
+
+### 5.13 Pinnability — a rubric in code, not a judgement in a prompt
+
+**Research.** The extraction-faithfulness literature (§5.6) is consistent that
+models asked to grade their own output drift, and Xiong et al. (ACL 2026) find
+agents over-trust what they have already stored. Anything that decides what
+reaches the family needs to be inspectable.
+
+**Implementation.** `models.assess()` scores six fields — `where`, `when`, `who`,
+`what`, `sense`, `why` — and applies one rule:
+
+```python
+pinnable = completeness.where and completeness.when
+           and completeness.score >= PIN_THRESHOLD   # 4 of 6
+```
+
+`where` and `when` are **mandatory**; four of six pins. The threshold is a
+product decision about what belongs on a family map, so it is computed in Python
+and never asked of a model. The stored `ScoredStory` carries `completeness`,
+`status` and `missing_fields`, which means a story that did not pin can always
+say which fields it lacked — and the next call knows what to ask her.
+
+A worked example from the real archive: *"Slipping in the bathroom"* scored
+exactly **4 of 6**, missing `who` and `sense`, and pinned anyway because she gave
+where and when. *"Market Curry Puffs with Mrs. Rajan"* scored 6 of 6. The rubric
+is visible in the data, not asserted in prose.
+
+This is the same commitment as retrieval (§2, *Where there is deliberately no
+model*): the two places where the system decides what the family sees are both
+deterministic, and both show their working.
+
+---
+
 ---
 
 ## 6. Findings and learnings
 
-### The bug that proved the thesis
-
-I hardcoded the correction path to `conflicting_testimony`. Then I tested it with
-the demo's own example — *"Ah Chwee lives in Kampung Baru now"* — and the real
-judge returned **`state_change`, confidence 0.95**: *"Ah Chwee appears to have
-moved from Sungai Siput to Kampung Baru."*
-
-She moved. Both tellings were true, in sequence. Retiring the old one asserts she
-misremembered — and **collapsing the two clocks is the precise error the entire
-bi-temporal design exists to prevent.** I had shipped that error inside the panel
-built to explain the difference.
-
-Two things came out of it. The obvious one: the judge is now in the loop, and two
-sentences produce two different clocks live in front of an audience. The less
-obvious one: **the graph could not draw the difference.** It knew *asserted* and
-*withdrawn*, and a state change is neither — the archive still stands behind the
-fact; her life moved on. So a correction changed nothing visible and looked
-broken. Three states became four.
-
-### Things that exist in code and never run
-
-Twice, working code was never executed, and nothing failed.
-
-- `finish_call` takes `fact_extractor` and `judge` as *optional* keywords. The
-  WebSocket handler passed neither. **The entire memory-v2 pass — fact
-  extraction, contradiction, every edge the graph is made of — was skipped on
-  every real call for as long as it had existed.** Nothing raised. The graph only
-  ever grew when a backfill script was run by hand. Fixed by making production
-  build all three together or not at all.
-- An integration test for the contradiction path raised `ValidationError` in its
-  own setup, before any model call. It had been committed without ever being
-  seen to pass.
-
-The lesson is narrower than "write tests": **optionality at a seam is right for
-testing and wrong for production**, and a test you have not watched fail is not
-evidence.
-
-### A hypothesis I was confident about and was wrong
-
-Corrections were being lost. I concluded the extractor rejected denial-led
-phrasing — *"no, it wasn't 1969"* — and had a tidy explanation ready.
-
-Then I measured it. Denial-led corrections were proposed **8 times out of 8**;
-kept 3 of 4. Assertion-only kept 4 of 4. The phrasing hypothesis was wrong. The
-real cause was **non-determinism at `temperature=0.1`**, now 0.0.
-
-This is Shah (JAMA Netw Open 2024) landing on my own code — quantified
-run-to-run inconsistency in LLM extraction — and I would have "fixed" the wrong
-thing with a plausible story if I had not measured.
-
-### The security control that reported success while doing nothing
-
-Model Armor's SDP filter **delegates** to Cloud DLP. When its service agent
-lacked `roles/dlp.user`, the API returned **HTTP 200** with
-`EXECUTION_SKIPPED` — and my first parser read that as a clean transcript. The
-screen was reporting success while screening nothing.
-
-Two fixes. `EXECUTION_SKIPPED` and `invocation_result: FAILURE` are now detected
-and the call is flagged `unscreened` — which is *not* the same as an empty
-findings list. One means the screen ran and objected to nothing; the other means
-it never ran. Which calls went through unchecked has to be a query, not a guess.
-
-Separately: `FINANCIAL_ACCOUNT_NUMBER` detects nothing on Malaysian bank
-formats, despite the name. I swept every DLP info type at three likelihood
-levels to confirm it, and there are no `MALAYSIA_*` types at all. The template
-(`scripts/setup_armor.sh`) now pairs `CREDIT_CARD_NUMBER` — which works, being
-Luhn-checkable — with a custom `BANK_ACCOUNT_NUMBER` regex, measured at **one
-finding and no false positives across her whole archive**.
-
-### Where the literature disagreed and we had to pick
+### Where the literature disagreed 
 
 The review's own "where the literature disagrees with itself" section forced
 three choices:
@@ -579,30 +690,7 @@ three choices:
    quote behind every fact, so the graph is an *index into* the transcript
    rather than a replacement for it.
 
-### What I would tell someone starting this
 
-- **Deletion is the highest-quality move**, in schematics and in scope. The
-  memory panel got better every time something came out of it.
-- **Pick the honest version of the demo.** Which fact is being corrected is
-  chosen by *clicking*, not inferred, because on a real call a model does that
-  and the demo does not run it. Saying so out loud is cheaper than being caught.
-- **Instrument the thing you are about to explain.** Every number the retrieval
-  panel shows was already being computed and thrown away on the return line. The
-  panel cost almost nothing to build and changed how much of the system I could
-  defend.
-
-### Honest limits
-
-- The Gemini contradiction judge was wired into `finish_call` only recently, and
-  **her archive still contains zero retired facts.** That path has never
-  produced a supersession on real call data — only through the sandbox.
-- Retroactive anchor re-resolution is deferred.
-- Embedding search is a slot, not an implementation.
-- One narrator, one family, six seeded sessions. Everything here is a
-  demonstration that the design holds, not evidence that it holds at scale — and
-  unsolved-problem #7 in the review is precisely that nobody has measured whether
-  what a companion remembers about a real elderly person **stays true over
-  months**. We have not measured it either.
 
 ---
 

@@ -88,7 +88,7 @@
 
     <svg viewBox="0 0 1280 780" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sampan-arch-title sampan-arch-desc">
       <title id="sampan-arch-title">Sampan system architecture</title>
-      <desc id="sampan-arch-desc">A browser talks to a FastAPI service on Cloud Run, which streams audio to Gemini Live for the conversation, screens the transcript through Cloud DLP, then uses Gemini 3.7 Flash to extract facts and judge contradictions before writing a bi-temporal graph to Firestore; Veo generates story-card video asynchronously via Pub/Sub and Cloud Storage.</desc>
+      <desc id="sampan-arch-desc">A browser talks to a FastAPI service on Cloud Run, which streams audio to Gemini Live for the conversation, screens the transcript through Cloud DLP, then uses Gemini 3.7 Flash to extract facts and judge contradictions before writing a bi-temporal graph to Firestore; Veo generates story-card video asynchronously via Pub/Sub and Cloud Storage. A weekly Cloud Scheduler job posts to the same service to re-cluster the narrator's entity communities into chapters.</desc>
 
       <defs>
         <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#A28E76"/></marker>
@@ -265,6 +265,22 @@
       <text x="1026" y="627" fill="rgba(162,142,118,0.90)" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GCS</text>
       <text x="1104" y="652" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Cloud Storage</text>
       <text x="1104" y="668" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">mp4 + poster</text>
+
+      <!-- ═══ CLOUD SCHEDULER — the only work not caused by a call ═══ -->
+      <!-- Dashed like Veo: both are off-call. Placed below the service rather
+           than inside it, because the clock is outside the request path and
+           pokes the service from without. -->
+      <rect x="332" y="576" width="244" height="80" rx="6" fill="#F4EBDC"/>
+      <rect x="332" y="576" width="244" height="80" rx="6" fill="rgba(37,26,17,0.02)" stroke="rgba(37,26,17,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+      <rect x="340" y="582" width="60" height="12" rx="2" fill="transparent" stroke="rgba(37,26,17,0.40)" stroke-width="0.8"/>
+      <text x="370" y="591" fill="rgba(37,26,17,0.80)" font-size="7" font-family="'DM Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SCHEDULER</text>
+      <text x="454" y="618" fill="#251A11" font-size="12" font-weight="600" font-family="'Archivo', sans-serif" text-anchor="middle">Cloud Scheduler</text>
+      <text x="454" y="634" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">weekly · /internal/communities</text>
+      <text x="454" y="648" fill="#4B3A2B" font-size="9" font-family="'DM Mono', monospace" text-anchor="middle">re-clusters her chapters</text>
+
+      <!-- up into the service. Dashed: nothing is waiting on it. -->
+      <path d="M 454,576 V 528"
+            fill="none" stroke="#A28E76" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
 
       <!-- ═══ LEGEND ═══ -->
       <line x1="40" y1="756" x2="1240" y2="756" stroke="rgba(37,26,17,0.10)" stroke-width="0.8"/>
