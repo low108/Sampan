@@ -25,7 +25,7 @@ with four conversations for one narrator and two for another.
 - **Places** — relational names ("my father's shop") joined to places she named in other
   sessions, each link carrying the sentence that justifies it.
 
-**Memory v2** (`docs/spec-temporal-graph.md`) adds bi-temporal fact edges after
+**Memory v2** adds bi-temporal fact edges after
 Zep/Graphiti, Zep-style retrieval behind a single `remember` tool, contradiction
 routed to the correct time axis, a topic *lean* that never becomes a push, and
 communities as her chapters.
@@ -43,11 +43,6 @@ Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
   before changing anything structural. Every claim in it is verified against source or
   labelled as unverified.
 
-- **[`docs/spec-temporal-graph.md`](docs/spec-temporal-graph.md)** — the memory revamp:
-  bi-temporal fact edges after Zep/Graphiti, Zep-style retrieval behind one tool,
-  communities as her chapters, and the contradiction rules. Supersedes the memory
-  sections of `spec-p0.md`.
-
 - **[`notebooks/knowledge_base_flow.ipynb`](notebooks/knowledge_base_flow.ipynb)** — the
   memory design walked end to end against the real code: the pre-set intake, what is
   committed into the model's context when recording starts, the two channels that reach
@@ -58,11 +53,12 @@ Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
 |---|---|
 | `PRD.md` | The product requirements, tiered P0/P1/P2 |
 | `docs/system-analysis.md` | Backend design record: why it is shaped this way, and what that cost |
-| `docs/spec-p0.md` | Engineering spec for the P0 tier, with test seams |
-| `docs/build-plan.md` | 17-day schedule with three go/no-go gates |
+| `docs/submission.md` | The submission: what it is, the research behind each decision, what it cost |
+| `docs/text_description.md` | The short version — problem, solution, differentiators |
+| `docs/firestore-walkthrough.md` | What four real calls actually wrote to the database |
+| `docs/archivist_prompt.md` | Every prompt the system sends, verbatim, and why each rule is there |
 | `docs/persona-bible.md` | The invented family the demo is built around |
 | `docs/seed-sessions.md` | Four synthetic conversations, with pipeline assertions |
-| `docs/demo-scripts.md` | Recorded sessions 5 and 6, plus the video shot list |
 
 ## Spin-up
 
@@ -257,7 +253,7 @@ matters most: the 300s default kills calls mid-story and looks like a Live API b
 
 Three regions, each for a different reason: story data lives in `asia-southeast1` (PDPA),
 text models are served from `global`, and the Live API's native-audio model is only available
-from `us-central1`. Verified by probing — see `FINDINGS.md`; the documented model names do not
+from `us-central1`. Verified by probing; the documented model names do not
 all exist on Vertex.
 
 The hackathon requires Gemini 3.5 or newer. No Live dialog model currently meets that bar, so

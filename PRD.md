@@ -327,7 +327,7 @@ layer — "talking slowly" only means something relative to this person.
 A live session's system instruction is sent once at connect, and every route for injecting
 direction mid-call was tried and fails — `role="user"` makes the agent read its own stage
 directions aloud, `role="system"` makes it acknowledge them aloud, `role="model"` breaks
-turn-taking (`FINDINGS.md`). **Continuous within-call modulation is therefore not achievable.**
+turn-taking, verified by probing. **Continuous within-call modulation is therefore not achievable.**
 
 Affect reaches the agent three other ways:
 
@@ -656,7 +656,7 @@ graceful early close is a success.
 
 ## 12. Build plan
 
-See `docs/build-plan.md` for the day-by-day schedule. Ordering principle: **the data spine
+Ordering principle: **the data spine
 before the voice layer**, so a complete demo exists even if streaming fights back.
 
 ---
@@ -664,7 +664,7 @@ before the voice layer**, so a complete demo exists even if streaming fights bac
 ## 13. Demo plan
 
 **Do not show two apps.** Follow **one story end to end**, which merges both halves in 90
-seconds. Full shot list and scripts in `docs/demo-scripts.md`.
+seconds.
 
 1. Wei Lun, at his desk, taps a question and records ten seconds of voice
 2. Ah Khim's phone buzzes. She taps. She hears her son
