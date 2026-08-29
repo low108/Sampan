@@ -10,38 +10,58 @@ Built for the **All Things Agentic Hackathon** — Collaborative Partner track.
 
 ---
 
+## Start here
+
+**Live:** https://sampan-ig6xl5kf4q-as.a.run.app · Cloud Run, `asia-southeast1`
+
+| | |
+|---|---|
+| **What it is and why** | [`docs/submission.md`](docs/submission.md) — the full submission: the problem, every design decision and the research behind it, and what each one cost |
+| **The short version** | [`docs/text_description.md`](docs/text_description.md) — one-page pitch |
+| **What it actually did** | [`docs/firestore-walkthrough.md`](docs/firestore-walkthrough.md) — four real calls, and exactly what each wrote to the database, with screenshots from the console |
+| **Every prompt, verbatim** | [`docs/archivist_prompt.md`](docs/archivist_prompt.md) — all ten, with the failure each rule exists for |
+| **How the backend is shaped** | [`docs/system-analysis.md`](docs/system-analysis.md) — design record, seventeen numbered decisions, and the alternative each one rejected |
+| **Requirements** | [`PRD.md`](PRD.md) — tiered P0/P1/P2, with the limitations recorded honestly |
+
+### Diagrams
+
+| | |
+|---|---|
+| [`docs/architecture.png`](docs/architecture.png) | The system: browser to Cloud Run to three Google models to Firestore |
+| [`docs/two-clocks.png`](docs/two-clocks.png) | Valid time versus transaction time — the idea the whole archive rests on |
+| [`docs/round-trip.png`](docs/round-trip.png) | Son to mother and back, in nine messages |
+| [`docs/call-map.png`](docs/call-map.png) | One call fanned into parallel timelines — every model, every collection, every write |
+
+Each has an editable `.html` beside it.
+
+### The archive these are built from
+
+- [`docs/persona-bible.md`](docs/persona-bible.md) — the invented family
+- [`docs/seed-sessions.md`](docs/seed-sessions.md) — four synthetic conversations, with pipeline assertions
+
+---
+
 ## Status
 
-All 20 tickets are done. The system runs end to end on Cloud Run against Firestore, seeded
-with four conversations for one narrator and two for another.
+Runs end to end on Cloud Run against Firestore. **542 unit tests** plus 63
+integration tests over four chained sessions against the real model.
 
-- **Archivist** — transcript to scored stories, entity graph, threads carrying the
-  interrupted/tired distinction, anchors resolving her relative time expressions, and the
-  learned preference layer.
-- **Companion** — browser mic to Cloud Run WebSocket to ADK to the Live API and native audio
-  back, with the affect monitor forked off the same audio.
-- **Family archive** — map, timeline, letters, asks, corrections, and a bell that opens a
-  recording with the asker's question already loaded.
-- **Places** — relational names ("my father's shop") joined to places she named in other
-  sessions, each link carrying the sentence that justifies it.
+- **Companion** — browser mic to Cloud Run WebSocket to ADK to the Live API and
+  native audio back, with the affect monitor forked off the same audio.
+- **Archivist** — transcript to scored stories, entity graph, threads carrying
+  the interrupted/tired distinction, anchors resolving her relative time
+  expressions, and the learned preference layer.
+- **Memory** — bi-temporal fact edges after Zep/Graphiti, retrieval behind a
+  single `remember` tool with no model in the read path, contradiction routed to
+  the correct time axis, and communities as her chapters.
+- **Family archive** — map, timeline, letters, asks, corrections, and a bell
+  that opens a recording with the asker's question already loaded.
+- **Places** — relational names ("my father's shop") joined to places she named
+  in other sessions, each link carrying the sentence that justifies it.
 
-**Memory v2** adds bi-temporal fact edges after
-Zep/Graphiti, Zep-style retrieval behind a single `remember` tool, contradiction
-routed to the correct time axis, a topic *lean* that never becomes a push, and
-communities as her chapters.
+Everything is in English, including the seeds and the UI.
 
-**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 459
-unit tests. Everything is in English, including the seeds and the UI.
-
-Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
-
-## Documents
-
-- **[`docs/system-analysis.md`](docs/system-analysis.md)** — the backend design record:
-  architecture, data model, the four seams, seventeen numbered decisions with the
-  alternative each one rejected, a degradation matrix, and ten accepted risks. Read this
-  before changing anything structural. Every claim in it is verified against source or
-  labelled as unverified.
+## One more thing worth opening
 
 - **[`notebooks/knowledge_base_flow.ipynb`](notebooks/knowledge_base_flow.ipynb)** — the
   memory design walked end to end against the real code: the pre-set intake, what is
@@ -49,58 +69,97 @@ Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
   it mid-call, and exactly what the Archivist changes when recording stops. Executed, with
   outputs.
 
-| File | What it is |
-|---|---|
-| `PRD.md` | The product requirements, tiered P0/P1/P2 |
-| `docs/system-analysis.md` | Backend design record: why it is shaped this way, and what that cost |
-| `docs/submission.md` | The submission: what it is, the research behind each decision, what it cost |
-| `docs/text_description.md` | The short version — problem, solution, differentiators |
-| `docs/firestore-walkthrough.md` | What four real calls actually wrote to the database |
-| `docs/archivist_prompt.md` | Every prompt the system sends, verbatim, and why each rule is there |
-| `docs/persona-bible.md` | The invented family the demo is built around |
-| `docs/seed-sessions.md` | Four synthetic conversations, with pipeline assertions |
-
 ## Spin-up
+
+Two paths. **A** runs the whole app on your machine in about five minutes and
+needs no Google Cloud account. **B** deploys the real thing.
 
 ### Prerequisites
 
-- [uv](https://docs.astral.sh/uv/) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- [gcloud CLI](https://cloud.google.com/sdk/docs/install), authenticated
-- A Google Cloud project with billing enabled and Firestore provisioned
+| | |
+|---|---|
+| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Node 20+ | only for the web client |
+| [gcloud CLI](https://cloud.google.com/sdk/docs/install) | path B only, authenticated |
 
-### Run locally
+---
+
+### A · Run it locally
+
+**1. Install and configure.**
 
 ```bash
+git clone git@github.com:low108/Sampan.git && cd Sampan
 uv sync
-cp .env.example .env      # then fill in SAMPAN_API_KEY at minimum
+cp .env.example .env
+```
+
+**2. Set one value.** Open `.env` and fill in `SAMPAN_API_KEY`:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Leave `GOOGLE_CLOUD_PROJECT` blank and `SAMPAN_ALLOW_IN_MEMORY_STORE=true`, as
+they ship. The service then runs against an in-memory store and never touches
+Google Cloud.
+
+That fallback is opt-in on purpose: a deployed revision that lost its project id
+must fail loudly rather than accept an old woman's stories into a dictionary and
+report success.
+
+**3. Start the API.**
+
+```bash
 uv run uvicorn sampan.app:app --reload --port 8080
 ```
 
-With `SAMPAN_ALLOW_IN_MEMORY_STORE=true` the service runs against an in-memory store, so it
-works on a machine that has never seen a Google Cloud credential. The fallback is opt-in on
-purpose: a deployed revision that lost its project id must fail loudly rather than accept
-stories into a dictionary and report success. `/health` and `/debug/smoke` both name the
-backend they used, so a green round trip can't be misread as having reached Firestore.
+**4. Check it.** `/health` and `/debug/smoke` both name the backend they used,
+so a green round trip cannot be misread as having reached Firestore:
 
 ```bash
 curl -s localhost:8080/health
+# {"status":"ok","configured":false,"location":"asia-southeast1","backend":"memory"}
 
 curl -s -X POST localhost:8080/debug/smoke \
   -H "X-Sampan-Key: $SAMPAN_API_KEY" -H 'Content-Type: application/json' \
   -d '{"note":"the coffee shop on Jalan Bandar"}'
 ```
 
-### Tests, lint, types
+**5. Start the web client**, in a second terminal:
 
 ```bash
-uv run pytest
-uv run ruff check src tests
-uv run pyright
+cd web && npm install && npm run dev
 ```
 
-### Deploy to Cloud Run
+Open the printed URL with `?key=YOUR_SAMPAN_API_KEY` appended. The key is stored
+locally on first load, so later visits need only the bare URL.
 
-One-time project setup:
+**What works without Google Cloud:** the family archive — map, timeline,
+chapters, letters, corrections, the bell, and the "Inside the memory" retrieval
+panel. **What does not:** the voice call and anything else needing a model.
+
+### Verify
+
+```bash
+uv run pytest                     # 542 unit tests, ~2s
+uv run ruff check src tests scripts
+uv run pyright
+cd web && npx tsc --noEmit && npx vitest run
+```
+
+The integration tests are deselected by default because they call real models
+and cost money. Run them deliberately:
+
+```bash
+uv run pytest -m integration
+```
+
+---
+
+### B · Deploy to Cloud Run
+
+**1. Create the project and turn on what it needs.**
 
 ```bash
 gcloud auth login
@@ -110,15 +169,56 @@ gcloud services enable run.googleapis.com firestore.googleapis.com \
 gcloud firestore databases create --location=asia-southeast1
 ```
 
-Then:
+Firestore must be `asia-southeast1`: an elderly Malaysian woman's stories should
+not leave the region she lives in.
+
+**2. Configure.**
 
 ```bash
 export GOOGLE_CLOUD_PROJECT=your-project-id
 export SAMPAN_API_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+```
+
+**3. Deploy.**
+
+```bash
 ./deploy.sh
 ```
 
-`deploy.sh` prints the three acceptance checks for ticket 1 with the deployed URL filled in.
+It prints the service URL and three acceptance checks with that URL filled in.
+The flags in `deploy.sh` are part of the contract, not deployment detail —
+`--timeout=3600` most of all, because the 300s default kills a call mid-story
+and looks like a Live API bug.
+
+**4. Open it.** `https://YOUR-SERVICE-URL/?key=$SAMPAN_API_KEY`
+
+A fresh deploy starts with an empty archive — there is no one-command seeder,
+because the archive is meant to be built by talking to it. Press **Talk**, say
+something, hang up, and the map has a pin on it. `seeds/` holds the six
+transcripts the demo archive was grown from, and
+`tests/test_seed_run_integration.py` replays them through the real extraction
+pipeline if you want to see that path exercised.
+
+**5. Two maintenance passes** for an archive that already has conversations:
+
+```bash
+uv run python scripts/backfill_facts.py            # dry run
+uv run python scripts/backfill_facts.py --apply    # extract facts from stored transcripts
+uv run python scripts/refresh_communities.py --apply   # rebuild her chapters
+```
+
+### Optional extras
+
+Each is off unless configured, and the app is complete without all three.
+
+| | Script | What it adds |
+|---|---|---|
+| **Screening** | `scripts/setup_armor.sh` | Cloud DLP over every transcript before anything is written |
+| **Card imagery** | `scripts/setup_memories.sh` | Veo clips for story cards, queued off the call path |
+| **Chapter refresh** | `scripts/setup_scheduler.sh` | Weekly Cloud Scheduler job that re-clusters her chapters |
+
+Each prints the `.env` lines it needs; add them and re-run `./deploy.sh`.
+Details for the first two follow.
 
 ### Screening what gets stored (recommended)
 
