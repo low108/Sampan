@@ -1,10 +1,8 @@
 # Sampan
 
-> *ingat*: to remember, and to think of someone.
+**Sampan** a Malay word that comes from *三板*  "three planks." A small flat-bottomed boat.
 
-A voice companion for elderly parents that listens to their life stories, remembers across
-months of conversations, and turns what it hears into a shared family memory map their
-children and grandchildren can explore.
+A voice companion that phones an elderly parent, listens, and remembers across months , turning a lifetime of spoken stories into a family memory map, so the things only she knows are heard, kept, and inherited.
 
 Built for the **All Things Agentic Hackathon** — Collaborative Partner track.
 
