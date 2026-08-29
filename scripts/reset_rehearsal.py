@@ -98,11 +98,27 @@ def main() -> int:
     # when it was delivered rather than on which call took it -- the ask does
     # not record that, and a first attempt that tried to infer it from the
     # conversation id found nothing while a question sat delivered.
-    cutoff = args.since or min(convs)
+    #
+    # The cutoff has to be a timestamp. `min(convs)` is a conversation *id*
+    # ("conv_ah_khim_2026..."), and comparing an ISO instant to it is a string
+    # comparison that "2026..." always loses -- so `--conv` re-queued nothing,
+    # ever, silently. Three takes each ate a question and left it marked
+    # delivered; the queue filled with orphaned duplicates of the same one and
+    # the count only ever went up. `--since` was fine, which is why this
+    # survived: the mode being used was not the mode being tested.
+    when_removed = [
+        row.get("occurred_at") or ""
+        for row in found.get(f"conversations__{narrator}", [])
+        if row.get("occurred_at")
+    ]
+    cutoff = args.since or (min(when_removed) if when_removed else "")
+    if not cutoff:
+        print("\n  !! no timestamp on the removed calls; not re-queueing questions")
     asks = [
         {"_id": d.id, **d.to_dict()}
         for d in db.collection(f"asks__{narrator}").stream()
-        if d.to_dict().get("delivered")
+        if cutoff
+        and d.to_dict().get("delivered")
         and (d.to_dict().get("delivered_at") or "") >= cutoff
     ]
     profile = db.collection("profiles").document(narrator).get().to_dict() or {}
@@ -116,6 +132,41 @@ def main() -> int:
             )
             print(f"      {str(label)[:56] or r['_id'][:56]}")
     print(f"  asks to re-queue: {len(asks)}")
+
+    # Entities the deleted calls touched but did not create. These are NOT
+    # removed and NOT reverted, because there is nothing to delete: the call
+    # appended to an entity that already existed. Deleting the call leaves the
+    # appended `detail`, the appended `aliases` and the bumped `mention_count`
+    # exactly where they are, and nothing else in this script looks at them.
+    #
+    # This is how "Mrs. Rajan" became an alias of Ah Chwee and stayed one
+    # across three resets: the resolver matched a new neighbour onto the
+    # existing neighbour by role, kept her name as an alias, and every later
+    # take then matched that alias instantly and confirmed the merge. The
+    # archive still said the calls never happened.
+    #
+    # Reported rather than repaired: which part of an appended detail was hers
+    # and which was the rehearsal's is a judgement, and guessing it would be a
+    # worse failure than naming it. Repair with scripts/repair_entity.py.
+    touched: dict[str, set[str]] = {}
+    for pattern in ("conversations__{n}",):
+        for row in found.get(pattern.format(n=narrator), []):
+            for node in (row.get("graph_change") or {}).get("nodes", []) or []:
+                if node.get("created") is False and node.get("entity_id"):
+                    touched.setdefault(node["entity_id"], set()).add(
+                        f"{node.get('surface_form', '?')} "
+                        f"(by {node.get('matched_by', '?')})"
+                    )
+    if touched:
+        print(f"\n  !! {len(touched)} existing entit(ies) were MUTATED by these calls.")
+        print("     Deleting the calls does not undo that. Check each one:")
+        for entity_id, forms in touched.items():
+            name = ""
+            doc = db.collection(f"entities__{narrator}").document(entity_id).get()
+            if doc.exists:
+                name = (doc.to_dict() or {}).get("canonical_name", "")
+            print(f"       {entity_id}  {name[:24]:24} <- {', '.join(sorted(forms))}")
+        print("     python scripts/repair_entity.py <entity_id>")
     threads = [
         t
         for t in profile.get("threads", [])
