@@ -409,3 +409,150 @@ class TestExtractionIsFullyWired:
         # And the disagreement comes back as a question for her, not a silent
         # decision by the archive.
         assert questions == ["a later telling"]
+
+
+class TestSheIsToldWhatWasKept:
+    """Her side of the bridge.
+
+    She talks, and nothing on her screen ever changes to say it landed. The
+    proof lives on the family's side of the app, which is the side she does not
+    open -- so without this, the promise the whole product makes to her is one
+    she has no way of seeing kept.
+    """
+
+    def _tell(self, store, story_id: str, at: str, title: str, where: str) -> None:
+        store.put(
+            "stories__ah_khim",
+            story_id,
+            {
+                "story_id": story_id,
+                "occurred_at": at,
+                "candidate": {"title": title, "where": {"raw_name": where}},
+            },
+        )
+
+    def _pending(self, store):
+        for client in build_client(store):
+            return client.get(
+                "/api/talk/ah_khim/pending", headers={API_KEY_HEADER: GOOD_KEY}
+            ).json()
+        raise AssertionError("no client")
+
+    def _now(self) -> str:
+        from datetime import UTC, datetime
+
+        return datetime.now(UTC).isoformat()
+
+    def test_a_recent_telling_comes_back_with_its_place(
+        self, store: InMemoryDocumentStore
+    ) -> None:
+        self._tell(store, "s1", self._now(), "curry puffs", "Jalan Bandar")
+        store.put(
+            "_places",
+            "Jalan Bandar",
+            {"raw_name": "Jalan Bandar", "display_name": "Jalan Bandar, Ipoh"},
+        )
+
+        kept = self._pending(store)["kept"]
+
+        assert kept["title"] == "curry puffs"
+        # The name written on the pin her family will look at, not the raw one.
+        assert kept["where"] == "Jalan Bandar, Ipoh"
+
+    def test_an_old_telling_stops_being_news(
+        self, store: InMemoryDocumentStore
+    ) -> None:
+        """Time-boxed rather than marked seen: something stuck on the screen of
+        someone who may not know how to clear it is worse than a message that
+        quietly stops."""
+        self._tell(store, "s1", "2020-01-01T00:00:00+00:00", "old", "Ipoh")
+
+        assert self._pending(store)["kept"] is None
+
+    def test_nothing_told_is_not_an_error(self, store: InMemoryDocumentStore) -> None:
+        assert self._pending(store)["kept"] is None
+
+    def test_an_unreadable_date_is_not_an_error(
+        self, store: InMemoryDocumentStore
+    ) -> None:
+        """Her screen must not break over a malformed timestamp."""
+        self._tell(store, "s1", "not a date", "curry puffs", "Ipoh")
+
+        assert self._pending(store)["kept"] is None
+
+
+class TestTheCommunityRefreshEndpoint:
+    """Cloud Scheduler's target.
+
+    Chapters are the only derived record not written by the call that changed
+    them, so they are the only one that can silently go stale. This is the job
+    that stops that, asserted at the boundary Cloud Scheduler actually hits.
+    """
+
+    def _call(self, store, key: str = GOOD_KEY, query: str = ""):
+        for client in build_client(store):
+            return client.post(
+                f"/internal/communities{query}", headers={API_KEY_HEADER: key}
+            )
+        raise AssertionError("no client")
+
+    def test_it_needs_the_key(self, store: InMemoryDocumentStore) -> None:
+        assert self._call(store, key="wrong").status_code == 401
+
+    def test_an_empty_archive_is_not_an_error(
+        self, store: InMemoryDocumentStore
+    ) -> None:
+        """The first week there is nothing to cluster, and the job must not
+        start reporting failure for it."""
+        response = self._call(store)
+
+        assert response.status_code == 200
+        assert response.json()["ok"] is True
+
+    def test_every_named_narrator_is_reported(
+        self, store: InMemoryDocumentStore
+    ) -> None:
+        response = self._call(store, query="?narrators=ah_khim,wei_lun,xin_yi")
+
+        assert [n["narrator_id"] for n in response.json()["narrators"]] == [
+            "ah_khim",
+            "wei_lun",
+            "xin_yi",
+        ]
+
+    def test_one_broken_narrator_does_not_stop_the_others(
+        self, store: InMemoryDocumentStore, monkeypatch
+    ) -> None:
+        """The job runs unattended. A single corrupt graph must not mean nobody
+        else's chapters get refreshed for a week."""
+        import sampan.communities as communities
+
+        real = communities.refresh_narrator
+
+        def explode(repository, narrator_id, namer, *, save):
+            if narrator_id == "wei_lun":
+                raise RuntimeError("corrupt graph")
+            return real(repository, narrator_id, namer, save=save)
+
+        monkeypatch.setattr(communities, "refresh_narrator", explode)
+
+        body = self._call(store, query="?narrators=ah_khim,wei_lun").json()
+
+        assert body["ok"] is False
+        assert "error" in body["narrators"][1]
+        # The healthy one still ran.
+        assert "error" not in body["narrators"][0]
+
+    def test_it_answers_200_even_when_a_narrator_fails(
+        self, store: InMemoryDocumentStore, monkeypatch
+    ) -> None:
+        """Cloud Scheduler retries on a non-2xx. Retrying a clustering pass
+        that will fail identically just bills for it again."""
+        import sampan.communities as communities
+
+        def explode(*_args, **_kwargs):
+            raise RuntimeError("nope")
+
+        monkeypatch.setattr(communities, "refresh_narrator", explode)
+
+        assert self._call(store).status_code == 200

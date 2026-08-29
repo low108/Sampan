@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 from sampan.affect import GeminiAffectMonitor, policy, watch
 from sampan.archivist import GeminiStoryExtractor
 from sampan.armor import build_screen
-from sampan.auth import require_api_key
+from sampan.auth import require_api_key, require_push_key
 from sampan.callflow import Transcript, finish_call, prepare_call
 from sampan.config import Settings, apply_genai_env, get_settings
 from sampan.contradiction import (
@@ -47,7 +47,14 @@ from sampan.corrections import (
 )
 from sampan.fact_extraction import GeminiFactExtractor
 from sampan.facts import Fact, Predicate
-from sampan.family import build_cards, build_map, feed, stats, timeline
+from sampan.family import (
+    attach_memories,
+    build_cards,
+    build_map,
+    feed,
+    stats,
+    timeline,
+)
 from sampan.household import (
     cards_for,
     list_members,
@@ -293,11 +300,12 @@ def _resolve_places(
     names = sorted({c.where_said for c in cards if c.where_said})
     cached: list[Place] = []
     # What to ask the resolver, keyed by the name the story actually used.
-    # A cached entry with no coordinates is retried rather than kept forever:
-    # the cache is here to avoid re-resolving a place that is already located,
-    # and holding an unlocatable one means a story can never reach the map
-    # however many times the family looks. When the family has given a better
-    # name for it, that is what gets asked.
+    #
+    # Asked once, and again only when someone has given us something new to go
+    # on -- which is `needs_retry`, set when the family renames a place we
+    # could not locate. Retrying every entry with no coordinates instead was a
+    # model call per unlocatable name on every map load, and names like "house"
+    # and "the shop" are never going to resolve, so the retry was permanent.
     missing: dict[str, str] = {}
     for name in names:
         raw = store.get(_PLACE_CACHE, name)
@@ -307,8 +315,12 @@ def _resolve_places(
         place = Place.model_validate(raw)
         if place.locatable:
             cached.append(place)
-        else:
+        elif place.needs_retry:
+            # The family's name for it, which is the new information.
             missing[name] = place.display_name or name
+        else:
+            # Already asked, still unplaceable. Kept so the story can say so.
+            cached.append(place)
 
     if missing and settings.configured:
         with contextlib.suppress(Exception):
@@ -328,6 +340,62 @@ def _resolve_places(
     resolved = {p.raw_name for p in cached}
     cached.extend(Place(raw_name=name) for name in names if name not in resolved)
     return cached
+
+
+# How long a story stays news on her screen. Long enough that a call in the
+# evening is still acknowledged the next morning, short enough that the message
+# is "this just happened" rather than a banner that never goes away.
+_KEPT_FOR_HOURS = 24
+
+
+def _kept_from_her_last_call(
+    store: DocumentStore, narrator_id: str
+) -> dict[str, Any] | None:
+    """What her most recent telling left on the family's map.
+
+    She talks, and then nothing on her screen ever changes. The whole promise
+    is that her family will see what she said, and until now the only proof of
+    that lived on the family's side of the app -- which is the side she does
+    not open. This is the receipt, in her own words: the title she gave it and
+    the place she named.
+
+    Deliberately stateless and time-boxed rather than a seen-marker. A seen
+    flag is another thing that can stick, and something stuck on the screen of
+    someone who may not know how to clear it is worse than a message that
+    quietly stops being news. Nothing is written here.
+
+    Returns None when there is nothing recent, which is the ordinary case.
+    """
+    from datetime import timedelta
+
+    rows = [r for r in store.list(f"stories__{narrator_id}") if r.get("story_id")]
+    if not rows:
+        return None
+    newest = max(rows, key=lambda r: r.get("occurred_at") or r["story_id"])
+
+    when = newest.get("occurred_at") or ""
+    try:
+        told_at = datetime.fromisoformat(when)
+    except ValueError:
+        return None
+    if told_at.tzinfo is None:
+        told_at = told_at.replace(tzinfo=UTC)
+    if datetime.now(UTC) - told_at > timedelta(hours=_KEPT_FOR_HOURS):
+        return None
+
+    candidate = newest.get("candidate") or {}
+    raw_name = (candidate.get("where") or {}).get("raw_name", "")
+    # The family's name for the place when there is one, because that is what
+    # is written on the pin she is being told about.
+    cached = store.get(_PLACE_CACHE, raw_name) if raw_name else None
+    where = (cached or {}).get("display_name") or raw_name
+
+    return {
+        "story_id": newest["story_id"],
+        "title": candidate.get("title", ""),
+        "where": where,
+        "at": when,
+    }
 
 
 _LINK_CACHE = "_place_links"
@@ -579,9 +647,12 @@ def create_app() -> FastAPI:
         """
         repository = Repository(store)
         memory = repository.load_memory(narrator_id)
-        cards = build_cards(
-            repository.load_stories(narrator_id),
-            repository.private_subjects(narrator_id),
+        cards = attach_memories(
+            build_cards(
+                repository.load_stories(narrator_id),
+                repository.private_subjects(narrator_id),
+            ),
+            repository.load_memory_assets(narrator_id),
         )
         entities = repository.load_entities(narrator_id)
 
@@ -1181,15 +1252,18 @@ def create_app() -> FastAPI:
         incoming call (PRD 9.4). So the app asks, and if her son has left a
         question it shows his name and plays his voice.
         """
+        kept = _kept_from_her_last_call(store, narrator_id)
+
         # Queued instantly, shown when she is awake.
         if is_quiet(settings):
-            return {"waiting": False, "quiet_hours": True}
+            return {"waiting": False, "quiet_hours": True, "kept": kept}
 
         ask = Repository(store).pending_ask(narrator_id)
         if ask is None:
-            return {"waiting": False}
+            return {"waiting": False, "kept": kept}
         return {
             "waiting": True,
+            "kept": kept,
             "from_name": ask.from_name,
             "relation": ask.relation,
             # The question itself. Without it the bell says "Wei Lun asked you
@@ -1200,7 +1274,57 @@ def create_app() -> FastAPI:
             "voice_note": ask.voice_note_url,
         }
 
-    @app.post("/internal/memories", dependencies=[Depends(require_api_key)])
+    @app.post("/internal/communities", dependencies=[Depends(require_api_key)])
+    def refresh_communities(
+        settings: Annotated[Settings, Depends(get_settings)],
+        store: Annotated[DocumentStore, Depends(get_store)],
+        narrators: str = "ah_khim,wei_lun",
+    ) -> dict[str, Any]:
+        """Recompute every narrator's chapters. Called by Cloud Scheduler.
+
+        Communities are the one part of the graph that is not maintained by the
+        call that changed it. Zep extends them cheaply as conversations land and
+        is explicit that this drifts -- "periodic community refreshes remain
+        necessary" -- so the refresh is full label propagation over the whole
+        graph plus one model call per chapter. That is seconds of work and
+        wrong to do while she is on the phone, which is why it is scheduled.
+
+        Header auth rather than the key on the URL, unlike `/internal/memories`.
+        Pub/Sub push cannot set a header and had no choice; Cloud Scheduler can,
+        and a key in a URL is a key in access logs and in screen recordings.
+
+        Errors are returned per narrator rather than raised, so one narrator
+        with a broken graph cannot stop the others being refreshed. The status
+        is in the body -- Cloud Scheduler retries on a non-2xx, and retrying a
+        clustering pass that will fail again just bills for it again.
+        """
+        from sampan.communities import GeminiCommunityNamer, refresh_narrator
+
+        repository = Repository(store)
+        # Named, not derived from the members list: a narrator with no stories
+        # yet still has chapters to compute later, and silently dropping them
+        # here would make the job look like it had run when it had not.
+        wanted = [n.strip() for n in narrators.split(",") if n.strip()]
+        namer = GeminiCommunityNamer(settings) if settings.configured else None
+
+        results: list[dict[str, Any]] = []
+        for narrator_id in wanted:
+            try:
+                outcome = refresh_narrator(
+                    repository, narrator_id, namer, save=settings.configured
+                )
+                results.append(outcome.model_dump(mode="json"))
+            except Exception as error:  # noqa: BLE001 -- see the docstring
+                log.exception("community refresh failed for %s", narrator_id)
+                results.append({"narrator_id": narrator_id, "error": str(error)})
+
+        return {
+            "ok": all("error" not in r for r in results),
+            "refreshed_at": datetime.now(UTC).isoformat(),
+            "narrators": results,
+        }
+
+    @app.post("/internal/memories", dependencies=[Depends(require_push_key)])
     def make_memory(
         body: dict[str, Any],
         settings: Annotated[Settings, Depends(get_settings)],

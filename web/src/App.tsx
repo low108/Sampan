@@ -9,7 +9,7 @@ import { StorySheet } from './components/StorySheet';
 import { UnplacedSheet } from './components/UnplacedSheet';
 import { ViewerSheet } from './components/ViewerSheet';
 import { useRecorder } from './useRecorder';
-import type { Bell, Household, MemberTab, Notification, Pin, Sheet, Tab } from './types';
+import type { Bell, Household, Kept, MemberTab, Notification, Pin, Sheet, Tab } from './types';
 
 /* "Her side" named the wrong thing: this screen is whoever is holding the
  * phone, and three people in this household record. */
@@ -49,6 +49,9 @@ export function App() {
   const [demo, setDemo] = useState(false);
   /* Why there is no question here, when the bell said there was one. */
   const [recNote, setRecNote] = useState('');
+  /* What her last telling put on the map. Her side of the bridge: she talks,
+   * and until now nothing on her screen ever changed to say it landed. */
+  const [recKept, setRecKept] = useState<Kept | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -96,6 +99,7 @@ export function App() {
             ? 'It is late now. Xiao Chuan will bring you this question in the morning.'
             : '',
         );
+        setRecKept(p.kept ?? null);
       })
       .catch(() => undefined);
     return () => {
@@ -334,6 +338,7 @@ export function App() {
           <TellerSide
             question={deferred ? null : recQuestion}
             note={recNote}
+            kept={recKept}
             live={recorder.state === 'live'}
             said={recorder.said}
             onToggle={() => void recorder.toggle()}
@@ -468,13 +473,16 @@ export function App() {
 interface TellerProps {
   question: { from_name: string; question: string } | null;
   note: string;
+  /** What her last telling left on the map, when it was recent enough to
+   *  still be news. Null the rest of the time, which is most of the time. */
+  kept: Kept | null;
   live: boolean;
   said: string;
   onToggle: () => void;
   onLater: () => void;
 }
 
-export function TellerSide({ question, note, live, said, onToggle, onLater }: TellerProps) {
+export function TellerSide({ question, note, kept, live, said, onToggle, onLater }: TellerProps) {
   /* J · RECORDING — dark so the room stays quiet, marigold only in the waveform,
      because the waveform is the proof it is hearing her. */
   if (live) return <Recording said={said} onStop={onToggle} />;
@@ -510,6 +518,18 @@ export function TellerSide({ question, note, live, said, onToggle, onLater }: Te
   return (
     <div className="teller">
       <div>
+        {/* Her receipt, above the button and never in place of it. She told
+            something, it reached her family, and this is the only screen she
+            opens — so if it is not said here it is not said to her at all.
+            Her family's names for things, not the system's: the title she gave
+            it and the place as it is written on the pin they will see. */}
+        {kept && (
+          <p className="kept">
+            <span className="lbl">Kept for your family</span>
+            <q>{kept.title}</q>
+            {kept.where && <span className="at">on the map at {kept.where}</span>}
+          </p>
+        )}
         <p className="say">Talk any time you like.</p>
         <p className="sub">
           {note || 'Nobody is waiting on the line. Say whatever comes to mind.'}

@@ -252,7 +252,14 @@ nav.tabs button[aria-current='true'] { color: var(--ink); border-top-color: var(
   position: absolute; left: 16px; bottom: 16px; z-index: 2;
   background: rgba(253, 248, 239, .92);
 }
-@media (prefers-reduced-motion: reduce) { .memory video { display: none; } }
+/* Hidden only where a still can take its place. A generated memory is an mp4
+   and nothing else, so blanket `display: none` here left the card with an empty
+   grey band for exactly the readers least likely to be shown a second chance.
+   The element stays, paused by the effect in Memory.tsx, showing its own first
+   frame: a picture that does not move, which is what was asked for. */
+@media (prefers-reduced-motion: reduce) {
+  .memory[data-still='true'] video { display: none; }
+}
 
 /* ── the quote box ───────────────────────────────────────────
    The most important element in the product. It is the one thing on the
@@ -666,6 +673,20 @@ sampan-map { display: block; width: 100%; height: 100%; }
 .teller .say { font-size: 31px; font-weight: 600; line-height: 1.3; margin: 0; }
 .teller .sub  { font-size: 23px; color: var(--body); margin: 10px 0 0; line-height: 1.4; }
 .teller.dark .sub { color: rgba(253, 248, 239, .7); }
+/* Her receipt. Set above "Talk any time you like" and deliberately quieter
+   than it: this is news, not an instruction, and the button stays the loudest
+   thing on the screen. Type sizes here are the teller-side scale, not the
+   family side's — she reads this at arm's length on a tablet. */
+.teller .kept {
+  margin: 0 0 22px; padding: 18px 20px;
+  border: 1px solid var(--rule); border-radius: var(--radius-s);
+  background: rgba(199, 143, 42, .07);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.teller .kept .lbl { font-size: 15px; letter-spacing: .09em; color: var(--dim); }
+.teller .kept q { font-size: 25px; line-height: 1.3; color: var(--ink); }
+.teller .kept .at { font-size: 19px; color: var(--body); }
+
 .teller .mid { flex: 1; display: flex; flex-direction: column;
             align-items: center; justify-content: center; gap: 28px; }
 
