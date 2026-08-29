@@ -1,15 +1,20 @@
-"""Recompute the chapters of a narrator's life.
+"""Recompute the chapters of a narrator's life, by hand.
 
 Zep extends communities cheaply as each conversation lands — a new entity joins
 whichever community most of its neighbours are in — and is explicit that this
 drifts: "periodic community refreshes remain necessary". This is that refresh.
 
-Scheduled, never on the call path. It runs full label propagation over the
-whole graph and re-names every chapter, which costs one model call per chapter
-and takes seconds.
+Never on the call path. It runs full label propagation over the whole graph and
+re-names every chapter, which costs one model call per chapter and takes
+seconds.
 
     uv run python scripts/refresh_communities.py            # show what would change
     uv run python scripts/refresh_communities.py --apply
+
+In production this runs on a schedule instead, against `/internal/communities`
+— see `scripts/setup_scheduler.sh`. Both paths call `refresh_narrator()`, so
+there is one clustering implementation rather than two that drift, with the
+unattended one being the copy nobody notices has drifted.
 """
 
 from __future__ import annotations
@@ -17,11 +22,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from sampan.communities import (
-    GeminiCommunityNamer,
-    build_communities,
-    hub_entities,
-)
+from sampan.communities import GeminiCommunityNamer, refresh_narrator
 from sampan.config import Settings, apply_genai_env
 from sampan.repository import Repository
 from sampan.store import build_store
@@ -45,36 +46,25 @@ def main() -> int:
     namer = GeminiCommunityNamer(settings)
 
     for narrator_id in args.narrators:
-        entities = repo.load_entities(narrator_id)
-        facts = repo.load_facts(narrator_id)
-        print(f"\n{narrator_id}: {len(entities)} entities, {len(facts)} current facts")
-
-        if not facts:
-            print("  no facts yet — nothing to cluster")
-            continue
-
-        # She is in every chapter of her own life, so she cannot separate
-        # them. Found by connectivity, not by name.
-        hubs = hub_entities(entities, facts)
-        if hubs:
-            names = ", ".join(e.canonical_name for e in entities if e.entity_id in hubs)
-            print(f"  excluded as too connected to cluster: {names}")
-
-        chapters = build_communities(
-            entities, facts, namer if args.apply else None, exclude=hubs
+        outcome = refresh_narrator(
+            repo, narrator_id, namer if args.apply else None, save=args.apply
         )
-        by_id = {e.entity_id: e.canonical_name for e in entities}
-
-        for chapter in chapters:
-            title = chapter.name or f"(unnamed, {chapter.size} members)"
-            print(f"\n  {title}")
-            if chapter.summary:
-                print(f"    {chapter.summary}")
-            print("    " + ", ".join(by_id.get(m, m) for m in chapter.member_ids))
-
-        if args.apply:
-            repo.save_communities(narrator_id, chapters)
-            print(f"\n  saved {len(chapters)} chapters")
+        print(
+            f"\n{narrator_id}: {outcome.entities} entities, "
+            f"{outcome.facts} current facts"
+        )
+        if outcome.skipped:
+            print(f"  {outcome.skipped}")
+            continue
+        if outcome.excluded:
+            print(
+                "  excluded as too connected to cluster: "
+                + ", ".join(outcome.excluded)
+            )
+        for name in outcome.names:
+            print(f"    {name}")
+        if outcome.saved:
+            print(f"\n  saved {outcome.chapters} chapters")
 
     if not args.apply:
         print("\nDRY RUN. Re-run with --apply to name and save these.")

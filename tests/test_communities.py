@@ -259,3 +259,75 @@ class TestFindingTheHub:
 
     def test_a_graph_too_small_to_judge_is_left_alone(self) -> None:
         assert hub_entities(ENTITIES[:2], FACTS[:1]) == set()
+
+
+class TestTheScheduledRefresh:
+    """One clustering implementation, reachable two ways.
+
+    The script and the scheduled endpoint both call `refresh_narrator`. Two
+    copies would drift, and the copy running unattended at four in the morning
+    is the one nobody would notice had drifted.
+    """
+
+    class Namer:
+        def describe(self, members, facts):  # noqa: ANN001, ARG002
+            from sampan.communities import CommunitySummary
+
+            return CommunitySummary(name="the coffee shop years", summary="s")
+
+    def _repo(self, *, with_facts: bool = True):
+        from sampan.repository import Repository
+        from sampan.store import InMemoryDocumentStore
+
+        store = InMemoryDocumentStore()
+        for entity in ENTITIES:
+            store.put(
+                "entities__gran", entity.entity_id, entity.model_dump(mode="json")
+            )
+        if with_facts:
+            for index, fact in enumerate(FACTS):
+                store.put("facts__gran", f"f{index}", fact.model_dump(mode="json"))
+        return Repository(store)
+
+    def test_it_clusters_and_saves(self) -> None:
+        from sampan.communities import refresh_narrator
+
+        repo = self._repo()
+
+        outcome = refresh_narrator(repo, "gran", self.Namer(), save=True)
+
+        assert outcome.chapters > 0
+        assert outcome.saved is True
+        assert len(repo.load_communities("gran")) == outcome.chapters
+
+    def test_a_dry_run_writes_nothing(self) -> None:
+        from sampan.communities import refresh_narrator
+
+        repo = self._repo()
+
+        refresh_narrator(repo, "gran", None, save=False)
+
+        assert repo.load_communities("gran") == []
+
+    def test_a_narrator_with_no_facts_is_skipped_not_failed(self) -> None:
+        """A household member who has never told a story must not stop the
+        others being refreshed, and must not look like an error."""
+        from sampan.communities import refresh_narrator
+
+        outcome = refresh_narrator(
+            self._repo(with_facts=False), "gran", self.Namer(), save=True
+        )
+
+        assert outcome.skipped
+        assert outcome.chapters == 0
+
+    def test_it_is_idempotent(self) -> None:
+        """The job runs on a clock. Running it twice must not double anything."""
+        from sampan.communities import refresh_narrator
+
+        repo = self._repo()
+
+        first = refresh_narrator(repo, "gran", self.Namer(), save=True)
+        refresh_narrator(repo, "gran", self.Namer(), save=True)
+
+        assert len(repo.load_communities("gran")) == first.chapters
