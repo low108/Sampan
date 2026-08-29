@@ -279,7 +279,11 @@ class TestMemorySurvives:
 
         other = prepare_call(repository, settings, narrator_id="someone_else")
 
-        assert other.memory.entities == []
+        # One entity, and it is themselves: everyone is in their own graph, or
+        # no fact can be recorded about them. Nothing of hers crosses over.
+        assert [e.entity_id for e in other.memory.entities] == ["ent_self_someone_else"]
+        hers = {e.entity_id for e in prepared.memory.entities}
+        assert not hers & {e.entity_id for e in other.memory.entities}
         assert other.stored.session_count == 0
 
 
@@ -432,3 +436,210 @@ class TestFamilyAsks:
 
         assert prepared.memory.ask is not None
         assert prepared.memory.ask.ask_id == "a0"
+
+
+class TestForgetting:
+    """ "Don't keep that" has to survive the call that said it.
+
+    The tombstone in `forgotten__<id>` was written from the first release and
+    read by nothing, so extraction rebuilt the subject on the very next call --
+    after the agent had already told her it would not. Recorded as R11 in
+    docs/system-analysis.md; these are the tests that close it.
+    """
+
+    def _extract(
+        self, repository: Repository, settings: Settings, *, title: str, thread: str
+    ):
+        response = ExtractionResponse(
+            stories=[story(title)],
+            entity_mentions=FULL.entity_mentions,
+            threads=[
+                ThreadUpdate(
+                    topic=thread,
+                    action=ThreadAction.OPENED,
+                    left_off_at="where it was left",
+                )
+            ],
+            closure=FULL.closure,
+        )
+        prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
+        return finish_call(
+            repository,
+            StubExtractor(response),
+            prepared,
+            conversation(),
+            narrator_id=NARRATOR,
+        )
+
+    def test_a_forgotten_subject_does_not_come_back_on_the_next_call(
+        self, repository: Repository, settings: Settings
+    ) -> None:
+        """The case the tombstone exists for, and the one that was broken.
+
+        She asks for it to be dropped on call one. Call two talks about it
+        again and extraction produces it again — and it must still not land."""
+        repository.forget(NARRATOR, "the sister")
+
+        self._extract(
+            repository,
+            settings,
+            title="the sister and the estate",
+            thread="the sister",
+        )
+
+        stored = repository.load_stories(NARRATOR)
+        assert stored == []
+
+    def test_an_unrelated_story_in_the_same_call_is_kept(
+        self, repository: Repository, settings: Settings
+    ) -> None:
+        """Forgetting is a scalpel, not a hang-up. Everything else survives."""
+        repository.forget(NARRATOR, "the sister")
+
+        self._extract(
+            repository,
+            settings,
+            title="the coffee shop on Jalan Bandar",
+            thread="father's coffee shop",
+        )
+
+        stored = repository.load_stories(NARRATOR)
+        assert len(stored) == 1
+        assert stored[0]["candidate"]["title"] == "the coffee shop on Jalan Bandar"
+
+    def test_a_forgotten_subject_is_not_left_as_an_open_thread(
+        self, repository: Repository, settings: Settings
+    ) -> None:
+        """The sharp end: a thread is what the next call opens on, so a
+        surviving one means the agent raises the subject it was told to drop,
+        in the first sentence it says to her."""
+        repository.forget(NARRATOR, "the sister")
+
+        memory = self._extract(
+            repository,
+            settings,
+            title="the sister and the estate",
+            thread="the sister",
+        )
+
+        assert memory is not None
+        assert [t.topic for t in memory.threads] == []
+
+    def test_forgetting_is_case_insensitive(
+        self, repository: Repository, settings: Settings
+    ) -> None:
+        """She said it out loud; the transcript's capitalisation is not hers."""
+        repository.forget(NARRATOR, "The Sister")
+
+        self._extract(
+            repository,
+            settings,
+            title="the sister and the estate",
+            thread="the sister",
+        )
+
+        assert repository.load_stories(NARRATOR) == []
+
+    def test_forgetting_keeps_the_sensitivity_that_steers_away_from_it(
+        self, repository: Repository, settings: Settings
+    ) -> None:
+        """The counter-intuitive one (D18).
+
+        A sensitivity derived from a painful subject is what keeps the agent
+        off it. Dropping it alongside the story would make forgetting actively
+        dangerous — the story goes, and with it the reason not to ask again."""
+        repository.forget(NARRATOR, "sister")
+
+        prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
+        memory = finish_call(
+            repository,
+            StubExtractor(FULL),
+            prepared,
+            conversation(),
+            narrator_id=NARRATOR,
+        )
+
+        assert memory is not None
+        assert [s.topic for s in memory.sensitivities] == ["sister"]
+
+    def test_nothing_is_dropped_when_she_has_forgotten_nothing(
+        self, repository: Repository, settings: Settings
+    ) -> None:
+        prepared = prepare_call(repository, settings, narrator_id=NARRATOR)
+        memory = finish_call(
+            repository,
+            StubExtractor(FULL),
+            prepared,
+            conversation(),
+            narrator_id=NARRATOR,
+        )
+
+        assert memory is not None
+        assert len(repository.load_stories(NARRATOR)) == 1
+        assert [t.topic for t in memory.threads] == ["father's coffee shop"]
+
+
+class TestTranscriptionArrivesInPieces:
+    """What the Live API streams, and what must survive it.
+
+    This is reconstructed from a real call. She said "Last Sunday my neighbour
+    Mrs Rajan took me to Pasar Besar, and the oil came through the paper bag,
+    still warm." The agent answered about the oil, so the model heard all of
+    it. The stored transcript read `K: Still want?` -- only the final piece --
+    and since extraction reads the transcript rather than the audio, the story
+    was never extracted and never reached the map.
+    """
+
+    def test_delta_pieces_are_joined_not_replaced(self) -> None:
+        transcript = Transcript()
+        transcript.add("user", "Last Sunday my neighbour Mrs Rajan")
+        transcript.add("user", "took me to Pasar Besar")
+        transcript.add("user", "and the oil came through the paper bag")
+
+        rendered = transcript.render()
+        assert "Mrs Rajan" in rendered
+        assert "Pasar Besar" in rendered
+        assert "paper bag" in rendered
+        assert len(transcript) == 1
+
+    def test_a_growing_revision_replaces_rather_than_doubling(self) -> None:
+        """When each piece restates the whole turn, joining would stutter."""
+        transcript = Transcript()
+        transcript.add("user", "I grew up")
+        transcript.add("user", "I grew up on the rubber estate")
+
+        assert transcript.render() == "K: I grew up on the rubber estate"
+
+    def test_a_repeated_piece_is_not_appended_twice(self) -> None:
+        transcript = Transcript()
+        transcript.add("user", "on the rubber estate")
+        transcript.add("user", "rubber estate")
+
+        assert transcript.render() == "K: on the rubber estate"
+
+    def test_the_speaker_changing_still_starts_a_turn(self) -> None:
+        transcript = Transcript()
+        transcript.add("user", "Last Sunday")
+        transcript.add("user", "we went to the market")
+        transcript.add("agent", "Which market?")
+        transcript.add("user", "Pasar Besar")
+
+        assert len(transcript) == 3
+        assert transcript.render().startswith("K: Last Sunday we went to the market")
+
+    def test_nothing_she_said_is_dropped(self) -> None:
+        """The property that matters, stated on its own: every piece she says
+        appears somewhere in what gets stored and extracted from."""
+        pieces = [
+            "Last Sunday",
+            "my neighbour Mrs Rajan",
+            "took me to Pasar Besar",
+            "she bought curry puffs",
+            "still warm",
+        ]
+        transcript = Transcript()
+        for piece in pieces:
+            transcript.add("user", piece)
+
+        rendered = transcript.render()
+        assert all(piece in rendered for piece in pieces)

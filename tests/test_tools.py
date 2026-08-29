@@ -241,3 +241,88 @@ class TestGuidanceRidesAlong:
         result = tool(memory, "remember")("Ah Chwee")
 
         assert "depleted" not in result["_guidance"]
+
+
+class TestRememberLeavesItsWorking:
+    """The trace is recorded on the call, not returned to the agent.
+
+    Two audiences, and only one of them wants the numbers. The agent gets
+    facts and her sentences; the family — and anyone auditing an answer — gets
+    which terms survived, what the seeds reached, and what was scored and
+    passed over. Reading rank positions back to her would be noise.
+    """
+
+    @staticmethod
+    def _memory() -> CallMemory:
+        return CallMemory(
+            entities=[
+                Entity(
+                    entity_id="ent_father",
+                    type=EntityType.PERSON,
+                    canonical_name="Lim Ah Hock",
+                    provisional=False,
+                )
+            ],
+            facts=[
+                Fact(
+                    fact_id="f1",
+                    subject_id="ent_father",
+                    predicate=Predicate.OWNED,
+                    object_literal="a coffee shop",
+                    statement="Her father opened a coffee shop on Jalan Bandar",
+                    quote="nineteen fifty-eight he opened a coffee shop in Ipoh",
+                    episode_id="conv_1",
+                ),
+                Fact(
+                    fact_id="f2",
+                    subject_id="ent_father",
+                    predicate=Predicate.MADE,
+                    object_literal="buttered bread",
+                    statement="Her father toasted bread over a charcoal fire",
+                    quote="my father toast the bread, charcoal fire one, spread butter",
+                    episode_id="conv_1",
+                ),
+            ],
+        )
+
+    def test_a_lookup_records_why_it_returned_what_it_did(self) -> None:
+        memory = self._memory()
+        tools = {t.__name__: t for t in build_tools(memory)}
+
+        tools["remember"]("coffee shop")
+
+        assert len(memory.searches) == 1
+        trace = memory.searches[0]
+        assert trace.query == "coffee shop"
+        assert "coffee" in trace.terms
+        assert trace.candidates
+
+    def test_the_agent_is_not_handed_the_numbers(self) -> None:
+        memory = self._memory()
+        tools = {t.__name__: t for t in build_tools(memory)}
+
+        result = tools["remember"]("coffee shop")
+
+        assert "known" in result
+        assert "searches" not in result
+        assert "candidates" not in result
+
+    def test_each_lookup_adds_its_own_trace(self) -> None:
+        """A call that reaches for memory twice has two explanations, in the
+        order they happened."""
+        memory = self._memory()
+        tools = {t.__name__: t for t in build_tools(memory)}
+
+        tools["remember"]("coffee shop")
+        tools["remember"]("Ah Chwee")
+
+        assert [t.query for t in memory.searches] == ["coffee shop", "Ah Chwee"]
+
+    def test_an_empty_query_traces_nothing(self) -> None:
+        """It never reached the graph, so there is nothing to explain."""
+        memory = CallMemory(facts=[])
+        tools = {t.__name__: t for t in build_tools(memory)}
+
+        tools["remember"]("   ")
+
+        assert memory.searches == []

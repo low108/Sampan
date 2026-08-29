@@ -51,6 +51,35 @@ class Settings(BaseSettings):
     quiet_from_hour: int = Field(default=22, alias="SAMPAN_QUIET_FROM")
     quiet_until_hour: int = Field(default=8, alias="SAMPAN_QUIET_UNTIL")
 
+    # --- Screening --------------------------------------------------------
+    # Model Armor template screening every transcript before it is stored. The
+    # template carries the policy -- which info types to de-identify, which
+    # categories to block -- because that belongs to whoever runs the deploy.
+    # Empty means no screening, which is right for local work against an
+    # in-memory store and wrong for anything holding real conversations.
+    # "dlp" calls Sensitive Data Protection directly; "armor" goes through
+    # Model Armor, which delegates to the same DLP templates and adds the
+    # filters DLP has no equivalent of -- prompt injection, jailbreak. Default
+    # dlp: one hop fewer, and one silent failure mode fewer (R18).
+    screen_backend: str = Field(default="dlp", alias="SAMPAN_SCREEN_BACKEND")
+    dlp_inspect_template: str = Field(
+        default="", alias="SAMPAN_DLP_INSPECT_TEMPLATE"
+    )
+    dlp_deidentify_template: str = Field(
+        default="", alias="SAMPAN_DLP_DEIDENTIFY_TEMPLATE"
+    )
+    armor_template: str = Field(default="", alias="SAMPAN_ARMOR_TEMPLATE")
+    armor_location: str = Field(
+        default="asia-southeast1", alias="SAMPAN_ARMOR_LOCATION"
+    )
+
+    # --- Generated imagery ------------------------------------------------
+    # Both empty by default, and both are checked before anything is published:
+    # a deploy without them simply has no card images, which is a product with
+    # one fewer feature rather than a product that fails.
+    memories_topic: str = Field(default="", alias="SAMPAN_MEMORIES_TOPIC")
+    memories_bucket: str = Field(default="", alias="SAMPAN_MEMORIES_BUCKET")
+
     # --- Auth -------------------------------------------------------------
     # Shared secret guarding every non-public route. Cheap, and it keeps stray
     # web traffic from draining the hackathon credits.

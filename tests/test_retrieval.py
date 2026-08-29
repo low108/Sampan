@@ -248,3 +248,258 @@ class TestNotGuessing:
     def test_a_real_name_still_matches(self) -> None:
         assert [f.fact_id for f, _ in bm25("Chwee", FACTS)] == []
         assert search_facts("cheongsam", graph())[0].fact_id == "f_sister"
+
+
+class TestTheTrace:
+    """Why a query returned what it did.
+
+    Every number here was already computed by ranking and discarded on the
+    return line, so the trace costs nothing but the plumbing. The point of
+    surfacing it is that this pipeline has no model in the middle: the same
+    question traced twice gives the same numbers, which is not true of a
+    retrieval chain that asks an LLM to pick edges.
+    """
+
+    @staticmethod
+    def _graph():
+        from sampan.retrieval import FactGraph
+
+        return FactGraph(
+            facts=[
+                fact("f1", "ent_father", "Her father opened a coffee shop."),
+                fact("f2", "ent_mother", "Her mother cooked at the coffee shop."),
+                fact("f3", "ent_khim", "She played in the river with Ah Chwee."),
+            ]
+        )
+
+    def _trace(self, query: str, **kwargs):
+        from sampan.retrieval import SearchTrace, search_facts
+
+        held: list[SearchTrace] = []
+        search_facts(query, self._graph(), on_trace=held.append, **kwargs)
+        assert len(held) == 1
+        return held[0]
+
+    def test_it_reports_the_terms_it_threw_away(self) -> None:
+        """The short-term filter is the fix for "Ah Seng" matching "Ah Chwee"
+        on the honorific. A trace that hid it would hide the reason."""
+        trace = self._trace("who is at the coffee shop")
+
+        assert "coffee" in trace.terms
+        assert "at" in trace.dropped
+        assert "at" not in trace.terms
+
+    def test_a_candidate_that_did_not_make_the_cut_is_still_scored(self) -> None:
+        """The near-misses are the more interesting half: they show what the
+        ranking weighed and rejected, not just what it chose."""
+        trace = self._trace("coffee shop", limit=1)
+
+        assert len(trace.returned) == 1
+        ranked = [c for c in trace.candidates if c.rank is not None]
+        missed = [c for c in trace.candidates if c.rank is None]
+        assert len(ranked) == 1
+        assert missed, "nothing was scored and rejected"
+        assert all(c.bm25 > 0 or c.rrf > 0 for c in missed)
+
+    def test_the_returned_order_matches_the_ranks(self) -> None:
+        trace = self._trace("coffee shop", limit=2)
+
+        by_rank = sorted(
+            (c for c in trace.candidates if c.rank is not None),
+            key=lambda c: c.rank if c.rank is not None else 0,
+        )
+        assert [c.fact_id for c in by_rank] == trace.returned
+
+    def test_hops_are_none_when_the_seeds_reach_nothing(self) -> None:
+        """Unreachable is not the same as far away, and a trace that showed 99
+        for both would be asserting a distance nobody measured."""
+        trace = self._trace("coffee shop", seeds=["ent_nobody"])
+
+        assert all(c.hops is None for c in trace.candidates)
+
+    def test_seeds_put_a_distance_on_what_they_reach(self) -> None:
+        trace = self._trace("coffee shop", seeds=["ent_father"])
+
+        reached = [c.hops for c in trace.candidates if c.hops is not None]
+        assert reached, "the seed reached nothing"
+        # `or` would be wrong here: a zero-hop fact is the seed itself, and
+        # `0 or 99` is 99. Distance zero is a real answer, not a missing one.
+        assert min(reached) == 0
+
+    def test_a_retired_telling_is_named_rather_than_missing(self) -> None:
+        """The thing a flat index cannot do. She told it differently later, so
+        this one lost in transaction time — and saying so is the whole reason
+        both tellings are kept."""
+        from sampan.retrieval import FactGraph, SearchTrace, search_facts
+
+        old = fact(
+            "f_old", "ent_father", "Her father kept the shop until 1969.",
+            expired=True,
+        )
+        old.superseded_by = "f_new"
+        graph = FactGraph(
+            facts=[
+                fact("f_new", "ent_father", "Her father kept the shop until 1971."),
+                old,
+            ]
+        )
+
+        held: list[SearchTrace] = []
+        search_facts("when did her father close the shop", graph, on_trace=held.append)
+
+        assert [r.fact_id for r in held[0].retired] == ["f_old"]
+        assert held[0].retired[0].superseded_by == "f_new"
+        assert held[0].retired[0].expired_at
+        # And it never competed: it is not among the ranked candidates.
+        assert "f_old" not in [c.fact_id for c in held[0].candidates]
+
+    def test_a_query_that_matched_nothing_still_explains_itself(self) -> None:
+        """The case most worth explaining. "The archive never heard of Ah Seng"
+        and "the ranking dropped it" look identical from outside, and only the
+        trace tells them apart."""
+        trace = self._trace("submarine periscope")
+
+        assert trace.candidates == []
+        assert trace.returned == []
+        # It still says what it looked for and what it looked at.
+        assert trace.terms == ["submarine", "periscope"]
+        assert trace.considered == 3
+
+    def test_an_empty_graph_still_traces(self) -> None:
+        """A query that found nothing has an explanation too, and it is the
+        one somebody is most likely to ask about."""
+        from sampan.retrieval import FactGraph, SearchTrace, search_facts
+
+        held: list[SearchTrace] = []
+        search_facts("anything", FactGraph(facts=[]), on_trace=held.append)
+
+        assert len(held) == 1
+        assert held[0].candidates == []
+
+    def test_tracing_does_not_change_what_is_returned(self) -> None:
+        """A diagnostic that alters the thing it measures is worse than none."""
+        from sampan.retrieval import search_facts
+
+        plain = search_facts("coffee shop", self._graph(), limit=2)
+        traced = search_facts(
+            "coffee shop", self._graph(), limit=2, on_trace=lambda _t: None
+        )
+
+        assert [f.fact_id for f in plain] == [f.fact_id for f in traced]
+
+    def test_the_same_query_traces_identically_twice(self) -> None:
+        """The claim worth making about this pipeline: no model in the middle,
+        so the working is reproducible."""
+        first = self._trace("coffee shop", limit=2)
+        second = self._trace("coffee shop", limit=2)
+
+        assert first.model_dump() == second.model_dump()
+
+
+class TestARetractedSentenceIsMarked:
+    """Facts have two clocks. Transcripts have none.
+
+    A later telling retires an earlier fact -- `t_expired` set, `superseded_by`
+    filled, the graph correct. None of that reaches the transcript, so
+    `search_transcripts` went on returning the sentence she had taken back,
+    looking exactly like one she still stood behind. `remember` hands both to
+    the agent, and the agent read the words rather than the graph: the archive
+    knew Mrs. Rajan had moved upstairs and the agent kept saying downstairs.
+
+    Marked rather than withheld. Her words are kept whatever happens to them,
+    and an agent that cannot see the older telling cannot say "you told me
+    downstairs, then you corrected it" -- which is the thing worth being able
+    to say.
+    """
+
+    def _repo(self):
+        from sampan.repository import Repository
+        from sampan.store import InMemoryDocumentStore
+
+        store = InMemoryDocumentStore()
+        store.put(
+            "conversations__gran",
+            "c1",
+            {
+                "conversation_id": "c1",
+                "occurred_at": "2026-08-01T10:00:00+00:00",
+                "transcript": "K: She lives in the flat downstairs from me now.",
+            },
+        )
+        store.put(
+            "conversations__gran",
+            "c2",
+            {
+                "conversation_id": "c2",
+                "occurred_at": "2026-08-02T10:00:00+00:00",
+                "transcript": "K: She's not downstairs, she's upstairs, above me.",
+            },
+        )
+        return Repository(store)
+
+    def _fact(self, fact_id: str, statement: str, quote: str, expired: str | None):
+        return {
+            "fact_id": fact_id,
+            "subject_id": "ent_rajan",
+            "predicate": "lived_at",
+            "object_literal": statement,
+            "statement": statement,
+            "quote": quote,
+            "episode_id": "c1",
+            "t_created": "2026-08-01T10:00:00+00:00",
+            "t_expired": expired,
+        }
+
+    def test_a_retracted_sentence_carries_the_flag(self) -> None:
+        repo = self._repo()
+        repo._store.put(  # noqa: SLF001
+            "facts__gran",
+            "f1",
+            self._fact(
+                "f1",
+                "Mrs. Rajan lives downstairs",
+                "She lives in the flat downstairs from me now.",
+                "2026-08-02T10:05:00+00:00",
+            ),
+        )
+
+        hits = repo.search_transcripts("gran", "downstairs")
+        retracted = [h for h in hits if h["said"].startswith("She lives in the flat")]
+
+        assert retracted and retracted[0]["corrected_later"] is True
+
+    def test_a_sentence_she_still_stands_behind_is_not_flagged(self) -> None:
+        repo = self._repo()
+        repo._store.put(  # noqa: SLF001
+            "facts__gran",
+            "f1",
+            self._fact(
+                "f1",
+                "Mrs. Rajan lives downstairs",
+                "She lives in the flat downstairs from me now.",
+                None,
+            ),
+        )
+
+        hits = repo.search_transcripts("gran", "downstairs")
+
+        assert all(h["corrected_later"] is False for h in hits)
+
+    def test_her_words_are_still_returned(self) -> None:
+        """The flag replaces nothing. Withholding what she said would be a
+        worse archive than one that has to explain itself."""
+        repo = self._repo()
+        repo._store.put(  # noqa: SLF001
+            "facts__gran",
+            "f1",
+            self._fact(
+                "f1",
+                "Mrs. Rajan lives downstairs",
+                "She lives in the flat downstairs from me now.",
+                "2026-08-02T10:05:00+00:00",
+            ),
+        )
+
+        hits = repo.search_transcripts("gran", "downstairs")
+
+        assert any("flat downstairs" in h["said"] for h in hits)

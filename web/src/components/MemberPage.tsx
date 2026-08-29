@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, givenName, initial } from '../api';
 import { SampanMap } from '../SampanMap';
 import { Chapters } from './Chapters';
+import { Retrieval } from './Retrieval';
 import type { ChatLine, Member, MemberTab, Pin } from '../types';
 
 interface Props {
@@ -30,6 +31,7 @@ const tabsFor = (name: string): [MemberTab, string][] => [
   ['chat', `Ask about ${name}`],
   ['map', `${name}'s map`],
   ['chapters', `${name}'s chapters`],
+  ['graph', 'Inside the memory'],
   ['ask', 'Leave a question'],
 ];
 
@@ -70,6 +72,15 @@ export function MemberPage(props: Props) {
         <div className="page">
           <Chapters narratorId={person.narrator_id} name={who} />
         </div>
+      </>
+    );
+  }
+
+  if (tab === 'graph') {
+    return (
+      <>
+        {subtabs}
+        <Retrieval narratorId={person.narrator_id} name={who} />
       </>
     );
   }
@@ -266,7 +277,7 @@ function AskAbout({
                     {m.follow}
                   </p>
                   <div className="row">
-                    <button className="btn lime" onClick={() => void queue(m.follow!)}>
+                    <button className="btn accent" onClick={() => void queue(m.follow!)}>
                       Ask this next call
                     </button>
                   </div>

@@ -10,6 +10,7 @@ the prompt: a fact-extraction schema contains fact fields and nothing else.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
@@ -142,7 +143,12 @@ class GeminiFactExtractor:
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=FactBatch,
-                temperature=0.1,
+                # Zero, not 0.1. The same sentence was yielding a stored fact
+                # on one run and nothing on the next -- measured at 3/4 and 4/4
+                # across two phrasings of one correction, with the model
+                # proposing the fact 8/8 times. Extraction is a reading task,
+                # not a writing one; there is nothing here worth sampling for.
+                temperature=0.0,
             ),
         )
         parsed = response.parsed
@@ -151,12 +157,28 @@ class GeminiFactExtractor:
         return list(parsed.facts)
 
 
+class Refusal(BaseModel):
+    """A proposed fact the archive declined, and which rule declined it.
+
+    Refusals are silent to the agent by design -- it asserts less rather than
+    asserting what it cannot support -- but silent to *us* meant a fact could
+    vanish between runs with no way to tell "she did not say it" from "it was
+    dropped this time". This is the record that tells them apart.
+    """
+
+    rule: str = Field(description="not_quoted | unknown_subject | asserts_nothing")
+    statement: str = ""
+    quote: str = ""
+    subject_id: str = ""
+
+
 def build_facts(
     extracted: list[ExtractedFact],
     *,
     transcript: str,
     known_entities: list[Entity],
     episode_id: str,
+    on_refusal: Callable[[Refusal], None] | None = None,
 ) -> list[Fact]:
     """Turn raw extractions into facts the archive will stand behind.
 
@@ -168,14 +190,32 @@ def build_facts(
     2. Its subject is not an entity we know. There is nothing to hang it on.
     3. It has neither an object entity nor an object literal, so it asserts
        nothing about anything.
+
+    Silent to the agent, but not unrecorded: pass `on_refusal` to see what was
+    dropped and which rule dropped it. Optional because most callers do not
+    care, and a callback rather than a second return value because six call
+    sites do not need to change to add a diagnostic.
     """
+    def refused(rule: str, item: ExtractedFact) -> None:
+        if on_refusal is not None:
+            on_refusal(
+                Refusal(
+                    rule=rule,
+                    statement=item.statement,
+                    quote=item.quote,
+                    subject_id=item.subject_id,
+                )
+            )
+
     known_ids = {e.entity_id for e in known_entities if e.merged_into is None}
     facts: list[Fact] = []
 
     for item in extracted:
         if not is_quoted(item.quote, transcript):
+            refused("not_quoted", item)
             continue
         if item.subject_id not in known_ids:
+            refused("unknown_subject", item)
             continue
         if item.object_id is not None and item.object_id not in known_ids:
             # A real relationship pointing at an entity we do not have. Keep it
@@ -187,6 +227,7 @@ def build_facts(
                 }
             )
         if item.object_id is None and not item.object_literal.strip():
+            refused("asserts_nothing", item)
             continue
 
         facts.append(

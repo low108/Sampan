@@ -32,6 +32,7 @@ tellings is right is hers to settle, not the database's.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol
@@ -109,12 +110,18 @@ def reconcile(
     new_facts: list[Fact],
     held: list[Fact],
     judge: ContradictionJudge,
+    on_verdict: Callable[[Fact, Fact, Judgement], None] | None = None,
 ) -> tuple[list[Fact], list[str]]:
     """Fold new facts into the archive, resolving disagreements.
 
     Returns every fact that changed — new and amended alike — together with a
     plain-language note for each disagreement found, so the next call can ask
     her about it instead of the archive quietly picking a side.
+
+    `on_verdict` receives every disagreement acted on: the amended fact, the
+    one that replaced it, and the judgement. Without it the two kinds of
+    retirement are indistinguishable afterwards — a `valid_to` and a
+    `t_expired` are both just fields, and which clock moved is the whole point.
     """
     updated: dict[str, Fact] = {}
     questions: list[str] = []
@@ -138,6 +145,8 @@ def reconcile(
 
             updated[old.fact_id] = amended
             current = [amended if f.fact_id == old.fact_id else f for f in current]
+            if on_verdict is not None:
+                on_verdict(amended, new, verdict)
 
     return [*new_facts, *updated.values()], questions
 

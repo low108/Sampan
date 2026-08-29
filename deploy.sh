@@ -23,6 +23,31 @@ SERVICE="${SAMPAN_SERVICE:-sampan}"
 MIN_INSTANCES="${SAMPAN_MIN_INSTANCES:-0}"
 API_KEY="${SAMPAN_API_KEY:?set SAMPAN_API_KEY}"
 
+# Transcript screening. Forwarded rather than hardcoded, and empty by default:
+# `build_screen` returns None without templates, so a deploy that omits these
+# silently stores unscreened transcripts. That was true of every revision up to
+# 00014 -- the templates existed in the project and nothing referenced them.
+#
+# Provision with scripts/setup_armor.sh. `dlp` calls Sensitive Data Protection
+# directly; `armor` goes through Model Armor to the same templates and adds the
+# prompt-injection filters. Default dlp: one hop fewer, one silent failure mode
+# fewer (R18).
+SCREEN_BACKEND="${SAMPAN_SCREEN_BACKEND:-dlp}"
+DLP_INSPECT="${SAMPAN_DLP_INSPECT_TEMPLATE:-}"
+DLP_DEIDENTIFY="${SAMPAN_DLP_DEIDENTIFY_TEMPLATE:-}"
+ARMOR_TEMPLATE="${SAMPAN_ARMOR_TEMPLATE:-}"
+
+# Generated card imagery. Empty by default and the app is complete without it:
+# `publish` is a no-op with no topic, and /internal/memories declines with no
+# bucket. Provision with scripts/setup_memories.sh.
+MEMORIES_TOPIC="${SAMPAN_MEMORIES_TOPIC:-}"
+MEMORIES_BUCKET="${SAMPAN_MEMORIES_BUCKET:-}"
+
+if [[ -z "$DLP_INSPECT$ARMOR_TEMPLATE" ]]; then
+  echo "WARNING: no screening templates configured — transcripts will be stored" >&2
+  echo "         unscreened. Run scripts/setup_armor.sh, or accept this."       >&2
+fi
+
 gcloud run deploy "$SERVICE" \
   --project="$PROJECT_ID" \
   --region="$REGION" \
@@ -34,7 +59,7 @@ gcloud run deploy "$SERVICE" \
   --cpu=1 \
   --memory=1Gi \
   --concurrency=20 \
-  --set-env-vars="^@^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@GOOGLE_CLOUD_LOCATION=${REGION}@SAMPAN_API_KEY=${API_KEY}"
+  --set-env-vars="^@^GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@GOOGLE_CLOUD_LOCATION=${REGION}@SAMPAN_API_KEY=${API_KEY}@SAMPAN_SCREEN_BACKEND=${SCREEN_BACKEND}@SAMPAN_DLP_INSPECT_TEMPLATE=${DLP_INSPECT}@SAMPAN_DLP_DEIDENTIFY_TEMPLATE=${DLP_DEIDENTIFY}@SAMPAN_ARMOR_TEMPLATE=${ARMOR_TEMPLATE}@SAMPAN_MEMORIES_TOPIC=${MEMORIES_TOPIC}@SAMPAN_MEMORIES_BUCKET=${MEMORIES_BUCKET}"
 
 URL="$(gcloud run services describe "$SERVICE" \
   --project="$PROJECT_ID" --region="$REGION" --format='value(status.url)')"

@@ -38,6 +38,7 @@ FORGOTTEN = "forgotten"
 PRIVATE = "private"
 FACTS = "facts"
 COMMUNITIES = "communities"
+MEMORIES = "memories"
 
 
 class NarratorMemory(BaseModel):
@@ -77,6 +78,15 @@ class Repository:
     def save_memory(self, memory: NarratorMemory) -> None:
         memory.updated_at = datetime.now(UTC).isoformat()
         self._store.put(PROFILES, memory.narrator_id, memory.model_dump(mode="json"))
+
+    def display_name(self, narrator_id: str) -> str:
+        """The name on the household roster, or "" if they are not on it.
+
+        A single-document read: `list_members` also counts stories for everyone,
+        which is far too much work for a name at the top of a call.
+        """
+        raw = self._store.get("members", narrator_id)
+        return str((raw or {}).get("display_name") or "")
 
     # --- entities ---------------------------------------------------------
 
@@ -198,6 +208,50 @@ class Repository:
             },
         )
 
+    def record_refusals(
+        self, narrator_id: str, conversation_id: str, refusals: list[dict[str, Any]]
+    ) -> None:
+        """Attach what fact extraction declined to the call it came from.
+
+        A second write rather than a field on the first, because the transcript
+        is saved before extraction runs on purpose (D6) and must not wait for
+        it. Absent when nothing was refused, so an empty list and a call that
+        predates this feature look the same -- which is correct, since neither
+        refused anything we know about.
+        """
+        if not refusals:
+            return
+        collection = self._scoped(CONVERSATIONS, narrator_id)
+        raw = self._store.get(collection, conversation_id)
+        if raw is None:
+            return
+        raw["fact_refusals"] = refusals
+        self._store.put(collection, conversation_id, raw)
+
+    def save_memory_asset(self, narrator_id: str, asset: dict[str, Any]) -> None:
+        """Where a story's generated clip lives. One document per story."""
+        self._store.put(
+            self._scoped(MEMORIES, narrator_id), asset["story_id"], asset
+        )
+
+    def load_memory_assets(self, narrator_id: str) -> list[dict[str, Any]]:
+        return self._store.list(self._scoped(MEMORIES, narrator_id))
+
+    def record_graph_change(
+        self, narrator_id: str, conversation_id: str, change: dict[str, Any]
+    ) -> None:
+        """What this call did to the graph, attached to the call that did it.
+
+        A second write for the same reason as the refusals: the transcript is
+        stored before extraction runs (D6) and must not wait on it.
+        """
+        collection = self._scoped(CONVERSATIONS, narrator_id)
+        raw = self._store.get(collection, conversation_id)
+        if raw is None:
+            return
+        raw["graph_change"] = change
+        self._store.put(collection, conversation_id, raw)
+
     # --- care -------------------------------------------------------------
 
     def raise_concern(
@@ -267,10 +321,32 @@ class Repository:
         2025). The consensus design is a structured index that points back into
         raw text, so the agent can reach her own words when the graph has only
         a summary of them.
+
+        Retracted sentences are marked, never withheld. Facts carry two clocks
+        and a later telling retires an earlier one; transcripts carry no clocks
+        at all, so a sentence she has since corrected came back through here
+        looking exactly like one she still stands behind. The archive knew Mrs.
+        Rajan had moved upstairs -- the fact was retired, `superseded_by` set,
+        the graph correct -- and the agent went on saying downstairs, because
+        this is where it was actually reading from.
+
+        Withholding them would be the wrong fix twice over: her words are kept
+        whatever happens to them, and an agent that cannot see she once said
+        something else cannot say "you told me downstairs before, then you
+        corrected it". So the sentence is returned with `corrected_later` on
+        it, and the tool description tells the agent what that means.
         """
         needle = query.strip()
         if not needle:
             return []
+
+        # The sentences behind facts this archive no longer asserts.
+        retracted = {
+            (fact.quote or "").strip()
+            for fact in self.load_facts(narrator_id, current_only=False)
+            if not fact.is_current and fact.quote
+        }
+
         hits = []
         for raw in self._store.list(self._scoped(CONVERSATIONS, narrator_id)):
             transcript = raw.get("transcript") or ""
@@ -280,11 +356,18 @@ class Repository:
                 # Only her lines. The agent quoting itself back at her is not
                 # remembering.
                 if line.startswith("K:") and needle in line:
+                    said = line[2:].strip()
                     hits.append(
                         {
-                            "said": line[2:].strip(),
+                            "said": said,
                             "conversation_id": raw.get("conversation_id", ""),
                             "when": raw.get("occurred_at", ""),
+                            # Matched loosely on purpose: extraction stores the
+                            # clause it used, which is often a fragment of the
+                            # longer sentence she actually spoke.
+                            "corrected_later": any(
+                                quote in said or said in quote for quote in retracted
+                            ),
                         }
                     )
         hits.sort(key=lambda h: h["when"], reverse=True)

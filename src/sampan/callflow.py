@@ -12,11 +12,20 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from sampan.archivist import StoryExtractor, ingest_conversation
+from sampan.archivist import StoryExtractor, ingest_conversation, mentions
+from sampan.armor import Screen, screen
+from sampan.changes import (
+    GraphChange,
+    describe_edges,
+    describe_nodes,
+    describe_retirement,
+)
 from sampan.companion import build_agent
 from sampan.config import Settings
 from sampan.contradiction import ContradictionJudge, reconcile
-from sampan.fact_extraction import FactExtractor, build_facts
+from sampan.entities import ensure_self
+from sampan.fact_extraction import FactExtractor, Refusal, build_facts
+from sampan.memories import MemoryRequest, publish
 from sampan.opener import build_session_plan, render_plan
 from sampan.preferences import fold_preferences
 from sampan.repository import NarratorMemory, Repository
@@ -37,10 +46,26 @@ class Transcript:
         text = text.strip()
         if not text:
             return
-        # The Live API streams transcription incrementally, so consecutive
-        # fragments from one speaker are revisions rather than new turns.
+        # The Live API streams transcription in pieces, and this used to assume
+        # every piece was a full revision of the turn -- so it replaced. It is
+        # not: the pieces are often *deltas*, and replacing kept only the last
+        # one. A call where she said "Last Sunday my neighbour Mrs Rajan took
+        # me to Pasar Besar, and the oil came through the paper bag, still
+        # warm" was stored as `K: Still want?`. The model heard all of it and
+        # answered about the oil; the transcript kept the tail, and extraction
+        # reads the transcript, so the story never existed.
+        #
+        # Both shapes are handled, and where they are indistinguishable this
+        # errs toward keeping text. Losing her words is much worse than
+        # repeating them: a duplicated clause is untidy, a dropped one is a
+        # story she told that nobody will ever see.
         if self.turns and self.turns[-1][0] == speaker:
-            self.turns[-1] = (speaker, text)
+            held = self.turns[-1][1]
+            if text.startswith(held) or text in held:
+                # A revision, or a piece already accounted for.
+                self.turns[-1] = (speaker, text if len(text) > len(held) else held)
+            else:
+                self.turns[-1] = (speaker, f"{held} {text}")
             return
         self.turns.append((speaker, text))
 
@@ -67,7 +92,13 @@ def prepare_call(
 ) -> PreparedCall:
     """Load everything this call should already know."""
     stored = repository.load_memory(narrator_id)
-    entities = repository.load_entities(narrator_id)
+    # She has to be in her own graph, or every fact about her is refused for an
+    # unknown subject and the archive can record everything except its subject.
+    entities = ensure_self(
+        repository.load_entities(narrator_id),
+        narrator_id=narrator_id,
+        display_name=stored.display_name or repository.display_name(narrator_id),
+    )
     ask = repository.pending_ask(narrator_id)
 
     # Second resolution alone collides: Live API sessions cap at roughly
@@ -137,23 +168,43 @@ def finish_call(
     transcript: Transcript,
     *,
     narrator_id: str,
+    settings: Settings | None = None,
     fact_extractor: FactExtractor | None = None,
     judge: ContradictionJudge | None = None,
     tool_calls: list[dict[str, Any]] | None = None,
+    screener: Screen | None = None,
 ) -> NarratorMemory | None:
     """Fold a finished call back into stored memory.
 
     Returns the updated memory, or None if the call was too short to extract
     anything from.
     """
+    # Screened before anything is written, and the screened text is what
+    # everything downstream reads. Extracting from the original while storing
+    # the redacted version would make `build_facts` refuse exactly the quotes
+    # that had something worth protecting in them.
+    checked = screen(transcript.render(), screener)
+    rendered = checked.text
+
+    # `unscreened` is recorded alongside the findings and is not the same as
+    # an empty findings list: one means the screen ran and objected to
+    # nothing, the other means it never ran. Which calls went through
+    # unchecked has to be a query, not a guess.
+
     # Saved before the length check, like the transcript: a call too short to
     # extract from is exactly the one you want the tool record for.
     repository.save_conversation(
         narrator_id,
         prepared.conversation_id,
-        transcript.render(),
+        rendered,
         turns=len(transcript),
         tool_calls=tool_calls or [],
+        # The tool log records that the agent reached for memory; this records
+        # what came back and, more usefully, what was scored and passed over.
+        searches=[t.model_dump(mode="json") for t in prepared.memory.searches],
+        screened=[f.model_dump(mode="json") for f in checked.findings],
+        unscreened=checked.unscreened,
+        screen_error=checked.reason,
     )
 
     for subject in prepared.memory.private_marks:
@@ -170,14 +221,22 @@ def finish_call(
     if prepared.memory.ask_delivered and prepared.memory.ask is not None:
         repository.mark_ask_delivered(narrator_id, prepared.memory.ask.ask_id)
 
+    settings = settings or Settings()
+
+    # Everything she has ever asked to drop, including anything said on this
+    # call -- `forget_this` writes through immediately, so the tombstone is
+    # already here by the time extraction runs.
+    forgotten = repository.forgotten(narrator_id)
+
     outcome = ingest_conversation(
-        transcript.render(),
+        rendered,
         extractor,
         known_entities=prepared.memory.entities,
         known_threads=prepared.stored.threads,
         known_anchors=prepared.stored.anchors,
         known_preferences=prepared.stored.preferences,
         known_sensitivities=prepared.stored.sensitivities,
+        forgotten=forgotten,
         conversation_id=prepared.conversation_id,
     )
 
@@ -200,22 +259,70 @@ def finish_call(
         last_closure=outcome.closure.reason,
     )
 
+    # What this call did to the graph: nodes touched, edges added, edges
+    # retired. Assembled from what is already here, and drawn by the family
+    # side rather than shown to her.
+    names = {e.entity_id: e.canonical_name for e in outcome.entities}
+    change = GraphChange(
+        conversation_id=prepared.conversation_id,
+        nodes=describe_nodes(outcome.resolutions, names),
+    )
+
     repository.save_memory(updated)
     repository.save_entities(narrator_id, outcome.entities)
-    repository.save_stories(narrator_id, prepared.conversation_id, outcome.stories)
+    written = repository.save_stories(
+        narrator_id, prepared.conversation_id, outcome.stories
+    )
+
+    # Ask for an image for each new story, and do not wait for one. Veo is tens
+    # of seconds; the card is complete without it and acquires it later (D21).
+    # `publish` never raises -- a picture is not worth a failed call.
+    for story_id, story in zip(written, outcome.stories, strict=False):
+        candidate = story.candidate
+        publish(
+            settings,
+            MemoryRequest(
+                narrator_id=narrator_id,
+                story_id=story_id,
+                title=candidate.title,
+                sense_detail=candidate.sense_detail,
+                where_said=candidate.where.raw_name,
+                year=candidate.when.start_year if candidate.when else None,
+            ),
+        )
 
     # Facts are a second pass with its own schema, deliberately not another
     # field on the story extraction: a schema is part of the prompt, and one
     # carrying fields its instructions do not govern gets those fields filled.
     # Optional, so a call still folds in cleanly without it.
     if fact_extractor is not None:
-        rendered = transcript.render()
+        # What was dropped, and by which rule. Extraction is silent to the
+        # agent by design; it should not also be silent to whoever is trying
+        # to work out why a fact she plainly stated is not in the archive.
+        refusals: list[Refusal] = []
         extracted = build_facts(
             fact_extractor.extract(rendered, outcome.entities),
             transcript=rendered,
             known_entities=outcome.entities,
             episode_id=prepared.conversation_id,
+            on_refusal=refusals.append,
         )
+        repository.record_refusals(
+            narrator_id,
+            prepared.conversation_id,
+            [r.model_dump(mode="json") for r in refusals],
+        )
+        # Facts are extracted from the raw transcript, so they rebuild a
+        # forgotten subject even when its story has already been dropped. The
+        # quote is what to match on: it is the sentence she actually said.
+        extracted = [
+            fact
+            for fact in extracted
+            if not any(mentions(fact.quote, subject) for subject in forgotten)
+        ]
+        change.edges = describe_edges(extracted)
+        change.refused = refusals
+
         if judge is not None:
             # A later telling retires an earlier assertion; it never deletes
             # it, and where the disagreement is about her account rather than
@@ -223,12 +330,21 @@ def finish_call(
             # questions for the next call, because which telling is right is
             # hers to settle.
             extracted, disputes = reconcile(
-                extracted, repository.load_facts(narrator_id), judge
+                extracted,
+                repository.load_facts(narrator_id),
+                judge,
+                on_verdict=lambda amended, new, verdict: change.retired.append(
+                    describe_retirement(amended, amended, verdict.kind, verdict.reason)
+                ),
             )
             for dispute in disputes:
                 repository.raise_concern(
                     narrator_id, "contradiction", dispute, prepared.conversation_id
                 )
         repository.save_facts(narrator_id, extracted)
+
+    repository.record_graph_change(
+        narrator_id, prepared.conversation_id, change.model_dump(mode="json")
+    )
 
     return updated

@@ -326,3 +326,58 @@ class TestLeaning:
 
         assert plan.target_domain is None
         assert "natural opening" not in render_plan(plan)
+
+
+class TestWhoTheAskerIs:
+    """The agent is told how the asker is related to her.
+
+    Observed on the first live call: "Wei Lun was asking … *she* said she keeps
+    thinking about you" -- about her son. The instruction carried his name and
+    nothing else, so the model filled the gap. One wrong pronoun, in the single
+    line the whole product exists for, addressed to the person least likely to
+    let it pass.
+    """
+
+    def plan_for(self, ask: Ask) -> str:
+        return render_plan(
+            build_session_plan(
+                threads=[],
+                sensitivities=[],
+                ask=ask,
+                covered_domains=set(),
+                session_count=4,
+                last_closure=None,
+            )
+        )
+
+    def ask(self, **kw: object) -> Ask:
+        return Ask(
+            ask_id="ask_1",
+            from_name="Wei Lun",
+            question="Are you eating properly?",
+            created_at="2026-08-26T00:00:00Z",
+            **kw,
+        )
+
+    def test_a_known_relation_reaches_the_agent(self) -> None:
+        rendered = self.plan_for(self.ask(relation="son"))
+
+        assert "her son" in rendered
+
+    def test_it_is_told_not_to_guess_when_the_relation_is_known(self) -> None:
+        rendered = self.plan_for(self.ask(relation="son"))
+
+        assert "never guess otherwise" in rendered
+
+    def test_an_unknown_relation_forbids_a_guessed_pronoun(self) -> None:
+        """Silence is what produced the wrong pronoun. Saying nothing about the
+        relationship is not the same as saying nothing about guessing."""
+        rendered = self.plan_for(self.ask())
+
+        assert "do not guess a pronoun" in rendered
+        assert "her son" not in rendered
+
+    def test_the_credit_still_belongs_to_the_asker(self) -> None:
+        rendered = self.plan_for(self.ask(relation="son"))
+
+        assert "The credit is Wei Lun's, not yours." in rendered

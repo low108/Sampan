@@ -113,6 +113,56 @@ def _match_by_containment(mention: EntityMention, pool: list[Entity]) -> Entity 
     return next(iter(unique.values())) if len(unique) == 1 else None
 
 
+def self_entity(narrator_id: str, display_name: str) -> Entity:
+    """The narrator, as a node in her own graph.
+
+    Her id is derived from the narrator id rather than generated, so calling
+    this twice cannot produce two of her.
+    """
+    name = display_name.strip() or narrator_id
+    # Surname-first, the same rule the bell uses: the first token of
+    # "Lim Siew Khim" is the family name half this household shares, and what
+    # follows is what anyone actually calls her.
+    parts = name.split()
+    given = " ".join(parts[1:]) if len(parts) > 1 else ""
+    return Entity(
+        entity_id=f"ent_self_{narrator_id}",
+        type=EntityType.PERSON,
+        canonical_name=name,
+        aliases=[given] if given and given != name else [],
+        role="self",
+        # Not provisional: the family did not guess she exists.
+        provisional=False,
+        confirmed_by_family=True,
+    )
+
+
+def ensure_self(
+    entities: list[Entity], *, narrator_id: str, display_name: str
+) -> list[Entity]:
+    """Guarantee the narrator is in her own entity graph.
+
+    She was not. `seeds/intake.json` names her father, mother, sister, husband,
+    son, daughter, granddaughter, grandfather and two towns -- and not her. Fact
+    extraction refuses any fact whose subject is unknown, so until some mention
+    happened to invent her, *no fact could be recorded about the person the
+    product is about*, and nothing about her could ever be compared against
+    anything else. She rarely says her own name, so that was luck rather than
+    design.
+
+    Matching is by id, not by name, because a graph that already resolved her
+    from a mention has a generated id, and the fix must not add a second her.
+    """
+    if any(e.entity_id == f"ent_self_{narrator_id}" for e in entities):
+        return entities
+    name = display_name.strip()
+    if name and any(
+        e.type is EntityType.PERSON and e.knows(name) for e in entities
+    ):
+        return entities
+    return [*entities, self_entity(narrator_id, display_name)]
+
+
 def resolve_mentions(
     mentions: list[EntityMention],
     existing: list[Entity],

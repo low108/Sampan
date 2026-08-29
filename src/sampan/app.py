@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, NamedTuple
 
 from fastapi import (
     Depends,
@@ -27,16 +28,33 @@ from pydantic import BaseModel, Field
 
 from sampan.affect import GeminiAffectMonitor, policy, watch
 from sampan.archivist import GeminiStoryExtractor
-from sampan.auth import require_api_key
+from sampan.armor import build_screen
+from sampan.auth import require_api_key, require_push_key
 from sampan.callflow import Transcript, finish_call, prepare_call
 from sampan.config import Settings, apply_genai_env, get_settings
+from sampan.contradiction import (
+    Disagreement,
+    GeminiContradictionJudge,
+    Judgement,
+    apply_conflicting_testimony,
+    apply_state_change,
+)
 from sampan.corrections import (
     Correction,
     apply_correction,
     duplicate_candidates,
     needs_confirmation,
 )
-from sampan.family import build_cards, build_map, feed, stats, timeline
+from sampan.fact_extraction import GeminiFactExtractor
+from sampan.facts import Fact, Predicate
+from sampan.family import (
+    attach_memories,
+    build_cards,
+    build_map,
+    feed,
+    stats,
+    timeline,
+)
 from sampan.household import (
     cards_for,
     list_members,
@@ -44,13 +62,17 @@ from sampan.household import (
     unplaced,
 )
 from sampan.live import ToolLog, open_session, pump
-from sampan.models import AffectState, Ask
+from sampan.memories import BucketBlobs, VeoGenerator, decode_push, render
+from sampan.models import AffectState, Ask, Precision, When
 from sampan.notifications import mark_seen, notifications_for, unseen_count
 from sampan.places import GeminiPlaceResolver
 from sampan.quiet import is_quiet
 from sampan.repository import Repository
+from sampan.retrieval import FactGraph, SearchTrace, search_facts
 from sampan.store import DocumentStore, get_document_store
 from sampan.tools import CallMemory
+
+log = logging.getLogger("sampan.app")
 
 SMOKE_COLLECTION = "_smoke"
 
@@ -73,6 +95,56 @@ class SeenRequest(BaseModel):
     ids: list[str] = Field(default_factory=list)
 
 
+class DraftFact(BaseModel):
+    """A fact the demo invented. Never stored."""
+
+    # Empty is allowed: a demo may invent a fact about someone the archive has
+    # never heard of, and rejecting that surfaced as "could not reach the
+    # archive", which is both wrong and unhelpful.
+    subject_id: str = Field(default="", max_length=120)
+    # Typed as the enum so an unknown verb is a 422 at the boundary. As a bare
+    # string it reached `Predicate(...)` inside the handler and raised, which
+    # the client saw as a 500 and reported as "could not reach the archive".
+    predicate: Predicate = Predicate.WORKED_AT
+    object_literal: str = Field(default="", max_length=200)
+    statement: str = Field(min_length=1, max_length=400)
+
+
+class Supersession(BaseModel):
+    """A later telling that replaces an earlier one.
+
+    Retiring a fact on its own answers "stop asserting this". It does not show
+    the thing worth showing, which is that the archive holds *both* tellings and
+    knows which one it currently stands behind. A supersession carries the
+    replacement with it, so the drawing gets a retired edge and a fresh one on
+    the same subject and you can see the belief move.
+    """
+
+    # The telling being replaced. Named explicitly rather than inferred: the
+    # real path asks a model which fact a new one disagrees with, and a demo
+    # that guessed would be claiming a capability it is not exercising.
+    fact_id: str = Field(min_length=1, max_length=200)
+    statement: str = Field(min_length=1, max_length=400)
+    # What the new edge points at. The client extracts it from the sentence for
+    # a readable label; empty is fine and falls back to the sentence.
+    object_literal: str = Field(default="", max_length=200)
+
+
+class SearchRequest(BaseModel):
+    """A question, plus whatever the demo has added, retired or replaced.
+
+    The sandbox rides on the request rather than living on the server. Nothing
+    is written, so a demo cannot leave marks on her archive -- and the whole
+    product rests on the family being able to correct the system and never her.
+    Stateless also means reproducible: the same request always answers the same.
+    """
+
+    question: str = Field(min_length=1, max_length=300)
+    added: list[DraftFact] = Field(default_factory=list, max_length=20)
+    retired: list[str] = Field(default_factory=list, max_length=20)
+    replaced: list[Supersession] = Field(default_factory=list, max_length=20)
+
+
 class ChooseAskRequest(BaseModel):
     ask_id: str = Field(min_length=1, max_length=200)
 
@@ -88,6 +160,10 @@ class AskRequest(BaseModel):
     voice_note: str | None = Field(
         default=None, description="base64 data URL of a short recording"
     )
+    # Who is asking, so the service can refuse a question somebody addressed to
+    # themselves. Optional because the ask form has always sent only a name,
+    # and a missing id must not start rejecting questions that are fine.
+    from_id: str = Field(default="", max_length=120)
 
 
 class SmokeRequest(BaseModel):
@@ -100,6 +176,33 @@ class SmokeResult(BaseModel):
     written: dict[str, Any]
     read_back: dict[str, Any] | None
     round_trip_ok: bool
+
+
+class ExtractionStack(NamedTuple):
+    """Everything `finish_call` needs to fold a call back into memory.
+
+    Named and constructed in one place because the alternative failed silently:
+    `finish_call` takes `fact_extractor` and `judge` as optional keywords, the
+    WebSocket handler passed neither, and the whole memory-v2 pass -- fact
+    extraction, contradiction, every edge the graph is made of -- was skipped on
+    every real call for as long as it has existed. Nothing raised. The graph
+    only ever grew when someone ran `scripts/backfill_facts.py` by hand.
+
+    Optionality is right for the seam, which is exercised with fakes. It is
+    wrong for production, so production builds all three together or not at all.
+    """
+
+    stories: GeminiStoryExtractor
+    facts: GeminiFactExtractor
+    judge: GeminiContradictionJudge
+
+
+def build_extraction_stack(settings: Settings) -> ExtractionStack:
+    return ExtractionStack(
+        stories=GeminiStoryExtractor(settings),
+        facts=GeminiFactExtractor(settings),
+        judge=GeminiContradictionJudge(settings),
+    )
 
 
 def get_store() -> DocumentStore:
@@ -129,6 +232,27 @@ def find_static_dir() -> Path | None:
 
 _PLACE_CACHE = "_places"
 _LETTER_CACHE = "_letters"
+
+
+def _judge_swap(settings: Settings, new: Fact, old: Fact) -> Judgement:
+    """Which kind of disagreement, decided by the model a real call uses.
+
+    Falls back to conflicting testimony, which is the conservative half of the
+    pair: it moves transaction time and leaves her own dates untouched, so a
+    demo running without cloud credentials still refuses to imply she was
+    wrong. The verdict says `confidence=0` so the page can be honest that
+    nothing was actually judged, rather than showing a fallback as a finding.
+
+    Failing open matters more here than elsewhere: this runs live in front of
+    an audience, and a flat network should cost the explanation, not the demo.
+    """
+    if not settings.configured:
+        return Judgement(kind=Disagreement.CONFLICTING_TESTIMONY, confidence=0.0)
+    try:
+        return GeminiContradictionJudge(settings).judge(new, old)
+    except Exception:
+        log.exception("contradiction judge failed in the graph demo")
+        return Judgement(kind=Disagreement.CONFLICTING_TESTIMONY, confidence=0.0)
 
 
 def _letters_for(
@@ -175,23 +299,103 @@ def _resolve_places(
 
     names = sorted({c.where_said for c in cards if c.where_said})
     cached: list[Place] = []
-    missing: list[str] = []
+    # What to ask the resolver, keyed by the name the story actually used.
+    #
+    # Asked once, and again only when someone has given us something new to go
+    # on -- which is `needs_retry`, set when the family renames a place we
+    # could not locate. Retrying every entry with no coordinates instead was a
+    # model call per unlocatable name on every map load, and names like "house"
+    # and "the shop" are never going to resolve, so the retry was permanent.
+    missing: dict[str, str] = {}
     for name in names:
         raw = store.get(_PLACE_CACHE, name)
         if raw is None:
-            missing.append(name)
+            missing[name] = name
+            continue
+        place = Place.model_validate(raw)
+        if place.locatable:
+            cached.append(place)
+        elif place.needs_retry:
+            # The family's name for it, which is the new information.
+            missing[name] = place.display_name or name
         else:
-            cached.append(Place.model_validate(raw))
+            # Already asked, still unplaceable. Kept so the story can say so.
+            cached.append(place)
 
     if missing and settings.configured:
         with contextlib.suppress(Exception):
-            for place in GeminiPlaceResolver(settings).resolve(missing):
-                store.put(_PLACE_CACHE, place.raw_name, place.model_dump(mode="json"))
+            asked = list(missing.values())
+            resolved = GeminiPlaceResolver(settings).resolve(asked)
+            found = {p.raw_name: p for p in resolved}
+            for name, query in missing.items():
+                place = found.get(query) or found.get(name)
+                if place is None:
+                    continue
+                # Stored under the name the story used, so `to_pins` can find
+                # it, even when a better name was the one resolved.
+                place = place.model_copy(update={"raw_name": name})
+                store.put(_PLACE_CACHE, name, place.model_dump(mode="json"))
                 cached.append(place)
 
     resolved = {p.raw_name for p in cached}
     cached.extend(Place(raw_name=name) for name in names if name not in resolved)
     return cached
+
+
+# How long a story stays news on her screen. Long enough that a call in the
+# evening is still acknowledged the next morning, short enough that the message
+# is "this just happened" rather than a banner that never goes away.
+_KEPT_FOR_HOURS = 24
+
+
+def _kept_from_her_last_call(
+    store: DocumentStore, narrator_id: str
+) -> dict[str, Any] | None:
+    """What her most recent telling left on the family's map.
+
+    She talks, and then nothing on her screen ever changes. The whole promise
+    is that her family will see what she said, and until now the only proof of
+    that lived on the family's side of the app -- which is the side she does
+    not open. This is the receipt, in her own words: the title she gave it and
+    the place she named.
+
+    Deliberately stateless and time-boxed rather than a seen-marker. A seen
+    flag is another thing that can stick, and something stuck on the screen of
+    someone who may not know how to clear it is worse than a message that
+    quietly stops being news. Nothing is written here.
+
+    Returns None when there is nothing recent, which is the ordinary case.
+    """
+    from datetime import timedelta
+
+    rows = [r for r in store.list(f"stories__{narrator_id}") if r.get("story_id")]
+    if not rows:
+        return None
+    newest = max(rows, key=lambda r: r.get("occurred_at") or r["story_id"])
+
+    when = newest.get("occurred_at") or ""
+    try:
+        told_at = datetime.fromisoformat(when)
+    except ValueError:
+        return None
+    if told_at.tzinfo is None:
+        told_at = told_at.replace(tzinfo=UTC)
+    if datetime.now(UTC) - told_at > timedelta(hours=_KEPT_FOR_HOURS):
+        return None
+
+    candidate = newest.get("candidate") or {}
+    raw_name = (candidate.get("where") or {}).get("raw_name", "")
+    # The family's name for the place when there is one, because that is what
+    # is written on the pin she is being told about.
+    cached = store.get(_PLACE_CACHE, raw_name) if raw_name else None
+    where = (cached or {}).get("display_name") or raw_name
+
+    return {
+        "story_id": newest["story_id"],
+        "title": candidate.get("title", ""),
+        "where": where,
+        "at": when,
+    }
 
 
 _LINK_CACHE = "_place_links"
@@ -443,9 +647,12 @@ def create_app() -> FastAPI:
         """
         repository = Repository(store)
         memory = repository.load_memory(narrator_id)
-        cards = build_cards(
-            repository.load_stories(narrator_id),
-            repository.private_subjects(narrator_id),
+        cards = attach_memories(
+            build_cards(
+                repository.load_stories(narrator_id),
+                repository.private_subjects(narrator_id),
+            ),
+            repository.load_memory_assets(narrator_id),
         )
         entities = repository.load_entities(narrator_id)
 
@@ -536,15 +743,54 @@ def create_app() -> FastAPI:
                 detail="Voice note too long; ten seconds is the intended length.",
             )
 
+        # Nobody asks themselves a question. The call opened on "ah_khim wants
+        # to ask you something" and quoted her own words back at her, which is
+        # the agent talking to itself in her voice -- the opposite of a bridge
+        # to her family, which is the entire premise.
+        #
+        # Both forms are refused: the id, and the name as it would be rendered
+        # to her. Tapping one of her own stories is how it happened, and the
+        # name was the fallback the browser uses before the household loads.
+        repository = Repository(store)
+        display = repository.display_name(narrator_id)
+        mine = {
+            narrator_id.strip().lower(),
+            display.strip().lower(),
+            display.strip().lower().split(" ")[-1] if display else "",
+        } - {""}
+        if body.from_id.strip().lower() == narrator_id.strip().lower() or (
+            body.from_name.strip().lower() in mine
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="A question cannot be left for the person asking it.",
+            )
+
+        # The ask form does not collect a relation, so fill it from the
+        # household when the asker is a member. It reaches the agent's
+        # instruction, and without it the agent has only a name: the first live
+        # call said "Wei Lun was asking … *she* said she keeps thinking about
+        # you" about her son. The household already knows he is her son.
+        relation = body.relation
+        if not relation and body.from_id:
+            relation = next(
+                (
+                    m.relation
+                    for m in list_members(repository)
+                    if m.narrator_id == body.from_id
+                ),
+                "",
+            )
+
         ask = Ask(
             ask_id=f"ask_{uuid.uuid4().hex[:10]}",
             from_name=body.from_name,
-            relation=body.relation,
+            relation=relation,
             question=body.question,
             voice_note_url=body.voice_note,
             created_at=datetime.now(UTC).isoformat(),
         )
-        Repository(store).queue_ask(narrator_id, ask)
+        repository.queue_ask(narrator_id, ask)
         return {
             "ask_id": ask.ask_id,
             "queued": True,
@@ -605,6 +851,338 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=result.reason)
         return result.model_dump()
 
+    @app.post(
+        "/api/family/{narrator_id}/search", dependencies=[Depends(require_api_key)]
+    )
+    def search_archive(
+        narrator_id: str,
+        body: SearchRequest,
+        store: Annotated[DocumentStore, Depends(get_store)],
+        settings: Annotated[Settings, Depends(get_settings)],
+    ) -> dict[str, Any]:
+        """Run the agent's own retrieval, and return its working.
+
+        The same `search_facts` the Companion calls mid-sentence, driven from a
+        text box instead — so the ranking can be watched without waiting for
+        the agent to decide to reach for something.
+
+        Nodes and edges come back laid out by hop distance rather than as a
+        flat list, because the distance *is* the structure: seeds at zero, then
+        what they reach. There is no model anywhere in this path, so the same
+        query returns the same numbers every time.
+        """
+        repository = Repository(store)
+        entities = repository.load_entities(narrator_id)
+        names = {e.entity_id: e.canonical_name for e in entities}
+
+        # Retired facts are loaded too: the trace names what it stopped
+        # asserting, which is the thing a flat index cannot report.
+        stored = repository.load_facts(narrator_id, current_only=False)
+
+        # The sandbox, applied in memory only. `retired` expires a fact the way
+        # a later telling would -- transaction time, leaving valid time exactly
+        # as she said it, because even a demo does not get to imply she was
+        # wrong. `added` invents new edges so a node can be watched appearing.
+        expiring = set(body.retired)
+        working = [
+            f.model_copy(
+                update={"t_expired": datetime.now(UTC), "superseded_by": "demo"}
+            )
+            if f.fact_id in expiring
+            else f
+            for f in stored
+        ]
+        # An invented edge gets an invented node at the far end. Without one
+        # it has a subject and nothing to point at, so the count goes up and
+        # the drawing does not change -- which is the one thing a create demo
+        # has to show.
+        invented: dict[str, str] = {}
+        for i, draft in enumerate(body.added):
+            target = f"demo_node_{i}"
+            invented[target] = draft.object_literal or draft.statement
+            subject = draft.subject_id
+            if subject not in names:
+                # Nobody named -- or named somebody who does not exist, which
+                # amounts to the same thing and used to draw a node labelled
+                # with the raw id. Both ends are invented, so the edge floats
+                # rather than being quietly attached to whichever node happened
+                # to be first, which would draw a relationship the sentence
+                # does not claim.
+                subject = f"demo_subject_{i}"
+                invented[subject] = "someone new"
+            working.append(
+                Fact(
+                    fact_id=f"demo_{i}",
+                    subject_id=subject,
+                    predicate=draft.predicate,
+                    object_id=target,
+                    object_literal=draft.object_literal,
+                    statement=draft.statement,
+                    quote=draft.statement,
+                    episode_id="demo",
+                )
+            )
+
+        # A supersession: she says it differently now. The replacement takes the
+        # old fact's subject and predicate by copying them, so the new edge
+        # lands on the same node and the two can be seen side by side.
+        #
+        # *Which* fact is being corrected came from a click -- on a real call
+        # that is a deterministic narrowing to the same subject and predicate,
+        # and this is a dict lookup instead.
+        #
+        # *Which kind* of disagreement it is, though, is decided here by the
+        # same judge a real call uses, because it is the question that matters
+        # and the answer is not obvious:
+        #
+        #   state change          she moved. Both tellings were true, one after
+        #                         the other, so `valid_to` closes on the old one
+        #                         and both stay current.
+        #   conflicting testimony one event, two accounts. `t_expired` moves and
+        #                         her valid time is left exactly as she said it.
+        #
+        # Hardcoding the second was wrong: "Ah Chwee lives in Kampung Baru now"
+        # is a state change, and calling it conflicting testimony collapses the
+        # two clocks -- the precise error the whole bi-temporal design exists to
+        # prevent. Guessing it in a panel built to explain the difference would
+        # have been the worst place in the product to get it wrong.
+        verdicts: list[dict[str, Any]] = []
+        by_id = {f.fact_id: f for f in working}
+        for i, swap in enumerate(body.replaced):
+            old = by_id.get(swap.fact_id)
+            if old is None or not old.is_current:
+                continue
+            target = f"demo_super_node_{i}"
+            invented[target] = swap.object_literal or swap.statement
+            fresh = Fact(
+                fact_id=f"demo_super_{i}",
+                subject_id=old.subject_id,
+                predicate=old.predicate,
+                object_id=target,
+                object_literal=swap.object_literal,
+                statement=swap.statement,
+                quote=swap.statement,
+                episode_id="demo",
+                # `apply_state_change` closes the old interval where the new one
+                # opens, so a state change needs somewhere to close it to. She
+                # is describing how things stand now, which is what this says.
+                valid_from=When(
+                    # The year rather than "now", because this phrase is what
+                    # closes the old interval and ends up on the page as its
+                    # end date. "until now" is a statement about the demo;
+                    # "until 2026" is a statement about Ah Chwee.
+                    raw_phrase=str(datetime.now(UTC).year),
+                    start_year=datetime.now(UTC).year,
+                    precision=Precision.YEAR,
+                    confidence=0.6,
+                ),
+            )
+            judged = _judge_swap(settings, fresh, old)
+            if judged.kind is Disagreement.STATE_CHANGE:
+                amended = apply_state_change(old, fresh)
+            else:
+                amended = apply_conflicting_testimony(old, fresh)
+            verdicts.append(
+                {
+                    "fact_id": old.fact_id,
+                    "kind": judged.kind.value,
+                    "reason": judged.reason,
+                    "confidence": judged.confidence,
+                    "clock": (
+                        "valid time"
+                        if judged.kind is Disagreement.STATE_CHANGE
+                        else "transaction time"
+                    ),
+                    "judged": judged.confidence > 0.0,
+                    "replacement": fresh.fact_id,
+                }
+            )
+            working = [amended if f.fact_id == old.fact_id else f for f in working]
+            working.append(fresh)
+
+        graph = FactGraph(facts=working, entities=entities)
+
+        needle = body.question.strip()
+
+        # Grounding: which entities does this question actually name?
+        #
+        # `remember` is handed a short name and can match on equality. A typed
+        # question is a sentence, so the entity has to be found *inside* it --
+        # "what did her father do at the coffee shop" names Lim Ah Hock by his
+        # role and Ah Gong's shop by part of its name. TrustGraph spends an LLM
+        # call on this step; a substring sweep over a few dozen entities is
+        # both cheaper and reproducible.
+        #
+        # Guarded by length: a two-character name would match almost any
+        # sentence, which is the same failure `_MIN_QUERY_TERM` fixes in BM25.
+        asked = needle.lower()
+        seeds = [
+            e.entity_id
+            for e in entities
+            if e.merged_into is None
+            and any(
+                len(term) >= 4 and term.lower() in asked
+                for term in [e.canonical_name, e.role or "", *e.aliases]
+            )
+        ]
+
+        held: list[SearchTrace] = []
+        found = search_facts(needle, graph, seeds=seeds, limit=5, on_trace=held.append)
+        trace = held[0] if held else SearchTrace(query=needle)
+
+        rank_by_id = {f.fact_id: i for i, f in enumerate(found)}
+        scored = {c.fact_id: c for c in trace.candidates}
+        # Demo edges are always drawn, ranked or not. They are the thing that
+        # was just added, and an edge that vanishes because it does not match
+        # the current question is indistinguishable from one that failed.
+        drawn = [
+            f
+            for f in graph.facts
+            if f.fact_id in scored or not f.is_current or f.fact_id.startswith("demo_")
+        ]
+
+        touched: set[str] = {*trace.seeds}
+        for fact in drawn:
+            touched.add(fact.subject_id)
+            if fact.object_id:
+                touched.add(fact.object_id)
+
+        return {
+            "trace": trace.model_dump(mode="json"),
+            # What the judge made of each correction. The only part of this
+            # response that came from a model, and the page says so.
+            "verdicts": verdicts,
+            "nodes": [
+                {
+                    "id": entity_id,
+                    # The real name, at full length. Shortening it for the
+                    # drawing is the drawing's business: the create panel finds
+                    # its subject by looking for a node name inside the typed
+                    # sentence, and a truncated name would stop matching.
+                    "name": invented.get(entity_id) or names.get(entity_id, entity_id),
+                    "hops": trace.reached.get(entity_id),
+                    "seed": entity_id in trace.seeds,
+                    "invented": entity_id in invented,
+                }
+                for entity_id in sorted(touched)
+            ],
+            "edges": [
+                {
+                    "fact_id": fact.fact_id,
+                    "source": fact.subject_id,
+                    "target": fact.object_id or "",
+                    "literal": fact.object_literal,
+                    "predicate": fact.predicate.value,
+                    "statement": fact.statement,
+                    "quote": fact.quote,
+                    "rank": rank_by_id.get(fact.fact_id),
+                    "retired": not fact.is_current,
+                    "superseded_by": fact.superseded_by or "",
+                    # Both clocks, so the page can show them side by side.
+                    #
+                    # Valid time is her life: when a thing was true, in her own
+                    # words, and often absent because she rarely speaks in
+                    # dates. Transaction time is the archive's belief: when it
+                    # started asserting this and, if ever, when it stopped.
+                    #
+                    # A state change moves `valid_to`. Conflicting testimony
+                    # moves `t_expired`. Watching which field fills in is the
+                    # clearest way to see that they are not the same clock.
+                    "valid_from": fact.valid_from.raw_phrase if fact.valid_from else "",
+                    "valid_to": fact.valid_to.raw_phrase if fact.valid_to else "",
+                    "t_created": fact.t_created.isoformat(),
+                    "t_expired": fact.t_expired.isoformat() if fact.t_expired else "",
+                }
+                for fact in drawn
+            ],
+        }
+
+    @app.get(
+        "/api/family/{narrator_id}/changes", dependencies=[Depends(require_api_key)]
+    )
+    def graph_changes(
+        narrator_id: str,
+        store: Annotated[DocumentStore, Depends(get_store)],
+        limit: int = 6,
+    ) -> dict[str, Any]:
+        """What each call did to the graph: nodes created, edges added, edges retired.
+
+        Reconstructed from stored data rather than read from the live
+        `GraphChange` record, so it works on the calls already in the archive
+        instead of only on ones made from now on. Nothing here is inferred:
+        `first_mentioned_in` is written when an entity is created and
+        `episode_id` when a fact is, so both answers come from the same
+        conversation that produced them.
+
+        What reconstruction cannot recover is *how* a mention was matched --
+        alias, kin role, containment -- because resolution records that at the
+        moment it happens. Calls made from now on carry it on the conversation.
+        """
+        repository = Repository(store)
+        entities = repository.load_entities(narrator_id)
+        facts = repository.load_facts(narrator_id, current_only=False)
+        names = {e.entity_id: e.canonical_name for e in entities}
+
+        rows = store.list(f"conversations__{narrator_id}")
+        rows.sort(key=lambda raw: raw.get("occurred_at") or "", reverse=True)
+
+        calls: list[dict[str, Any]] = []
+        for raw in rows[: max(1, min(limit, 30))]:
+            conversation_id = raw.get("conversation_id", "")
+            created = [e for e in entities if e.first_mentioned_in == conversation_id]
+            added = [f for f in facts if f.episode_id == conversation_id]
+            # Retired *by* this call: the fact that replaced it came from here.
+            replaced_by = {f.fact_id for f in added}
+            retired = [
+                f
+                for f in facts
+                if not f.is_current and (f.superseded_by or "") in replaced_by
+            ]
+            if not (created or added or retired):
+                continue
+            calls.append(
+                {
+                    "conversation_id": conversation_id,
+                    "occurred_at": raw.get("occurred_at", ""),
+                    "turns": raw.get("turns", 0),
+                    # Recorded live from rev 10 onward; absent on older calls.
+                    "recorded": raw.get("graph_change") or None,
+                    "created": [
+                        {
+                            "id": e.entity_id,
+                            "name": e.canonical_name,
+                            "type": e.type.value,
+                            "role": e.role or "",
+                        }
+                        for e in created
+                    ],
+                    "added": [
+                        {
+                            "fact_id": f.fact_id,
+                            "subject": names.get(f.subject_id, f.subject_id),
+                            "object": names.get(f.object_id or "", f.object_literal),
+                            "predicate": f.predicate.value,
+                            "statement": f.statement,
+                            "quote": f.quote,
+                        }
+                        for f in added
+                    ],
+                    "retired": [
+                        {
+                            "fact_id": f.fact_id,
+                            "statement": f.statement,
+                            "superseded_by": f.superseded_by or "",
+                            # Which clock moved. valid_to means the world
+                            # changed; t_expired means she told it differently.
+                            "clock": "valid time" if f.valid_to else "transaction time",
+                        }
+                        for f in retired
+                    ],
+                }
+            )
+
+        return {"calls": calls}
+
     @app.get("/api/talk/{narrator_id}/calls", dependencies=[Depends(require_api_key)])
     def call_log(
         narrator_id: str,
@@ -618,6 +1196,10 @@ def create_app() -> FastAPI:
         looked up before saying it. Without it a wrong answer mid-call is
         unfalsifiable after the fact — you cannot tell a bad lookup from a
         good lookup badly used.
+
+        `fact_refusals` is the other half: what extraction declined and which
+        rule declined it, so a fact she plainly stated going missing has an
+        explanation rather than a shrug.
         """
         rows = store.list(f"conversations__{narrator_id}")
         rows.sort(key=lambda raw: raw.get("occurred_at") or "", reverse=True)
@@ -628,6 +1210,10 @@ def create_app() -> FastAPI:
                     "occurred_at": raw.get("occurred_at", ""),
                     "turns": raw.get("turns", 0),
                     "tool_calls": raw.get("tool_calls", []),
+                    "fact_refusals": raw.get("fact_refusals", []),
+                    "searches": raw.get("searches", []),
+                    "unscreened": bool(raw.get("unscreened")),
+                    "screened": raw.get("screened", []),
                 }
                 for raw in rows[: max(1, min(limit, 50))]
             ]
@@ -666,15 +1252,18 @@ def create_app() -> FastAPI:
         incoming call (PRD 9.4). So the app asks, and if her son has left a
         question it shows his name and plays his voice.
         """
+        kept = _kept_from_her_last_call(store, narrator_id)
+
         # Queued instantly, shown when she is awake.
         if is_quiet(settings):
-            return {"waiting": False, "quiet_hours": True}
+            return {"waiting": False, "quiet_hours": True, "kept": kept}
 
         ask = Repository(store).pending_ask(narrator_id)
         if ask is None:
-            return {"waiting": False}
+            return {"waiting": False, "kept": kept}
         return {
             "waiting": True,
+            "kept": kept,
             "from_name": ask.from_name,
             "relation": ask.relation,
             # The question itself. Without it the bell says "Wei Lun asked you
@@ -684,6 +1273,93 @@ def create_app() -> FastAPI:
             "question": ask.question,
             "voice_note": ask.voice_note_url,
         }
+
+    @app.post("/internal/communities", dependencies=[Depends(require_api_key)])
+    def refresh_communities(
+        settings: Annotated[Settings, Depends(get_settings)],
+        store: Annotated[DocumentStore, Depends(get_store)],
+        narrators: str = "ah_khim,wei_lun",
+    ) -> dict[str, Any]:
+        """Recompute every narrator's chapters. Called by Cloud Scheduler.
+
+        Communities are the one part of the graph that is not maintained by the
+        call that changed it. Zep extends them cheaply as conversations land and
+        is explicit that this drifts -- "periodic community refreshes remain
+        necessary" -- so the refresh is full label propagation over the whole
+        graph plus one model call per chapter. That is seconds of work and
+        wrong to do while she is on the phone, which is why it is scheduled.
+
+        Header auth rather than the key on the URL, unlike `/internal/memories`.
+        Pub/Sub push cannot set a header and had no choice; Cloud Scheduler can,
+        and a key in a URL is a key in access logs and in screen recordings.
+
+        Errors are returned per narrator rather than raised, so one narrator
+        with a broken graph cannot stop the others being refreshed. The status
+        is in the body -- Cloud Scheduler retries on a non-2xx, and retrying a
+        clustering pass that will fail again just bills for it again.
+        """
+        from sampan.communities import GeminiCommunityNamer, refresh_narrator
+
+        repository = Repository(store)
+        # Named, not derived from the members list: a narrator with no stories
+        # yet still has chapters to compute later, and silently dropping them
+        # here would make the job look like it had run when it had not.
+        wanted = [n.strip() for n in narrators.split(",") if n.strip()]
+        namer = GeminiCommunityNamer(settings) if settings.configured else None
+
+        results: list[dict[str, Any]] = []
+        for narrator_id in wanted:
+            try:
+                outcome = refresh_narrator(
+                    repository, narrator_id, namer, save=settings.configured
+                )
+                results.append(outcome.model_dump(mode="json"))
+            except Exception as error:  # noqa: BLE001 -- see the docstring
+                log.exception("community refresh failed for %s", narrator_id)
+                results.append({"narrator_id": narrator_id, "error": str(error)})
+
+        return {
+            "ok": all("error" not in r for r in results),
+            "refreshed_at": datetime.now(UTC).isoformat(),
+            "narrators": results,
+        }
+
+    @app.post("/internal/memories", dependencies=[Depends(require_push_key)])
+    def make_memory(
+        body: dict[str, Any],
+        settings: Annotated[Settings, Depends(get_settings)],
+        store: Annotated[DocumentStore, Depends(get_store)],
+    ) -> dict[str, Any]:
+        """Pub/Sub push: generate one story's image.
+
+        Always 200, even on failure. A push endpoint that returns an error gets
+        the same message redelivered, and redelivering a Veo call is expensive
+        in a way that redelivering most things is not — a wedged message could
+        bill for hours. The outcome is in the body instead.
+
+        Auth is the shared key on the subscription's push URL rather than an
+        OIDC token: the whole service already gates on it, and one auth model
+        is easier to keep correct than two.
+        """
+        request = decode_push(body)
+        if request is None:
+            return {"ok": False, "reason": "unreadable message"}
+        if not settings.memories_bucket:
+            return {"ok": False, "reason": "no SAMPAN_MEMORIES_BUCKET configured"}
+
+        try:
+            asset = render(
+                request,
+                VeoGenerator(settings),
+                BucketBlobs(settings.memories_bucket),
+            )
+        except Exception as error:  # noqa: BLE001 -- see the docstring
+            return {"ok": False, "story_id": request.story_id, "error": str(error)}
+
+        Repository(store).save_memory_asset(
+            request.narrator_id, asset.model_dump(mode="json")
+        )
+        return {"ok": True, "story_id": asset.story_id, "video_url": asset.video_url}
 
     @app.websocket("/ws/talk")
     async def talk(websocket: WebSocket) -> None:
@@ -751,14 +1427,19 @@ def create_app() -> FastAPI:
             # The call is over for her the moment she hangs up; extraction
             # happens afterwards and must never hold the socket open.
             with contextlib.suppress(Exception):
+                stack = build_extraction_stack(settings)
                 await asyncio.to_thread(
                     finish_call,
                     repository,
-                    GeminiStoryExtractor(settings),
+                    stack.stories,
                     prepared,
                     transcript,
                     narrator_id=user_id,
+                    fact_extractor=stack.facts,
+                    judge=stack.judge,
                     tool_calls=tool_log.as_records(),
+                    settings=settings,
+                    screener=build_screen(settings),
                 )
 
     static_dir = find_static_dir()

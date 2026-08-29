@@ -21,7 +21,7 @@ import { TellerSide } from './App';
 describe('teller side · waiting', () => {
   it('offers one thing to press and nothing else', () => {
     render(
-      <TellerSide question={null} note="" live={false} said="" onToggle={vi.fn()} onLater={vi.fn()} />,
+      <TellerSide question={null} note="" live={false} said="" kept={null} onToggle={vi.fn()} onLater={vi.fn()} />,
     );
 
     expect(screen.getAllByRole('button')).toHaveLength(1);
@@ -31,7 +31,7 @@ describe('teller side · waiting', () => {
   it('explains the silence when the server is holding a question back', () => {
     const note = 'It is late now. Xiao Chuan will bring you this question in the morning.';
     render(
-      <TellerSide question={null} note={note} live={false} said="" onToggle={vi.fn()} onLater={vi.fn()} />,
+      <TellerSide question={null} note={note} live={false} said="" kept={null} onToggle={vi.fn()} onLater={vi.fn()} />,
     );
 
     /* Arriving at an apparently empty screen after the bell said someone had
@@ -45,7 +45,7 @@ describe('teller side · a question arrives', () => {
 
   it('says who asked, in his own name', () => {
     render(
-      <TellerSide question={question} note="" live={false} said="" onToggle={vi.fn()} onLater={vi.fn()} />,
+      <TellerSide question={question} note="" live={false} said="" kept={null} onToggle={vi.fn()} onLater={vi.fn()} />,
     );
 
     /* The agent never takes credit. It is his question, carried. */
@@ -57,7 +57,7 @@ describe('teller side · a question arrives', () => {
     const onLater = vi.fn();
     const onToggle = vi.fn();
     render(
-      <TellerSide question={question} note="" live={false} said="" onToggle={onToggle} onLater={onLater} />,
+      <TellerSide question={question} note="" live={false} said="" kept={null} onToggle={onToggle} onLater={onLater} />,
     );
 
     await userEvent.click(screen.getByRole('button', { name: 'Another time' }));
@@ -69,7 +69,7 @@ describe('teller side · a question arrives', () => {
   it('starts them talking when they agree to answer', async () => {
     const onToggle = vi.fn();
     render(
-      <TellerSide question={question} note="" live={false} said="" onToggle={onToggle} onLater={vi.fn()} />,
+      <TellerSide question={question} note="" live={false} said="" kept={null} onToggle={onToggle} onLater={vi.fn()} />,
     );
 
     await userEvent.click(screen.getByRole('button', { name: "I'll tell Wei Lun" }));
@@ -81,7 +81,7 @@ describe('teller side · a question arrives', () => {
 describe('teller side · recording', () => {
   it('gives them one control, and it is the one that stops', () => {
     render(
-      <TellerSide question={null} note="" live={true} said="" onToggle={vi.fn()} onLater={vi.fn()} />,
+      <TellerSide question={null} note="" live={true} said="" kept={null} onToggle={vi.fn()} onLater={vi.fn()} />,
     );
 
     const buttons = screen.getAllByRole('button');
@@ -91,7 +91,7 @@ describe('teller side · recording', () => {
 
   it('shows it is listening rather than saying so twice', () => {
     render(
-      <TellerSide question={null} note="" live={true} said="" onToggle={vi.fn()} onLater={vi.fn()} />,
+      <TellerSide question={null} note="" live={true} said="" kept={null} onToggle={vi.fn()} onLater={vi.fn()} />,
     );
 
     expect(screen.getByText("I'm listening.")).toBeInTheDocument();
@@ -146,5 +146,64 @@ describe('teller scale', () => {
 
     expect(scoped).not.toContain('--mono');
     expect(scoped).not.toContain('10.5px');
+  });
+});
+
+describe('teller side · what her telling left behind', () => {
+  const kept = {
+    story_id: 's1',
+    title: 'Buying curry puffs at Jalan Bandar with Mrs. Rajan',
+    where: 'Jalan Bandar, Ipoh',
+    at: '2026-08-27T03:08:47+00:00',
+  };
+
+  /* She talks, and then nothing on her screen ever changed to say it landed.
+     The family side is the proof, and the family side is the side she does not
+     open — so if it is not said here it is not said to her at all. */
+  it('tells her what was kept, in the words she gave it', () => {
+    render(
+      <TellerSide question={null} note="" kept={kept} live={false} said="" onToggle={vi.fn()} onLater={vi.fn()} />,
+    );
+
+    expect(screen.getByText(/Buying curry puffs at Jalan Bandar/)).toBeInTheDocument();
+    expect(screen.getByText(/Jalan Bandar, Ipoh/)).toBeInTheDocument();
+  });
+
+  it('still leaves one button to press', () => {
+    /* The receipt is news, not an instruction. It must not become a second
+       thing to decide about on a screen whose whole design is one choice. */
+    render(
+      <TellerSide question={null} note="" kept={kept} live={false} said="" onToggle={vi.fn()} onLater={vi.fn()} />,
+    );
+
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Talk' })).toBeInTheDocument();
+  });
+
+  it('says nothing at all when there is nothing recent', () => {
+    render(
+      <TellerSide question={null} note="" kept={null} live={false} said="" onToggle={vi.fn()} onLater={vi.fn()} />,
+    );
+
+    expect(screen.queryByText(/Kept for your family/)).not.toBeInTheDocument();
+  });
+
+  it('never shows it over a waiting question', () => {
+    /* His question outranks her receipt: it is the thing with someone on the
+       other end of it. */
+    render(
+      <TellerSide
+        question={{ from_name: 'Wei Lun', question: 'Ah Ma, are you eating properly?' }}
+        note=""
+        kept={kept}
+        live={false}
+        said=""
+        onToggle={vi.fn()}
+        onLater={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText(/Kept for your family/)).not.toBeInTheDocument();
+    expect(screen.getByText(/eating properly/)).toBeInTheDocument();
   });
 });

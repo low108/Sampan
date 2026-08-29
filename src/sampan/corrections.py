@@ -58,14 +58,30 @@ def apply_correction(
         return _merge(repository, narrator_id, entities, by_id, correction)
 
     if correction.kind is CorrectionKind.PLACE:
+        # Merge onto what the resolver found rather than replacing it. Writing
+        # a fresh record dropped `lat` and `lng`, and a place with no
+        # coordinates is not locatable -- so confirming a place *removed* it
+        # from the map and there was no way back, because `_resolve_places`
+        # only resolves names absent from the cache. The correction path exists
+        # to improve the archive; this made the one thing it touched worse.
+        held = repository._store.get("_places", correction.target) or {}  # noqa: SLF001
+        located = held.get("lat") is not None and held.get("lng") is not None
         repository._store.put(  # noqa: SLF001 - places cache is repository-owned
             "_places",
             correction.target,
             {
+                **held,
                 "raw_name": correction.target,
                 "display_name": correction.value,
-                "precision": "exact",
-                "confidence": 1.0,
+                # Only claim exactness when there is a point to be exact about.
+                # Without coordinates this stays unknown, which is what marks
+                # it for another attempt at the name the family just gave us.
+                "precision": "exact" if located else "unknown",
+                "confidence": 1.0 if located else 0.0,
+                # Ask again, once, using the name the family just gave. This is
+                # the only thing that reopens a name resolution has given up
+                # on, so a place nobody has corrected is never re-asked.
+                "needs_retry": not located,
                 "note": f"confirmed by family ({correction.by})"
                 if correction.by
                 else "confirmed by family",

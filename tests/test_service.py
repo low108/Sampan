@@ -267,3 +267,292 @@ class TestPendingAsk:
 
         assert body["waiting"] is False
         assert body["quiet_hours"] is True
+
+
+class TestNobodyAsksThemselves:
+    """A question addressed to its own asker.
+
+    Tapping one of her own stories while signed in as her queued a question
+    from her to herself, and the next call opened with "ah_khim wants to ask
+    you something" quoting her own words back at her. That is the agent
+    talking to itself in her voice, which is the opposite of the one thing the
+    product claims to be.
+    """
+
+    def ask(self, client: TestClient, **body: object) -> int:
+        return client.post(
+            "/api/family/ah_khim/ask",
+            headers={API_KEY_HEADER: GOOD_KEY},
+            json={"question": "Tell me more about the shop.", **body},
+        ).status_code
+
+    def test_refused_when_the_asker_is_the_narrator(self, client: TestClient) -> None:
+        assert self.ask(client, from_name="Siew Khim", from_id="ah_khim") == 409
+
+    def test_refused_when_the_name_is_the_narrator_id(
+        self, client: TestClient
+    ) -> None:
+        """The browser sends the raw viewer id as the name until the household
+        loads, which is exactly how the bad question got in."""
+        assert self.ask(client, from_name="ah_khim") == 409
+
+    def test_a_question_from_somebody_else_still_goes_through(
+        self, client: TestClient
+    ) -> None:
+        assert self.ask(client, from_name="Wei Lun", from_id="wei_lun") == 200
+
+    def test_a_question_with_no_asker_id_still_goes_through(
+        self, client: TestClient
+    ) -> None:
+        """The ask form has only ever sent a name. A missing id must not start
+        rejecting questions that are fine."""
+        assert self.ask(client, from_name="Wei Lun") == 200
+
+    def test_nothing_is_queued_when_it_is_refused(self, client: TestClient) -> None:
+        self.ask(client, from_name="ah_khim")
+
+        body = client.get(
+            "/api/talk/ah_khim/pending", headers={API_KEY_HEADER: GOOD_KEY}
+        ).json()
+        assert body["waiting"] is False
+
+
+class TestExtractionIsFullyWired:
+    """The memory-v2 pass has to actually run on a real call.
+
+    `finish_call` takes `fact_extractor` and `judge` as optional keywords so the
+    seam can be exercised with fakes. The WebSocket handler passed neither, so
+    on every real call the entire fact pass was skipped -- no fact extraction,
+    no contradiction reconciliation, no edges written. Nothing raised and no
+    test failed; the graph only grew when someone ran scripts/backfill_facts.py
+    by hand, which is why the facts in Firestore looked convincing.
+
+    Optional dependencies that default to doing nothing cannot be checked by
+    the seam tests, because the seam is what gets the fakes. They have to be
+    checked where they are assembled.
+    """
+
+    def test_production_builds_all_three_extractors(self) -> None:
+        from sampan.app import build_extraction_stack
+        from sampan.archivist import GeminiStoryExtractor
+        from sampan.contradiction import GeminiContradictionJudge
+        from sampan.fact_extraction import GeminiFactExtractor
+
+        stack = build_extraction_stack(Settings(GOOGLE_CLOUD_PROJECT="p"))
+
+        assert isinstance(stack.stories, GeminiStoryExtractor)
+        assert isinstance(stack.facts, GeminiFactExtractor)
+        assert isinstance(stack.judge, GeminiContradictionJudge)
+
+    def test_the_call_handler_passes_the_facts_pass_to_finish_call(self) -> None:
+        """Reads the handler rather than driving it: opening a real WebSocket
+        needs a live model. It cannot prove the wiring works; it can prove
+        nobody quietly dropped it again."""
+        import inspect
+
+        from sampan import app as app_module
+
+        source = inspect.getsource(app_module)
+        handler = source[source.index("async def talk(") :]
+
+        assert "fact_extractor=stack.facts" in handler
+        assert "judge=stack.judge" in handler
+
+    def test_a_stack_with_a_judge_reconciles_rather_than_appends(self) -> None:
+        """The judge's whole job: a later telling retires an earlier assertion
+        instead of the archive holding both as current."""
+        from sampan.contradiction import Disagreement, Judgement, reconcile
+        from sampan.facts import Fact, Predicate
+
+        held = [
+            Fact(
+                fact_id="f1",
+                subject_id="e_shop",
+                predicate=Predicate.OWNED,
+                object_id="e_father",
+                statement="her father owned the shop",
+                quote="My father owned the shop until 1969.",
+                episode_id="conv_1",
+            )
+        ]
+        newer = [
+            Fact(
+                fact_id="f2",
+                subject_id="e_shop",
+                predicate=Predicate.OWNED,
+                object_id="e_father",
+                statement="her uncle owned the shop",
+                quote="Actually my uncle took it over before it closed.",
+                episode_id="conv_2",
+            )
+        ]
+
+        class Says:
+            def __init__(self, verdict: Disagreement) -> None:
+                self.verdict = verdict
+
+            def judge(self, new: Fact, old: Fact) -> Judgement:
+                return Judgement(kind=self.verdict, reason="a later telling")
+
+        changed, questions = reconcile(
+            newer, held, Says(Disagreement.CONFLICTING_TESTIMONY)
+        )
+
+        # The older telling is retired in transaction time, not deleted, and
+        # its valid time is untouched -- she is not being corrected.
+        retired = [f for f in changed if f.fact_id == "f1"]
+        assert len(retired) == 1
+        assert retired[0].t_expired is not None
+        assert retired[0].superseded_by == "f2"
+        assert retired[0].valid_from == held[0].valid_from
+        assert retired[0].valid_to == held[0].valid_to
+        # And the disagreement comes back as a question for her, not a silent
+        # decision by the archive.
+        assert questions == ["a later telling"]
+
+
+class TestSheIsToldWhatWasKept:
+    """Her side of the bridge.
+
+    She talks, and nothing on her screen ever changes to say it landed. The
+    proof lives on the family's side of the app, which is the side she does not
+    open -- so without this, the promise the whole product makes to her is one
+    she has no way of seeing kept.
+    """
+
+    def _tell(self, store, story_id: str, at: str, title: str, where: str) -> None:
+        store.put(
+            "stories__ah_khim",
+            story_id,
+            {
+                "story_id": story_id,
+                "occurred_at": at,
+                "candidate": {"title": title, "where": {"raw_name": where}},
+            },
+        )
+
+    def _pending(self, store):
+        for client in build_client(store):
+            return client.get(
+                "/api/talk/ah_khim/pending", headers={API_KEY_HEADER: GOOD_KEY}
+            ).json()
+        raise AssertionError("no client")
+
+    def _now(self) -> str:
+        from datetime import UTC, datetime
+
+        return datetime.now(UTC).isoformat()
+
+    def test_a_recent_telling_comes_back_with_its_place(
+        self, store: InMemoryDocumentStore
+    ) -> None:
+        self._tell(store, "s1", self._now(), "curry puffs", "Jalan Bandar")
+        store.put(
+            "_places",
+            "Jalan Bandar",
+            {"raw_name": "Jalan Bandar", "display_name": "Jalan Bandar, Ipoh"},
+        )
+
+        kept = self._pending(store)["kept"]
+
+        assert kept["title"] == "curry puffs"
+        # The name written on the pin her family will look at, not the raw one.
+        assert kept["where"] == "Jalan Bandar, Ipoh"
+
+    def test_an_old_telling_stops_being_news(
+        self, store: InMemoryDocumentStore
+    ) -> None:
+        """Time-boxed rather than marked seen: something stuck on the screen of
+        someone who may not know how to clear it is worse than a message that
+        quietly stops."""
+        self._tell(store, "s1", "2020-01-01T00:00:00+00:00", "old", "Ipoh")
+
+        assert self._pending(store)["kept"] is None
+
+    def test_nothing_told_is_not_an_error(self, store: InMemoryDocumentStore) -> None:
+        assert self._pending(store)["kept"] is None
+
+    def test_an_unreadable_date_is_not_an_error(
+        self, store: InMemoryDocumentStore
+    ) -> None:
+        """Her screen must not break over a malformed timestamp."""
+        self._tell(store, "s1", "not a date", "curry puffs", "Ipoh")
+
+        assert self._pending(store)["kept"] is None
+
+
+class TestTheCommunityRefreshEndpoint:
+    """Cloud Scheduler's target.
+
+    Chapters are the only derived record not written by the call that changed
+    them, so they are the only one that can silently go stale. This is the job
+    that stops that, asserted at the boundary Cloud Scheduler actually hits.
+    """
+
+    def _call(self, store, key: str = GOOD_KEY, query: str = ""):
+        for client in build_client(store):
+            return client.post(
+                f"/internal/communities{query}", headers={API_KEY_HEADER: key}
+            )
+        raise AssertionError("no client")
+
+    def test_it_needs_the_key(self, store: InMemoryDocumentStore) -> None:
+        assert self._call(store, key="wrong").status_code == 401
+
+    def test_an_empty_archive_is_not_an_error(
+        self, store: InMemoryDocumentStore
+    ) -> None:
+        """The first week there is nothing to cluster, and the job must not
+        start reporting failure for it."""
+        response = self._call(store)
+
+        assert response.status_code == 200
+        assert response.json()["ok"] is True
+
+    def test_every_named_narrator_is_reported(
+        self, store: InMemoryDocumentStore
+    ) -> None:
+        response = self._call(store, query="?narrators=ah_khim,wei_lun,xin_yi")
+
+        assert [n["narrator_id"] for n in response.json()["narrators"]] == [
+            "ah_khim",
+            "wei_lun",
+            "xin_yi",
+        ]
+
+    def test_one_broken_narrator_does_not_stop_the_others(
+        self, store: InMemoryDocumentStore, monkeypatch
+    ) -> None:
+        """The job runs unattended. A single corrupt graph must not mean nobody
+        else's chapters get refreshed for a week."""
+        import sampan.communities as communities
+
+        real = communities.refresh_narrator
+
+        def explode(repository, narrator_id, namer, *, save):
+            if narrator_id == "wei_lun":
+                raise RuntimeError("corrupt graph")
+            return real(repository, narrator_id, namer, save=save)
+
+        monkeypatch.setattr(communities, "refresh_narrator", explode)
+
+        body = self._call(store, query="?narrators=ah_khim,wei_lun").json()
+
+        assert body["ok"] is False
+        assert "error" in body["narrators"][1]
+        # The healthy one still ran.
+        assert "error" not in body["narrators"][0]
+
+    def test_it_answers_200_even_when_a_narrator_fails(
+        self, store: InMemoryDocumentStore, monkeypatch
+    ) -> None:
+        """Cloud Scheduler retries on a non-2xx. Retrying a clustering pass
+        that will fail identically just bills for it again."""
+        import sampan.communities as communities
+
+        def explode(*_args, **_kwargs):
+            raise RuntimeError("nope")
+
+        monkeypatch.setattr(communities, "refresh_narrator", explode)
+
+        assert self._call(store).status_code == 200

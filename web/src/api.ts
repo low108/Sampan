@@ -6,15 +6,54 @@ import type {
   Household,
   MapView,
   PendingAsk,
+  DraftFact,
+  Supersession,
+  SearchResult,
   TimelineView,
 } from './types';
 
 const params = new URLSearchParams(location.search);
 
-/** Demo affordance: the key rides in the query string so a link is enough to
- *  open the archive. Stated as a limitation in the PRD; not an auth model. */
-export const KEY = params.get('key') ?? '';
-export const ME = params.get('user') ?? 'ah_khim';
+/* Demo affordance: the key rides in the query string so a link is enough to
+ * open the archive. Stated as a limitation in the PRD; not an auth model.
+ *
+ * Remembered once seen, because the query string is fragile in exactly the
+ * moment it matters: a reload, a link truncated at the ampersand, or a new tab
+ * opened on the bare URL all drop it, and the page then says the link is
+ * missing its key.
+ *
+ * The two halves want different lifetimes, and using one store for both was
+ * the bug in the first attempt:
+ *
+ *   key   localStorage — there is one key for the whole demo, so once any tab
+ *                        has seen it every other tab should work. Per-tab
+ *                        storage meant a fresh tab still failed, which is the
+ *                        case that actually happens.
+ *   user  sessionStorage — per tab on purpose, so her side and the family side
+ *                        stay different people side by side rather than the
+ *                        last one opened winning.
+ */
+function remembered(
+  name: string,
+  store: () => Storage,
+  fallback: string,
+): string {
+  const slot = `sampan.${name}`;
+  const fromUrl = params.get(name);
+  try {
+    if (fromUrl) {
+      store().setItem(slot, fromUrl);
+      return fromUrl;
+    }
+    return store().getItem(slot) ?? fallback;
+  } catch {
+    /* Private mode, or storage disabled. The URL still works this once. */
+    return fromUrl ?? fallback;
+  }
+}
+
+export const KEY = remembered('key', () => localStorage, '');
+export const ME = remembered('user', () => sessionStorage, 'ah_khim');
 
 export class ApiError extends Error {
   constructor(readonly status: number) {
@@ -71,16 +110,39 @@ export const api = {
       body: JSON.stringify({ ask_id }),
     }),
 
+  /** The agent's own retrieval, driven from a text box, with its working. */
+  search: (
+    narrator: string,
+    question: string,
+    sandbox: {
+      added?: DraftFact[];
+      retired?: string[];
+      replaced?: Supersession[];
+    } = {},
+  ) =>
+    request<SearchResult>(`/api/family/${encodeURIComponent(narrator)}/search`, {
+      method: 'POST',
+      body: JSON.stringify({
+        question,
+        added: sandbox.added ?? [],
+        retired: sandbox.retired ?? [],
+        replaced: sandbox.replaced ?? [],
+      }),
+    }),
+
   about: (narrator: string, question: string) =>
     request<AboutAnswer>(`/api/family/${encodeURIComponent(narrator)}/about`, {
       method: 'POST',
       body: JSON.stringify({ question }),
     }),
 
+  /* `from_id` lets the service refuse a question addressed to its own asker.
+     The name alone could not: it arrives as whatever the browser had at the
+     time, which before the household loads is the raw viewer id. */
   ask: (narrator: string, from_name: string, question: string) =>
     request<unknown>(`/api/family/${encodeURIComponent(narrator)}/ask`, {
       method: 'POST',
-      body: JSON.stringify({ from_name, question }),
+      body: JSON.stringify({ from_name, question, from_id: ME }),
     }),
 
   correctPlace: (narrator: string, target: string, value: string, by: string) =>

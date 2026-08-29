@@ -10,37 +10,58 @@ Built for the **All Things Agentic Hackathon** — Collaborative Partner track.
 
 ---
 
+## Start here
+
+**Live:** https://sampan-ig6xl5kf4q-as.a.run.app · Cloud Run, `asia-southeast1`
+
+| | |
+|---|---|
+| **What it is and why** | [`docs/submission.md`](docs/submission.md) — the full submission: the problem, every design decision and the research behind it, and what each one cost |
+| **The short version** | [`docs/text_description.md`](docs/text_description.md) — one-page pitch |
+| **What it actually did** | [`docs/firestore-walkthrough.md`](docs/firestore-walkthrough.md) — four real calls, and exactly what each wrote to the database, with screenshots from the console |
+| **Every prompt, verbatim** | [`docs/archivist_prompt.md`](docs/archivist_prompt.md) — all ten, with the failure each rule exists for |
+| **How the backend is shaped** | [`docs/system-analysis.md`](docs/system-analysis.md) — design record, seventeen numbered decisions, and the alternative each one rejected |
+| **Requirements** | [`PRD.md`](PRD.md) — tiered P0/P1/P2, with the limitations recorded honestly |
+
+### Diagrams
+
+| | |
+|---|---|
+| [`docs/architecture.png`](docs/architecture.png) | The system: browser to Cloud Run to three Google models to Firestore |
+| [`docs/two-clocks.png`](docs/two-clocks.png) | Valid time versus transaction time — the idea the whole archive rests on |
+| [`docs/round-trip.png`](docs/round-trip.png) | Son to mother and back, in nine messages |
+| [`docs/call-map.png`](docs/call-map.png) | One call fanned into parallel timelines — every model, every collection, every write |
+
+Each has an editable `.html` beside it.
+
+### The archive these are built from
+
+- [`docs/persona-bible.md`](docs/persona-bible.md) — the invented family
+- [`docs/seed-sessions.md`](docs/seed-sessions.md) — four synthetic conversations, with pipeline assertions
+
+---
+
 ## Status
 
-All 20 tickets are done. The system runs end to end on Cloud Run against Firestore, seeded
-with four conversations for one narrator and two for another.
+Runs end to end on Cloud Run against Firestore. **542 unit tests** plus 63
+integration tests over four chained sessions against the real model.
 
-- **Archivist** — transcript to scored stories, entity graph, threads carrying the
-  interrupted/tired distinction, anchors resolving her relative time expressions, and the
-  learned preference layer.
-- **Companion** — browser mic to Cloud Run WebSocket to ADK to the Live API and native audio
-  back, with the affect monitor forked off the same audio.
-- **Family archive** — map, timeline, letters, asks, corrections, and a bell that opens a
-  recording with the asker's question already loaded.
-- **Places** — relational names ("my father's shop") joined to places she named in other
-  sessions, each link carrying the sentence that justifies it.
+- **Companion** — browser mic to Cloud Run WebSocket to ADK to the Live API and
+  native audio back, with the affect monitor forked off the same audio.
+- **Archivist** — transcript to scored stories, entity graph, threads carrying
+  the interrupted/tired distinction, anchors resolving her relative time
+  expressions, and the learned preference layer.
+- **Memory** — bi-temporal fact edges after Zep/Graphiti, retrieval behind a
+  single `remember` tool with no model in the read path, contradiction routed to
+  the correct time axis, and communities as her chapters.
+- **Family archive** — map, timeline, letters, asks, corrections, and a bell
+  that opens a recording with the asker's question already loaded.
+- **Places** — relational names ("my father's shop") joined to places she named
+  in other sessions, each link carrying the sentence that justifies it.
 
-**Memory v2** (`docs/spec-temporal-graph.md`) adds bi-temporal fact edges after
-Zep/Graphiti, Zep-style retrieval behind a single `remember` tool, contradiction
-routed to the correct time axis, a topic *lean* that never becomes a push, and
-communities as her chapters.
+Everything is in English, including the seeds and the UI.
 
-**Gate 1: 60 integration tests** over four chained sessions against the real model, plus 382
-unit tests. Everything is in English, including the seeds and the UI.
-
-Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
-
-## Documents
-
-- **[`docs/spec-temporal-graph.md`](docs/spec-temporal-graph.md)** — the memory revamp:
-  bi-temporal fact edges after Zep/Graphiti, Zep-style retrieval behind one tool,
-  communities as her chapters, and the contradiction rules. Supersedes the memory
-  sections of `spec-p0.md`.
+## One more thing worth opening
 
 - **[`notebooks/knowledge_base_flow.ipynb`](notebooks/knowledge_base_flow.ipynb)** — the
   memory design walked end to end against the real code: the pre-set intake, what is
@@ -48,56 +69,97 @@ Remaining work is recording: sessions 5 and 6, and the dress rehearsal.
   it mid-call, and exactly what the Archivist changes when recording stops. Executed, with
   outputs.
 
-| File | What it is |
-|---|---|
-| `PRD.md` | The product requirements, tiered P0/P1/P2 |
-| `docs/spec-p0.md` | Engineering spec for the P0 tier, with test seams |
-| `docs/build-plan.md` | 17-day schedule with three go/no-go gates |
-| `docs/persona-bible.md` | The invented family the demo is built around |
-| `docs/seed-sessions.md` | Four synthetic conversations, with pipeline assertions |
-| `docs/demo-scripts.md` | Recorded sessions 5 and 6, plus the video shot list |
-
 ## Spin-up
+
+Two paths. **A** runs the whole app on your machine in about five minutes and
+needs no Google Cloud account. **B** deploys the real thing.
 
 ### Prerequisites
 
-- [uv](https://docs.astral.sh/uv/) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- [gcloud CLI](https://cloud.google.com/sdk/docs/install), authenticated
-- A Google Cloud project with billing enabled and Firestore provisioned
+| | |
+|---|---|
+| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Node 20+ | only for the web client |
+| [gcloud CLI](https://cloud.google.com/sdk/docs/install) | path B only, authenticated |
 
-### Run locally
+---
+
+### A · Run it locally
+
+**1. Install and configure.**
 
 ```bash
+git clone git@github.com:low108/Sampan.git && cd Sampan
 uv sync
-cp .env.example .env      # then fill in SAMPAN_API_KEY at minimum
+cp .env.example .env
+```
+
+**2. Set one value.** Open `.env` and fill in `SAMPAN_API_KEY`:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Leave `GOOGLE_CLOUD_PROJECT` blank and `SAMPAN_ALLOW_IN_MEMORY_STORE=true`, as
+they ship. The service then runs against an in-memory store and never touches
+Google Cloud.
+
+That fallback is opt-in on purpose: a deployed revision that lost its project id
+must fail loudly rather than accept an old woman's stories into a dictionary and
+report success.
+
+**3. Start the API.**
+
+```bash
 uv run uvicorn sampan.app:app --reload --port 8080
 ```
 
-With `SAMPAN_ALLOW_IN_MEMORY_STORE=true` the service runs against an in-memory store, so it
-works on a machine that has never seen a Google Cloud credential. The fallback is opt-in on
-purpose: a deployed revision that lost its project id must fail loudly rather than accept
-stories into a dictionary and report success. `/health` and `/debug/smoke` both name the
-backend they used, so a green round trip can't be misread as having reached Firestore.
+**4. Check it.** `/health` and `/debug/smoke` both name the backend they used,
+so a green round trip cannot be misread as having reached Firestore:
 
 ```bash
 curl -s localhost:8080/health
+# {"status":"ok","configured":false,"location":"asia-southeast1","backend":"memory"}
 
 curl -s -X POST localhost:8080/debug/smoke \
   -H "X-Sampan-Key: $SAMPAN_API_KEY" -H 'Content-Type: application/json' \
   -d '{"note":"the coffee shop on Jalan Bandar"}'
 ```
 
-### Tests, lint, types
+**5. Start the web client**, in a second terminal:
 
 ```bash
-uv run pytest
-uv run ruff check src tests
-uv run pyright
+cd web && npm install && npm run dev
 ```
 
-### Deploy to Cloud Run
+Open the printed URL with `?key=YOUR_SAMPAN_API_KEY` appended. The key is stored
+locally on first load, so later visits need only the bare URL.
 
-One-time project setup:
+**What works without Google Cloud:** the family archive — map, timeline,
+chapters, letters, corrections, the bell, and the "Inside the memory" retrieval
+panel. **What does not:** the voice call and anything else needing a model.
+
+### Verify
+
+```bash
+uv run pytest                     # 542 unit tests, ~2s
+uv run ruff check src tests scripts
+uv run pyright
+cd web && npx tsc --noEmit && npx vitest run
+```
+
+The integration tests are deselected by default because they call real models
+and cost money. Run them deliberately:
+
+```bash
+uv run pytest -m integration
+```
+
+---
+
+### B · Deploy to Cloud Run
+
+**1. Create the project and turn on what it needs.**
 
 ```bash
 gcloud auth login
@@ -107,15 +169,152 @@ gcloud services enable run.googleapis.com firestore.googleapis.com \
 gcloud firestore databases create --location=asia-southeast1
 ```
 
-Then:
+Firestore must be `asia-southeast1`: an elderly Malaysian woman's stories should
+not leave the region she lives in.
+
+**2. Configure.**
 
 ```bash
 export GOOGLE_CLOUD_PROJECT=your-project-id
 export SAMPAN_API_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+```
+
+**3. Deploy.**
+
+```bash
 ./deploy.sh
 ```
 
-`deploy.sh` prints the three acceptance checks for ticket 1 with the deployed URL filled in.
+It prints the service URL and three acceptance checks with that URL filled in.
+The flags in `deploy.sh` are part of the contract, not deployment detail —
+`--timeout=3600` most of all, because the 300s default kills a call mid-story
+and looks like a Live API bug.
+
+**4. Open it.** `https://YOUR-SERVICE-URL/?key=$SAMPAN_API_KEY`
+
+A fresh deploy starts with an empty archive — there is no one-command seeder,
+because the archive is meant to be built by talking to it. Press **Talk**, say
+something, hang up, and the map has a pin on it. `seeds/` holds the six
+transcripts the demo archive was grown from, and
+`tests/test_seed_run_integration.py` replays them through the real extraction
+pipeline if you want to see that path exercised.
+
+**5. Two maintenance passes** for an archive that already has conversations:
+
+```bash
+uv run python scripts/backfill_facts.py            # dry run
+uv run python scripts/backfill_facts.py --apply    # extract facts from stored transcripts
+uv run python scripts/refresh_communities.py --apply   # rebuild her chapters
+```
+
+### Optional extras
+
+Each is off unless configured, and the app is complete without all three.
+
+| | Script | What it adds |
+|---|---|---|
+| **Screening** | `scripts/setup_armor.sh` | Cloud DLP over every transcript before anything is written |
+| **Card imagery** | `scripts/setup_memories.sh` | Veo clips for story cards, queued off the call path |
+| **Chapter refresh** | `scripts/setup_scheduler.sh` | Weekly Cloud Scheduler job that re-clusters her chapters |
+
+Each prints the `.env` lines it needs; add them and re-run `./deploy.sh`.
+Details for the first two follow.
+
+### Screening what gets stored (recommended)
+
+Transcripts are screened before they reach Firestore, so a bank account number
+she reads out is de-identified rather than archived. Off unless a template is
+configured.
+
+The detection is **Sensitive Data Protection (DLP)**, not Model Armor. Model
+Armor is the façade: its SDP filter delegates to DLP, and in advanced mode to
+the templates below. It is worth keeping only for the filters DLP has no
+equivalent of — prompt injection and jailbreak — which are **not enabled yet**.
+
+```bash
+gcloud services enable modelarmor.googleapis.com dlp.googleapis.com
+
+# The Model Armor service agent needs to read the DLP templates. Without this
+# the filter is SKIPPED and the API still answers 200 — a screen that reports
+# success and protects nothing.
+NUM=$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format='value(projectNumber)')
+gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+  --member="serviceAccount:service-${NUM}@gcp-sa-modelarmor.iam.gserviceaccount.com" \
+  --role=roles/dlp.user
+```
+
+Then create the two DLP templates and the Model Armor template that points at
+them — `scripts/setup_armor.sh` does all three.
+
+**On what DLP can and cannot detect here.** `FINANCIAL_ACCOUNT_NUMBER` sounds
+like the right built-in and detects nothing: a bare Malaysian account number
+spoken aloud matches no built-in info type at any likelihood. There are no
+`MALAYSIA_*` info types at all, so there is no IC detector either. What works is
+`CREDIT_CARD_NUMBER` (Luhn-checkable) plus a custom regex for grouped 10–16
+digit runs. That regex was measured against her entire real archive: one
+finding, the planted account number, and no false positives on years or dates.
+
+Model Armor's *basic* SDP config is not used, deliberately. It enables Google's
+whole default set, which on an eighty-year-old's life story means names, dates,
+addresses and health details — it would redact the archive itself.
+
+Then redeploy with:
+
+```
+SAMPAN_DLP_INSPECT_TEMPLATE=sampan-bank-only
+SAMPAN_DLP_DEIDENTIFY_TEMPLATE=sampan-bank-redact
+```
+
+That is the DLP-direct path, which is the default. To route through Model Armor
+instead — for its prompt-injection and jailbreak filters, which DLP has no
+equivalent of — add `SAMPAN_SCREEN_BACKEND=armor` and
+`SAMPAN_ARMOR_TEMPLATE=sampan-transcripts`. Both produce identical redaction;
+measured at 507ms and 429ms on the same transcript.
+
+**It fails open.** If Model Armor cannot be reached, the plain transcript is
+stored, the failure is logged at ERROR to `sampan.armor`, and the conversation
+is flagged `unscreened: true` with the error. Deliberate: losing her account of
+her own life because a screening API had a bad minute is worse than holding an
+unscreened transcript in a private database until someone reads the log.
+
+`unscreened: true` is not the same as an empty `screened` list. The first means
+the screen never ran; the second means it ran and objected to nothing. Both are
+returned by `GET /api/talk/{id}/calls`, so "which calls went through unchecked"
+is a query:
+
+```bash
+curl -H "X-Sampan-Key: $KEY" "$URL/api/talk/ah_khim/calls?limit=50" \
+  | python3 -c "import json,sys;[print(c['conversation_id']) for c in json.load(sys.stdin)['calls'] if c['unscreened']]"
+```
+
+### Generated card imagery (optional)
+
+Story cards can open on a short clip generated by Veo from what she said. It is
+off unless configured, and the app is complete without it.
+
+```bash
+scripts/setup_memories.sh     # bucket, topic, push subscription, IAM
+```
+
+Then put the two lines it prints into `.env` and `./deploy.sh`. Stories told
+after that queue themselves; anything already in the archive needs
+
+```bash
+python scripts/backfill_memories.py            # dry run, always
+python scripts/backfill_memories.py --commit --limit 4
+```
+
+`--ack-deadline=600` matters: Veo takes tens of seconds and the 10s default
+would redeliver the same message while the first is still generating, billing
+for each. The dead-letter topic is the backstop — a message that keeps failing
+stops rather than retrying a paid model call forever. (`--max-delivery-attempts`
+has a floor of 5; it rarely binds, because the endpoint answers 200 even on
+failure for exactly the same reason.)
+
+The clip reaches the card through `attach_memories`, applied to every view
+before any of them splits off. That join is the whole feature: without it Veo
+renders, the bucket fills, Firestore records the asset, and no page ever shows
+one — a pipeline that is green, billed for, and invisible.
 
 ### Cost
 
@@ -154,7 +353,7 @@ matters most: the 300s default kills calls mid-story and looks like a Live API b
 
 Three regions, each for a different reason: story data lives in `asia-southeast1` (PDPA),
 text models are served from `global`, and the Live API's native-audio model is only available
-from `us-central1`. Verified by probing — see `FINDINGS.md`; the documented model names do not
+from `us-central1`. Verified by probing; the documented model names do not
 all exist on Vertex.
 
 The hackathon requires Gemini 3.5 or newer. No Live dialog model currently meets that bar, so

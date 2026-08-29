@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -136,17 +137,29 @@ def notifications_for(
 
         given = given_name(member.display_name)
         newest = max(stories, key=lambda s: s.get("occurred_at", "") or s["story_id"])
+        # The one story this row is about, when it is about one. A row that
+        # names a story should open that story: "Siew Khim told: Buying curry
+        # puffs at Jalan Bandar" opened her profile page instead, which is a
+        # different screen from the sentence the row just quoted, and left the
+        # reader to go and find it on the map themselves.
+        #
+        # None when the row summarises several, because then it genuinely names
+        # no single story and her page is the honest destination.
+        subject: dict[str, Any] | None
         if len(fresh) > 1:
             title = f"{given} told {len(fresh)} new stories"
             subtitle = f"{len(fresh)} new stories from {member.display_name}"
+            subject = None
         elif len(fresh) == 1:
             told = (fresh[0].get("candidate") or {}).get("title", "")
             title = f"{given} told: {told}"
             subtitle = f"a new story from {member.display_name}"
+            subject = fresh[0]
         else:
             told = (newest.get("candidate") or {}).get("title", "")
             title = f"{given} told: {told}"
             subtitle = f"from {member.display_name}"
+            subject = newest
 
         out.append(
             Notification(
@@ -156,8 +169,8 @@ def notifications_for(
                 subtitle=subtitle,
                 from_name=member.display_name,
                 at=newest.get("occurred_at", "") or newest["story_id"],
-                opens="member",
-                target=member.narrator_id,
+                opens="story" if subject else "member",
+                target=subject["story_id"] if subject else member.narrator_id,
                 seen=not fresh,
                 # Marking the group seen has to settle every story in it, or
                 # the badge comes back the moment the page reloads.

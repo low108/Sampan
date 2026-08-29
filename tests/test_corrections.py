@@ -215,11 +215,7 @@ class TestWhatNeedsAttention:
 
 
 class TestPlaces:
-    def test_a_confirmed_place_is_trusted_afterwards(
-        self, repository: Repository
-    ) -> None:
-        """Sungai Siput resolved to the wrong town. Once her son fixes it, the map
-        should stop guessing."""
+    def confirm(self, repository: Repository) -> dict:
         apply_correction(
             repository,
             NARRATOR,
@@ -230,8 +226,171 @@ class TestPlaces:
                 by="Wei Lun",
             ),
         )
+        return repository._store.get("_places", "Sungai Siput")  # noqa: SLF001
 
-        cached = repository._store.get("_places", "Sungai Siput")  # noqa: SLF001
-        assert cached is not None
+    def test_a_confirmed_place_is_trusted_afterwards(
+        self, repository: Repository
+    ) -> None:
+        """Sungai Siput resolved to the wrong town. Once her son fixes it, the map
+        should stop guessing."""
+        repository._store.put(  # noqa: SLF001
+            "_places",
+            "Sungai Siput",
+            {
+                "raw_name": "Sungai Siput",
+                "lat": 4.8,
+                "lng": 101.07,
+                "precision": "town",
+                "confidence": 0.6,
+            },
+        )
+
+        cached = self.confirm(repository)
+
         assert cached["precision"] == "exact"
         assert "Wei Lun" in cached["note"]
+
+    def test_confirming_keeps_the_coordinates(self, repository: Repository) -> None:
+        """Confirming used to write a fresh record and drop lat/lng, and a place
+        with no coordinates is not locatable -- so confirming a pin removed it
+        from the map, and `_resolve_places` never retries a cached name."""
+        repository._store.put(  # noqa: SLF001
+            "_places",
+            "Sungai Siput",
+            {
+                "raw_name": "Sungai Siput",
+                "lat": 4.8,
+                "lng": 101.07,
+                "precision": "town",
+                "confidence": 0.6,
+            },
+        )
+
+        cached = self.confirm(repository)
+
+        assert (cached["lat"], cached["lng"]) == (4.8, 101.07)
+
+    def test_confirming_something_never_located_is_not_called_exact(
+        self, repository: Repository
+    ) -> None:
+        """No coordinates, no exactness. Claiming it would freeze the place in
+        the cache as trusted-and-unmappable; left unknown, the better name the
+        family just supplied gets resolved on the next look."""
+        cached = self.confirm(repository)
+
+        assert cached["precision"] == "unknown"
+        assert cached["display_name"] == "Sungai Siput, Perak"
+
+
+class TestTheResolverIsAskedOnce:
+    """A cache that re-asks is not a cache.
+
+    `_resolve_places` retried every cached entry with no coordinates, on the
+    grounds that holding an unlocatable one would strand a story off the map
+    forever. True for a place the family has renamed. False, and expensive, for
+    "house" and "the shop": the resolver has already looked at those and there
+    is nothing new to tell it, so the retry was permanent. Four such names in a
+    real archive made the map view take six seconds against the feed's four
+    hundred milliseconds -- on every load, for the whole life of the archive.
+
+    Asserted by counting resolver calls, because the old behaviour was correct
+    in every observable way except what it cost.
+    """
+
+    class CountingResolver:
+        def __init__(self) -> None:
+            self.asked: list[list[str]] = []
+
+        def resolve(self, names: list[str]):
+            self.asked.append(list(names))
+            return []
+
+    def _cards(self, *names: str):
+        from sampan.family import StoryCard
+
+        return [
+            StoryCard(
+                story_id=f"s{i}",
+                title="t",
+                domain="home",
+                pin_type="place",
+                narrative="n",
+                sense_detail="",
+                when_said="",
+                where_said=name,
+            )
+            for i, name in enumerate(names)
+        ]
+
+    def _resolve(self, store, cards, resolver):
+        import sampan.app as app_module
+        from sampan.config import Settings
+
+        settings = Settings(GOOGLE_CLOUD_PROJECT="p")
+        original = app_module.GeminiPlaceResolver
+        app_module.GeminiPlaceResolver = lambda _s: resolver
+        try:
+            return app_module._resolve_places(settings, store, cards)  # noqa: SLF001
+        finally:
+            app_module.GeminiPlaceResolver = original
+
+    def test_a_name_already_found_unplaceable_is_not_asked_again(self) -> None:
+        from sampan.store import InMemoryDocumentStore
+
+        store = InMemoryDocumentStore()
+        store.put(
+            "_places",
+            "the shop",
+            {"raw_name": "the shop", "precision": "unknown", "note": "generic"},
+        )
+        resolver = self.CountingResolver()
+
+        self._resolve(store, self._cards("the shop"), resolver)
+
+        assert resolver.asked == []
+
+    def test_a_name_the_family_renamed_is_asked_again(self) -> None:
+        """The one case with new information in it."""
+        from sampan.store import InMemoryDocumentStore
+
+        store = InMemoryDocumentStore()
+        store.put(
+            "_places",
+            "the shop",
+            {
+                "raw_name": "the shop",
+                "precision": "unknown",
+                "display_name": "Kedai Kopi Lam Kee, Ipoh",
+                "needs_retry": True,
+            },
+        )
+        resolver = self.CountingResolver()
+
+        self._resolve(store, self._cards("the shop"), resolver)
+
+        assert resolver.asked == [["Kedai Kopi Lam Kee, Ipoh"]]
+
+    def test_an_uncached_name_is_still_asked(self) -> None:
+        from sampan.store import InMemoryDocumentStore
+
+        resolver = self.CountingResolver()
+
+        self._resolve(InMemoryDocumentStore(), self._cards("Ipoh"), resolver)
+
+        assert resolver.asked == [["Ipoh"]]
+
+    def test_an_unplaceable_name_still_reaches_the_caller(self) -> None:
+        """Kept rather than dropped: the story has to be able to say the place
+        is one nobody could find, which is different from having no place."""
+        from sampan.store import InMemoryDocumentStore
+
+        store = InMemoryDocumentStore()
+        store.put(
+            "_places",
+            "the shop",
+            {"raw_name": "the shop", "precision": "unknown", "note": "generic"},
+        )
+
+        places = self._resolve(store, self._cards("the shop"), self.CountingResolver())
+
+        assert [p.raw_name for p in places] == ["the shop"]

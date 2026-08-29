@@ -1,0 +1,315 @@
+"""Screening the transcript before any of it reaches the database.
+
+    Transcript ──> Model Armor ──> de-identified text ──> save_conversation
+                                                     └──> extraction, facts
+
+One screen, before the first write, and the *screened* text is what everything
+downstream sees. That last part is not a detail. `build_facts` refuses a fact
+whose quote is not present in the transcript, so extracting from the original
+while storing the redacted version would silently start refusing facts whose
+quotes contain a redaction — the archive would lose exactly the sentences that
+had something in them worth protecting.
+
+The tension this sits in, stated plainly because it cannot be designed away:
+the product's promise is that her words are the artefact, kept verbatim (O3),
+and this deliberately alters them. That is the right trade only for identifiers
+nobody wants in a database — an account number, an IC, a phone number — and it
+would be the wrong trade for anything that carries meaning. Model Armor's SDP
+filter is what draws that line, not this module.
+
+Fail open, and loudly. If screening cannot run the plain transcript is stored
+and the failure is logged and recorded on the conversation. This is the
+opposite of the posture the service takes on a missing project or key (D2), and
+the reason is what is being protected: there, failing closed protects the
+archive from silent data loss; here, failing closed *causes* it. Losing an
+eighty-year-old's account of her own life because a screening API had a bad
+minute is a worse outcome than holding an unscreened transcript in a private
+database for as long as it takes to notice the log line.
+
+The failure is recorded on the conversation, so "which calls went through
+unscreened" is a query rather than a guess (D24, superseded).
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Protocol
+
+from pydantic import BaseModel, Field
+
+from sampan.config import Settings
+
+# The first logger in the service, and it earns its place: this is the one
+# event where the system knowingly does the less safe thing, and it has to be
+# findable in Cloud Logging afterwards.
+log = logging.getLogger("sampan.armor")
+
+
+class Finding(BaseModel):
+    """One thing the screen objected to."""
+
+    filter: str = Field(description="sdp | rai | prompt_injection | malicious_uri")
+    detail: str = ""
+
+
+class Screened(BaseModel):
+    """The result of screening one transcript.
+
+    `stored` is the whole question: false means nothing goes in the database,
+    and the caller must not write the text anyway.
+    """
+
+    text: str = ""
+    findings: list[Finding] = Field(default_factory=list)
+    stored: bool = True
+    reason: str = ""
+    # True when the text was stored without ever being checked. Not the same
+    # as "nothing was found", and the difference is the whole audit trail.
+    unscreened: bool = False
+
+    @property
+    def redacted(self) -> bool:
+        return any(f.filter == "sdp" for f in self.findings)
+
+
+class Screen(Protocol):
+    """Model Armor, behind a seam. Everything downstream of screening is
+    exercisable without a network by passing a fake."""
+
+    def sanitize(self, text: str) -> Screened: ...
+
+
+class AllowAll:
+    """No screening configured. Used when no template is set, and in tests
+    that are about something else."""
+
+    def sanitize(self, text: str) -> Screened:
+        return Screened(text=text, stored=True)
+
+
+class ModelArmorScreen:
+    """The real thing: one `sanitizeUserPrompt` call against a template.
+
+    The template carries the policy — which info types to de-identify, which
+    responsible-AI categories to block — because that is a decision for whoever
+    runs the deployment and not one to hard-code here.
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def sanitize(self, text: str) -> Screened:
+        from google.api_core.client_options import ClientOptions
+        from google.cloud import modelarmor_v1 as ma
+
+        location = self._settings.armor_location
+        client = ma.ModelArmorClient(
+            client_options=ClientOptions(
+                api_endpoint=f"modelarmor.{location}.rep.googleapis.com"
+            )
+        )
+        template = (
+            f"projects/{self._settings.project_id}/locations/{location}"
+            f"/templates/{self._settings.armor_template}"
+        )
+        response = client.sanitize_user_prompt(
+            request=ma.SanitizeUserPromptRequest(
+                name=template,
+                user_prompt_data=ma.DataItem(text=text),
+            )
+        )
+        return _read(response.sanitization_result, text)
+
+
+class DlpScreen:
+    """Sensitive Data Protection, called directly.
+
+    The same detection Model Armor performs, one hop shorter. Its SDP filter
+    delegates here anyway — a finding named `BANK_ACCOUNT_NUMBER` comes from
+    our own DLP inspect template, not from anything Model Armor knows.
+
+    Removing the hop removes a failure with it. Model Armor answers 200 with
+    `EXECUTION_SKIPPED` when its service agent cannot read the DLP templates —
+    a screen that reports success and protects nothing. Called directly, the
+    caller is the Cloud Run service account and a permission problem is an
+    exception, which is a thing that can be noticed.
+
+    What is given up is everything Model Armor does that DLP does not: prompt
+    injection, jailbreak, responsible-AI categories. Those matter here — the
+    transcript becomes part of the Archivist's prompt — so this is a choice
+    between two defensible options, not an upgrade (R18).
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def sanitize(self, text: str) -> Screened:
+        from google.cloud import dlp_v2
+
+        settings = self._settings
+        parent = (
+            f"projects/{settings.project_id}/locations/{settings.armor_location}"
+        )
+        inspect = f"{parent}/inspectTemplates/{settings.dlp_inspect_template}"
+        deidentify = (
+            f"{parent}/deidentifyTemplates/{settings.dlp_deidentify_template}"
+        )
+        response = dlp_v2.DlpServiceClient().deidentify_content(
+            request={
+                "parent": parent,
+                "inspect_template_name": inspect,
+                "deidentify_template_name": deidentify,
+                "item": {"value": text},
+            }
+        )
+
+        # The summary says what was replaced and how often, which Model Armor
+        # does not report -- so a redaction is auditable down to the count.
+        findings = [
+            Finding(
+                filter="sdp",
+                detail=f"{summary.info_type.name} x{result.count}",
+            )
+            for summary in response.overview.transformation_summaries
+            for result in summary.results
+            if summary.info_type.name and result.count
+        ]
+        return Screened(text=response.item.value, findings=findings, stored=True)
+
+
+def _read(result: Any, original: str) -> Screened:
+    """Turn Model Armor's result into the two things the caller needs: the text
+    to store, and whether it was actually checked.
+
+    The second is not a formality. Model Armor answers 200 with
+    `invocation_result: FAILURE` and `execution_state: EXECUTION_SKIPPED` when
+    its service agent lacks permission on the DLP templates — no exception, no
+    error field, just a filter that quietly did not run. Read naively that is
+    indistinguishable from a clean transcript, which is the worst shape a
+    security control can have: it reports success while protecting nothing.
+    Observed, not hypothesised: it is what the first live call returned.
+    """
+    from google.cloud import modelarmor_v1 as ma
+
+    findings: list[Finding] = []
+    text = original
+    skipped: list[str] = []
+
+    if getattr(result, "invocation_result", None) == ma.InvocationResult.FAILURE:
+        skipped.append("invocation failed")
+
+    for name, filter_result in (result.filter_results or {}).items():
+        sdp = getattr(filter_result, "sdp_filter_result", None)
+        deidentified = getattr(sdp, "deidentify_result", None) if sdp else None
+
+        if deidentified is not None:
+            state = getattr(deidentified, "execution_state", None)
+            if state == ma.FilterExecutionState.EXECUTION_SKIPPED:
+                skipped.extend(
+                    m.message for m in getattr(deidentified, "message_items", []) or []
+                )
+                continue
+            if getattr(deidentified, "data", None):
+                # The whole reason for the screen: identifiers replaced, and
+                # the replacement is what gets stored and extracted from.
+                replacement = getattr(deidentified.data, "text", "")
+                if replacement:
+                    text = replacement
+                findings.append(
+                    Finding(
+                        filter="sdp",
+                        # Strings on the wire, not objects with `.name`.
+                        detail=", ".join(
+                            str(getattr(i, "name", i))
+                            for i in getattr(deidentified, "info_types", []) or []
+                        ),
+                    )
+                )
+                continue
+
+        # Prompt injection and jailbreak. Its result is nested one level deeper
+        # than the generic branch below reaches, so the wrapper has no
+        # `match_state` and a detection read as nothing: Model Armor found it,
+        # reported it, and we discarded it. This is the filter DLP has no
+        # equivalent of, and the only reason to accept the extra hop.
+        #
+        # It matters here beyond storage. The transcript does not merely get
+        # written -- it is fed straight to the story extractor, the fact
+        # extractor and the contradiction judge, so anything in it becomes part
+        # of an LLM prompt.
+        pi = getattr(filter_result, "pi_and_jailbreak_filter_result", None)
+        if pi is not None:
+            if getattr(pi, "execution_state", None) == (
+                ma.FilterExecutionState.EXECUTION_SKIPPED
+            ):
+                skipped.extend(
+                    m.message for m in getattr(pi, "message_items", []) or []
+                )
+                continue
+            if getattr(pi, "match_state", None) == ma.FilterMatchState.MATCH_FOUND:
+                confidence = getattr(pi, "confidence_level", None)
+                findings.append(
+                    Finding(
+                        filter="pi_and_jailbreak",
+                        detail=str(getattr(confidence, "name", confidence or "")),
+                    )
+                )
+            continue
+
+        matched = getattr(filter_result, "match_state", None)
+        if matched == ma.FilterMatchState.MATCH_FOUND:
+            findings.append(Finding(filter=str(name)))
+
+    if skipped:
+        reason = "; ".join(skipped)[:500]
+        log.error(
+            "Model Armor reported success but the filter did not run; "
+            "storing the transcript unscreened. %s",
+            reason,
+        )
+        return Screened(
+            text=original, findings=findings, stored=True, unscreened=True,
+            reason=reason,
+        )
+
+    return Screened(text=text, findings=findings, stored=True)
+
+
+def screen(text: str, screener: Screen | None) -> Screened:
+    """Screen a transcript, or store it plainly and say so.
+
+    Never raises. A screening failure returns the original text with
+    `unscreened=True` and a reason, and logs at ERROR: the call survives, and
+    the fact that it went through unchecked is on the record in two places.
+    """
+    if screener is None:
+        return Screened(text=text, stored=True)
+    try:
+        return screener.sanitize(text)
+    except Exception as error:  # noqa: BLE001 -- see the module docstring
+        reason = f"{type(error).__name__}: {error}"
+        log.error(
+            "Model Armor screening failed; storing the transcript unscreened. %s",
+            reason,
+        )
+        return Screened(text=text, stored=True, unscreened=True, reason=reason)
+
+
+def build_screen(settings: Settings) -> Screen | None:
+    """The screen this deployment should use, or None for no screening.
+
+    None rather than a raise when unconfigured: a developer running against an
+    in-memory store has nothing to protect, and making them provision a DLP
+    template to see the app at all would be security theatre.
+
+    DLP by default. It is the shorter path to the same detection, and Model
+    Armor's own value here is the filters it has and DLP does not — so reach
+    for it when those are wanted, not for the redaction (R18).
+    """
+    if not settings.configured:
+        return None
+    if settings.screen_backend == "armor":
+        return ModelArmorScreen(settings) if settings.armor_template else None
+    if settings.dlp_inspect_template and settings.dlp_deidentify_template:
+        return DlpScreen(settings)
+    return None

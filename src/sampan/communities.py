@@ -313,3 +313,61 @@ def build_communities(
         )
 
     return sorted(communities, key=lambda c: -c.size)
+
+
+class RefreshResult(BaseModel):
+    """What one narrator's refresh did. Returned rather than printed, so the
+    script and the scheduled endpoint can report the same thing."""
+
+    narrator_id: str
+    entities: int = 0
+    facts: int = 0
+    chapters: int = 0
+    excluded: list[str] = Field(default_factory=list)
+    names: list[str] = Field(default_factory=list)
+    saved: bool = False
+    skipped: str = ""
+
+
+def refresh_narrator(
+    repository: Any,
+    narrator_id: str,
+    namer: CommunityNamer | None,
+    *,
+    save: bool,
+) -> RefreshResult:
+    """Recompute one narrator's chapters, and optionally store them.
+
+    The shared core. `scripts/refresh_communities.py` and the scheduled
+    `/internal/communities` endpoint both call this, because two copies of a
+    clustering pass would drift and the one running unattended would be the
+    copy nobody noticed had drifted.
+    """
+    entities = repository.load_entities(narrator_id)
+    facts = repository.load_facts(narrator_id)
+
+    if not facts:
+        return RefreshResult(
+            narrator_id=narrator_id,
+            entities=len(entities),
+            skipped="no facts yet -- nothing to cluster",
+        )
+
+    # She is in every chapter of her own life, so she cannot separate them.
+    # Found by connectivity, not by name.
+    hubs = hub_entities(entities, facts)
+    chapters = build_communities(entities, facts, namer, exclude=hubs)
+
+    if save:
+        repository.save_communities(narrator_id, chapters)
+
+    by_id = {e.entity_id: e.canonical_name for e in entities}
+    return RefreshResult(
+        narrator_id=narrator_id,
+        entities=len(entities),
+        facts=len(facts),
+        chapters=len(chapters),
+        excluded=[by_id[h] for h in hubs if h in by_id],
+        names=[c.name or f"(unnamed, {c.size} members)" for c in chapters],
+        saved=save,
+    )

@@ -210,3 +210,103 @@ class TestCounting:
         resolve_mentions([person("my father")], intake)
 
         assert intake[0].mention_count == before
+
+
+class TestTheNarratorIsInHerOwnGraph:
+    """She was not, and it cost her every fact about herself.
+
+    `seeds/intake.json` names her father, mother, sister, husband, son,
+    daughter, granddaughter, grandfather and two towns -- and not her. Fact
+    extraction refuses any fact whose subject is unknown, so until some mention
+    happened to invent her, no fact could be recorded about the person the
+    product is about. Her real archive recovered by luck: something resolved
+    her from a mention, and that entity now carries more facts than any other
+    subject. Luck is not a design.
+    """
+
+    def test_a_narrator_with_no_graph_still_gets_herself(self) -> None:
+        from sampan.entities import ensure_self
+
+        entities = ensure_self(
+            [], narrator_id="ah_khim", display_name="Lim Siew Khim"
+        )
+
+        assert len(entities) == 1
+        assert entities[0].entity_id == "ent_self_ah_khim"
+        assert entities[0].canonical_name == "Lim Siew Khim"
+        # The given name too, because that is what her family call her and what
+        # extraction will see in a transcript.
+        assert "Siew Khim" in entities[0].aliases
+
+    def test_she_is_not_provisional(self) -> None:
+        """Provisional means "resolved from a mention, please confirm". Nobody
+        guessed she exists."""
+        from sampan.entities import ensure_self
+
+        (me,) = ensure_self([], narrator_id="ah_khim", display_name="Lim Siew Khim")
+
+        assert me.provisional is False
+        assert me.confirmed_by_family is True
+
+    def test_calling_it_twice_does_not_produce_two_of_her(self) -> None:
+        from sampan.entities import ensure_self
+
+        once = ensure_self([], narrator_id="ah_khim", display_name="Lim Siew Khim")
+        twice = ensure_self(
+            once, narrator_id="ah_khim", display_name="Lim Siew Khim"
+        )
+
+        assert len(twice) == 1
+
+    def test_a_narrator_already_resolved_from_a_mention_is_not_duplicated(
+        self,
+    ) -> None:
+        """The real archive resolved her before this existed, under a generated
+        id. Adding a second her would split her facts across two subjects and
+        silently break every comparison between them."""
+        from sampan.entities import ensure_self
+        from sampan.models import Entity, EntityType
+
+        existing = [
+            Entity(
+                entity_id="ent_9ac4367c28b3",
+                type=EntityType.PERSON,
+                canonical_name="Ah Khim",
+                aliases=["Lim Siew Khim"],
+            )
+        ]
+
+        result = ensure_self(
+            existing, narrator_id="ah_khim", display_name="Lim Siew Khim"
+        )
+
+        assert len(result) == 1
+        assert result[0].entity_id == "ent_9ac4367c28b3"
+
+    def test_someone_elses_entity_does_not_count_as_her(self) -> None:
+        from sampan.entities import ensure_self
+        from sampan.models import Entity, EntityType
+
+        existing = [
+            Entity(
+                entity_id="ent_father",
+                type=EntityType.PERSON,
+                canonical_name="Lim Ah Hock",
+            )
+        ]
+
+        result = ensure_self(
+            existing, narrator_id="ah_khim", display_name="Lim Siew Khim"
+        )
+
+        assert {e.entity_id for e in result} == {"ent_father", "ent_self_ah_khim"}
+
+    def test_an_unnamed_narrator_still_gets_an_entity(self) -> None:
+        """Better a node called `ah_khim` than no node: without one, nothing
+        about her can be recorded at all."""
+        from sampan.entities import ensure_self
+
+        (me,) = ensure_self([], narrator_id="ah_khim", display_name="")
+
+        assert me.entity_id == "ent_self_ah_khim"
+        assert me.canonical_name == "ah_khim"

@@ -76,6 +76,12 @@ export interface StoryCard {
   where_said: string;
   year_from: number | null;
   year_to: number | null;
+  /** The clip Veo made from this story, once there is one. Usually empty:
+   *  generation is queued at the end of a call and takes tens of seconds. */
+  memory_video?: string;
+  /** A poster for it. Veo returns no frame, so in practice this is empty and
+   *  only the pre-rendered library clips carry one. */
+  memory_still?: string;
 }
 
 export interface FeedView {
@@ -131,6 +137,18 @@ export interface PendingAsk {
   /** Set when a question is waiting but it is too late at night to bring it
    *  to her. The server decides this, not the browser. */
   quiet_hours?: boolean;
+  /** What her last telling left on the family's map, if it was recent. Her
+   *  proof that talking did something — the family side is the side she does
+   *  not open. Null once it stops being news; the server decides when. */
+  kept?: Kept | null;
+}
+
+export interface Kept {
+  story_id: string;
+  title: string;
+  /** The place she named, under the name written on the pin. */
+  where: string;
+  at: string;
 }
 
 export interface AboutAnswer {
@@ -146,7 +164,111 @@ export interface ChatLine {
   follow?: string;
 }
 
+/** One fact, with every number that decided where it ranked. */
+export interface Scored {
+  fact_id: string;
+  statement: string;
+  bm25: number;
+  hops: number | null;
+  rrf: number;
+  mentions: number;
+  confidence: number;
+  /** Position in the returned list, or null for a candidate that was scored
+   *  and rejected — the more interesting half. */
+  rank: number | null;
+}
+
+/** A fact the query matched that the archive no longer asserts. */
+export interface Passed {
+  fact_id: string;
+  statement: string;
+  superseded_by: string;
+  expired_at: string;
+}
+
+/** Why a query returned what it did. No model anywhere in this path, so the
+ *  same question traced twice gives identical numbers. */
+export interface SearchTrace {
+  query: string;
+  terms: string[];
+  dropped: string[];
+  seeds: string[];
+  reached: Record<string, number>;
+  considered: number;
+  lexical_hits: number;
+  structural_hits: number;
+  candidates: Scored[];
+  returned: string[];
+  retired: Passed[];
+}
+
+/** A fact the demo invented. Travels with the request; never stored. */
+export interface DraftFact {
+  subject_id: string;
+  predicate: string;
+  object_literal: string;
+  statement: string;
+}
+
+/** A later telling replacing an earlier one. The replacement inherits the old
+ *  fact's subject and predicate, so it lands on the same node and the two can
+ *  be seen side by side — one current, one no longer asserted. */
+export interface Supersession {
+  fact_id: string;
+  statement: string;
+  object_literal: string;
+}
+
+export interface SearchResult {
+  trace: SearchTrace;
+  nodes: {
+    id: string;
+    name: string;
+    hops: number | null;
+    seed: boolean;
+    /** Added by the demo sandbox, not by her. Drawn differently. */
+    invented?: boolean;
+  }[];
+  edges: {
+    fact_id: string;
+    source: string;
+    target: string;
+    literal: string;
+    predicate: string;
+    statement: string;
+    quote: string;
+    rank: number | null;
+    retired: boolean;
+    superseded_by: string;
+    /** Valid time — her life, in her own words, and often empty because she
+     *  rarely speaks in dates. A state change fills in `valid_to`. */
+    valid_from: string;
+    valid_to: string;
+    /** Transaction time — when the archive began asserting this, and if ever,
+     *  when it stopped. Conflicting testimony fills in `t_expired`. */
+    t_created: string;
+    t_expired: string;
+  }[];
+  /** What the contradiction judge made of each correction. The only part of
+   *  a search response that came from a model. */
+  verdicts: Verdict[];
+}
+
+/** One correction, as the judge saw it. */
+export interface Verdict {
+  fact_id: string;
+  /** state_change | conflicting_testimony | none */
+  kind: string;
+  reason: string;
+  confidence: number;
+  /** "valid time" or "transaction time" — which clock moved. */
+  clock: string;
+  /** False when the model did not run and the conservative default was used. */
+  judged: boolean;
+  replacement: string;
+}
+
 export type Tab = 'map' | 'record' | 'family';
-export type MemberTab = 'chat' | 'map' | 'chapters' | 'ask';
+export type MemberTab = 'chat' | 'map' | 'chapters' | 'graph' | 'ask';
 export type Sheet = 'notifs' | 'unplaced' | 'cluster' | 'viewer';
 export type RecordState = 'idle' | 'live';
