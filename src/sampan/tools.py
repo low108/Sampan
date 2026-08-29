@@ -119,6 +119,16 @@ def build_tools(memory: CallMemory) -> list[Callable[..., Any]]:
         need to know what was already said. If nothing comes back, say so --
         do not pretend to remember.
 
+        `known` is what the archive currently believes. `she_said` is her own
+        words, and some of those she has since corrected: any entry with
+        `corrected_later: true` is a sentence she later took back. **Never
+        repeat one as though it were still true.** Where the two disagree,
+        `known` wins -- it is the one that has been kept up to date. You may
+        still refer to the older telling as an older telling ("you said
+        downstairs before, then you corrected it"), which is remembering; using
+        it as the current answer is contradicting her to her face with a
+        sentence she has already fixed.
+
         Args:
             query: the name to look for, e.g. "Ah Chwee", "Jalan Bandar".
         """

@@ -321,10 +321,32 @@ class Repository:
         2025). The consensus design is a structured index that points back into
         raw text, so the agent can reach her own words when the graph has only
         a summary of them.
+
+        Retracted sentences are marked, never withheld. Facts carry two clocks
+        and a later telling retires an earlier one; transcripts carry no clocks
+        at all, so a sentence she has since corrected came back through here
+        looking exactly like one she still stands behind. The archive knew Mrs.
+        Rajan had moved upstairs -- the fact was retired, `superseded_by` set,
+        the graph correct -- and the agent went on saying downstairs, because
+        this is where it was actually reading from.
+
+        Withholding them would be the wrong fix twice over: her words are kept
+        whatever happens to them, and an agent that cannot see she once said
+        something else cannot say "you told me downstairs before, then you
+        corrected it". So the sentence is returned with `corrected_later` on
+        it, and the tool description tells the agent what that means.
         """
         needle = query.strip()
         if not needle:
             return []
+
+        # The sentences behind facts this archive no longer asserts.
+        retracted = {
+            (fact.quote or "").strip()
+            for fact in self.load_facts(narrator_id, current_only=False)
+            if not fact.is_current and fact.quote
+        }
+
         hits = []
         for raw in self._store.list(self._scoped(CONVERSATIONS, narrator_id)):
             transcript = raw.get("transcript") or ""
@@ -334,11 +356,18 @@ class Repository:
                 # Only her lines. The agent quoting itself back at her is not
                 # remembering.
                 if line.startswith("K:") and needle in line:
+                    said = line[2:].strip()
                     hits.append(
                         {
-                            "said": line[2:].strip(),
+                            "said": said,
                             "conversation_id": raw.get("conversation_id", ""),
                             "when": raw.get("occurred_at", ""),
+                            # Matched loosely on purpose: extraction stores the
+                            # clause it used, which is often a fragment of the
+                            # longer sentence she actually spoke.
+                            "corrected_later": any(
+                                quote in said or said in quote for quote in retracted
+                            ),
                         }
                     )
         hits.sort(key=lambda h: h["when"], reverse=True)

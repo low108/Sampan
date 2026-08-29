@@ -394,3 +394,112 @@ class TestTheTrace:
         second = self._trace("coffee shop", limit=2)
 
         assert first.model_dump() == second.model_dump()
+
+
+class TestARetractedSentenceIsMarked:
+    """Facts have two clocks. Transcripts have none.
+
+    A later telling retires an earlier fact -- `t_expired` set, `superseded_by`
+    filled, the graph correct. None of that reaches the transcript, so
+    `search_transcripts` went on returning the sentence she had taken back,
+    looking exactly like one she still stood behind. `remember` hands both to
+    the agent, and the agent read the words rather than the graph: the archive
+    knew Mrs. Rajan had moved upstairs and the agent kept saying downstairs.
+
+    Marked rather than withheld. Her words are kept whatever happens to them,
+    and an agent that cannot see the older telling cannot say "you told me
+    downstairs, then you corrected it" -- which is the thing worth being able
+    to say.
+    """
+
+    def _repo(self):
+        from sampan.repository import Repository
+        from sampan.store import InMemoryDocumentStore
+
+        store = InMemoryDocumentStore()
+        store.put(
+            "conversations__gran",
+            "c1",
+            {
+                "conversation_id": "c1",
+                "occurred_at": "2026-08-01T10:00:00+00:00",
+                "transcript": "K: She lives in the flat downstairs from me now.",
+            },
+        )
+        store.put(
+            "conversations__gran",
+            "c2",
+            {
+                "conversation_id": "c2",
+                "occurred_at": "2026-08-02T10:00:00+00:00",
+                "transcript": "K: She's not downstairs, she's upstairs, above me.",
+            },
+        )
+        return Repository(store)
+
+    def _fact(self, fact_id: str, statement: str, quote: str, expired: str | None):
+        return {
+            "fact_id": fact_id,
+            "subject_id": "ent_rajan",
+            "predicate": "lived_at",
+            "object_literal": statement,
+            "statement": statement,
+            "quote": quote,
+            "episode_id": "c1",
+            "t_created": "2026-08-01T10:00:00+00:00",
+            "t_expired": expired,
+        }
+
+    def test_a_retracted_sentence_carries_the_flag(self) -> None:
+        repo = self._repo()
+        repo._store.put(  # noqa: SLF001
+            "facts__gran",
+            "f1",
+            self._fact(
+                "f1",
+                "Mrs. Rajan lives downstairs",
+                "She lives in the flat downstairs from me now.",
+                "2026-08-02T10:05:00+00:00",
+            ),
+        )
+
+        hits = repo.search_transcripts("gran", "downstairs")
+        retracted = [h for h in hits if h["said"].startswith("She lives in the flat")]
+
+        assert retracted and retracted[0]["corrected_later"] is True
+
+    def test_a_sentence_she_still_stands_behind_is_not_flagged(self) -> None:
+        repo = self._repo()
+        repo._store.put(  # noqa: SLF001
+            "facts__gran",
+            "f1",
+            self._fact(
+                "f1",
+                "Mrs. Rajan lives downstairs",
+                "She lives in the flat downstairs from me now.",
+                None,
+            ),
+        )
+
+        hits = repo.search_transcripts("gran", "downstairs")
+
+        assert all(h["corrected_later"] is False for h in hits)
+
+    def test_her_words_are_still_returned(self) -> None:
+        """The flag replaces nothing. Withholding what she said would be a
+        worse archive than one that has to explain itself."""
+        repo = self._repo()
+        repo._store.put(  # noqa: SLF001
+            "facts__gran",
+            "f1",
+            self._fact(
+                "f1",
+                "Mrs. Rajan lives downstairs",
+                "She lives in the flat downstairs from me now.",
+                "2026-08-02T10:05:00+00:00",
+            ),
+        )
+
+        hits = repo.search_transcripts("gran", "downstairs")
+
+        assert any("flat downstairs" in h["said"] for h in hits)
