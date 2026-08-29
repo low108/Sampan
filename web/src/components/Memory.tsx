@@ -17,7 +17,14 @@ import { useEffect, useRef, useState } from 'react';
 export interface MemoryMedia {
   /** Looping clip. Optional: a still alone is a complete card. */
   video?: string;
-  /** Poster, and the fallback for every case where the video does not play. */
+  /**
+   * Poster, and the fallback for every case where the video does not play.
+   *
+   * Empty for a freshly generated memory: Veo returns an mp4 and nothing else,
+   * so there is no frame to hold until the video decodes. The pre-rendered
+   * library clips ship with one and use it. Where there is none the video
+   * carries the card alone, which is why nothing below may assume a still.
+   */
   still: string;
   /** What it depicts, for anyone who cannot see it. */
   alt: string;
@@ -51,6 +58,35 @@ const LIBRARY: { match: RegExp; media: MemoryMedia }[] = [
 
 export function memoryFor(title: string): MemoryMedia | null {
   return LIBRARY.find((entry) => entry.match.test(title))?.media ?? null;
+}
+
+/* What the archive generated for this story, if anything, and the shipped
+ * library otherwise.
+ *
+ * The served asset wins: it was filmed from the sense detail she gave on the
+ * call, and the library is a keyword guess made before that call existed. The
+ * order matters most for the two stories that match a library regex *and* have
+ * been through Veo — the generated one is about the story, the matched one is
+ * merely about a word in its title.
+ *
+ * Both may be absent, which stays the honest default. */
+export function memoryOf(
+  card: { title?: string; memory_video?: string; memory_still?: string } | null,
+  title: string,
+): MemoryMedia | null {
+  if (card?.memory_video || card?.memory_still) {
+    return {
+      video: card.memory_video || undefined,
+      still: card.memory_still || '',
+      /* Said plainly, and "generated" is the first word for a reason: the one
+       * thing a listener must not conclude is that this is a photograph of her
+       * life. The library entries above can afford a literal description
+       * because a human wrote them knowing what was rendered; here nothing has
+       * looked at the frames, so describing them would be inventing them. */
+      alt: `A generated scene for "${card.title || title}". No people in it.`,
+    };
+  }
+  return memoryFor(title);
 }
 
 interface Props {
@@ -93,19 +129,28 @@ export function Memory({ media, children }: Props) {
     return () => watcher.disconnect();
   }, [motionOk]);
 
+  /* A generated memory arrives as an mp4 with no poster, so the video element
+   * has to be mounted even when motion is off -- paused, it shows its own first
+   * frame, which honours the setting and still gives the card a picture. Only
+   * where a still exists can the video be left out entirely. */
+  const showVideo = Boolean(media.video) && (motionOk || !media.still);
+
   return (
-    <div className="memory">
-      <img src={media.still} alt={media.alt} data-hidden={!still} />
-      {motionOk && media.video && (
+    <div className="memory" data-still={media.still ? 'true' : 'false'}>
+      {media.still && (
+        <img src={media.still} alt={media.alt} data-hidden={!still} />
+      )}
+      {showVideo && (
         <video
           ref={video}
           src={media.video}
-          poster={media.still}
+          poster={media.still || undefined}
           muted
           loop
           playsInline
-          preload="metadata"
-          aria-hidden="true"
+          preload={media.still ? 'metadata' : 'auto'}
+          aria-hidden={media.still ? 'true' : undefined}
+          aria-label={media.still ? undefined : media.alt}
           onPlaying={() => setStill(false)}
           onError={() => setStill(true)}
         />

@@ -76,6 +76,12 @@ export interface StoryCard {
   where_said: string;
   year_from: number | null;
   year_to: number | null;
+  /** The clip Veo made from this story, once there is one. Usually empty:
+   *  generation is queued at the end of a call and takes tens of seconds. */
+  memory_video?: string;
+  /** A poster for it. Veo returns no frame, so in practice this is empty and
+   *  only the pre-rendered library clips carry one. */
+  memory_still?: string;
 }
 
 export interface FeedView {
@@ -131,6 +137,18 @@ export interface PendingAsk {
   /** Set when a question is waiting but it is too late at night to bring it
    *  to her. The server decides this, not the browser. */
   quiet_hours?: boolean;
+  /** What her last telling left on the family's map, if it was recent. Her
+   *  proof that talking did something — the family side is the side she does
+   *  not open. Null once it stops being news; the server decides when. */
+  kept?: Kept | null;
+}
+
+export interface Kept {
+  story_id: string;
+  title: string;
+  /** The place she named, under the name written on the pin. */
+  where: string;
+  at: string;
 }
 
 export interface AboutAnswer {

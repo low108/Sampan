@@ -40,6 +40,11 @@ class StoryCard(BaseModel):
     status: str = "pinnable"
     missing_fields: list[str] = Field(default_factory=list)
     conversation_id: str = ""
+    # The generated clip, when this story has one. Empty is the common case and
+    # not an error: Veo runs off the critical path and may not have finished, or
+    # may not be configured at all, and a card is complete without a picture.
+    memory_video: str = ""
+    memory_still: str = ""
     # Surfaced, not hidden. Two of the archive's most sensitive stories are
     # ones she and her son each chose to tell — burying them with no way to
     # unbury would be a worse record than marking them and treading carefully.
@@ -103,6 +108,30 @@ def build_cards(
             for subject in private_subjects
         )
     ]
+
+
+def attach_memories(
+    cards: list[StoryCard], assets: list[dict[str, Any]]
+) -> list[StoryCard]:
+    """Hang each story's generated clip on its card.
+
+    Applied to the whole set before any view splits off, because the sheet that
+    shows the picture is opened from the map and fed from the feed, and a
+    picture that appeared in one ordering and not another would look like a bug
+    in the archive rather than in the wiring.
+
+    Without this the pipeline is complete and silent: Veo renders, the bytes
+    land in the bucket, the asset is written to Firestore, and nothing ever
+    reads it back out -- which is exactly the state this was in.
+    """
+    by_story = {a.get("story_id", ""): a for a in assets}
+    for card in cards:
+        asset = by_story.get(card.story_id)
+        if not asset:
+            continue
+        card.memory_video = asset.get("video_url") or ""
+        card.memory_still = asset.get("still_url") or ""
+    return cards
 
 
 def timeline(cards: list[StoryCard]) -> list[StoryCard]:

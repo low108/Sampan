@@ -17,6 +17,7 @@ import base64
 import json
 
 from sampan.config import Settings
+from sampan.family import StoryCard, attach_memories
 from sampan.memories import (
     MemoryRequest,
     build_prompt,
@@ -153,3 +154,152 @@ class TestPublishingNeverBreaksACall:
         # No credentials in the test environment, so the client construction
         # itself fails -- which is exactly the failure being asserted about.
         assert publish(settings, REQUEST) is False
+
+
+class TestTheCardCanActuallyReachTheClip:
+    """The half that was missing.
+
+    Everything above ran end to end and left the archive looking correct: Veo
+    rendered, the bytes landed in the bucket, the asset was written to
+    Firestore. And no view ever read it back, so the pipeline was complete,
+    green, billed for, and invisible. These assert the last hop.
+    """
+
+    def _card(self, story_id: str) -> StoryCard:
+        return StoryCard(
+            story_id=story_id,
+            title="the last cup of Milo",
+            domain="taste",
+            pin_type="place",
+            narrative="n",
+            sense_detail="s",
+            when_said="last Sunday",
+        )
+
+    def test_a_stored_asset_reaches_the_card(self) -> None:
+        cards = attach_memories(
+            [self._card("s1")],
+            [{"story_id": "s1", "video_url": "https://x/s1.mp4", "still_url": ""}],
+        )
+
+        assert cards[0].memory_video == "https://x/s1.mp4"
+
+    def test_a_story_with_no_asset_keeps_an_empty_one(self) -> None:
+        """The common case, and not an error: generation is queued at the end
+        of a call and the card is opened long before it finishes."""
+        cards = attach_memories([self._card("s1")], [])
+
+        assert cards[0].memory_video == ""
+
+    def test_an_asset_never_lands_on_someone_elses_story(self) -> None:
+        cards = attach_memories(
+            [self._card("s1"), self._card("s2")],
+            [{"story_id": "s2", "video_url": "https://x/s2.mp4"}],
+        )
+
+        assert cards[0].memory_video == ""
+        assert cards[1].memory_video == "https://x/s2.mp4"
+
+    def test_the_feed_serves_it(self) -> None:
+        """At the HTTP boundary, because the bug was in the wiring rather than
+        in any one function -- each piece worked and nothing joined them."""
+        from fastapi.testclient import TestClient
+
+        from sampan.app import create_app, get_store
+        from sampan.auth import API_KEY_HEADER
+        from sampan.config import get_settings
+        from sampan.store import InMemoryDocumentStore
+
+        store = InMemoryDocumentStore()
+        store.put(
+            "stories__gran",
+            "s1",
+            {
+                "story_id": "s1",
+                "conversation_id": "c1",
+                "candidate": {"title": "the last cup of Milo", "narrative": "n"},
+            },
+        )
+        store.put(
+            "memories__gran",
+            "s1",
+            {"story_id": "s1", "video_url": "https://x/s1.mp4"},
+        )
+
+        app = create_app()
+        app.dependency_overrides[get_settings] = lambda: Settings(
+            GOOGLE_CLOUD_PROJECT="", SAMPAN_API_KEY="k"
+        )
+        app.dependency_overrides[get_store] = lambda: store
+        with TestClient(app) as client:
+            body = client.get(
+                "/api/family/gran?view=feed", headers={API_KEY_HEADER: "k"}
+            ).json()
+
+        assert body["stories"][0]["memory_video"] == "https://x/s1.mp4"
+
+
+class TestPushCanActuallyReachTheEndpoint:
+    """Pub/Sub cannot set a header.
+
+    The endpoint documented its auth as "the shared key on the subscription's
+    push URL" and then depended on the header-only check, so every push was
+    refused. Nothing raised and no call failed -- the errors were on Pub/Sub's
+    side of the wire. Asserted at the boundary, in the shape push actually uses.
+    """
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+
+        from sampan.app import create_app, get_store
+        from sampan.config import get_settings
+        from sampan.store import InMemoryDocumentStore
+
+        app = create_app()
+        app.dependency_overrides[get_settings] = lambda: Settings(
+            GOOGLE_CLOUD_PROJECT="", SAMPAN_API_KEY="k", SAMPAN_MEMORIES_BUCKET=""
+        )
+        app.dependency_overrides[get_store] = lambda: InMemoryDocumentStore()
+        return TestClient(app)
+
+    def _push(self) -> dict:
+        blob = json.dumps(REQUEST.model_dump(mode="json")).encode()
+        return {"message": {"data": base64.b64encode(blob).decode()}}
+
+    def test_the_key_in_the_url_is_accepted(self) -> None:
+        with self._client() as client:
+            response = client.post("/internal/memories?key=k", json=self._push())
+
+        assert response.status_code == 200
+
+    def test_a_wrong_key_is_still_refused(self) -> None:
+        push = self._push()
+        with self._client() as client:
+            wrong = client.post("/internal/memories?key=nope", json=push)
+            missing = client.post("/internal/memories", json=push)
+
+        assert wrong.status_code == 401
+        assert missing.status_code == 401
+
+
+class TestTheTestsCannotPublish:
+    """The guardrail itself, asserted rather than assumed.
+
+    `finish_call` falls back to `Settings()` when none is passed, `Settings()`
+    reads `.env`, and `publish()` never raises -- so a live topic in `.env`
+    turned every test run into twenty paid Veo renders, silently, while the
+    suite reported green. conftest.py clears the environment; this checks that
+    it is actually cleared, because a guardrail nobody tests is a comment.
+    """
+
+    def test_no_topic_is_visible_to_a_bare_settings(self) -> None:
+        assert Settings().memories_topic == ""
+
+    def test_publishing_from_a_bare_settings_is_a_no_op(self) -> None:
+        assert publish(Settings(), REQUEST) is False
+
+    def test_finish_calls_own_fallback_cannot_reach_pubsub(self) -> None:
+        """The exact path that leaked: no settings argument at all."""
+        from sampan.config import Settings as Fresh
+
+        assert publish(Fresh(), REQUEST) is False

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, givenName, initial } from '../api';
 import type { Pin, StoryCard } from '../types';
-import { Memory, memoryFor } from './Memory';
+import { Memory, memoryOf } from './Memory';
 import { Sheet } from './Sheet';
 
 /** Anything coarser than a street is a guess, and is said to be one: a
@@ -74,9 +74,11 @@ export function StorySheet({ pin, onClose, onCorrect, onAsk }: Props) {
   /* Whose story this is. The archive holds three people's, so nothing on this
    * card may assume the teller is her — the given name says who it was. */
   const teller = givenName(pin.narrator_name);
-  /* Not every story has one, and that is the honest default — most of her life
-   * has no picture, and generating one per story would be inventing it. */
-  const media = memoryFor(pin.title);
+  /* What Veo made from her own sense detail, and the shipped library only if
+   * there is none. Not every story has either, and that is the honest default —
+   * a clip is queued per story but takes tens of seconds, so a card opened
+   * straight after a call is expected to have no picture yet. */
+  const media = memoryOf(card, pin.title);
 
   return (
     <Sheet onClose={onClose}>
