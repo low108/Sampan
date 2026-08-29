@@ -280,3 +280,117 @@ class TestPlaces:
 
         assert cached["precision"] == "unknown"
         assert cached["display_name"] == "Sungai Siput, Perak"
+
+
+class TestTheResolverIsAskedOnce:
+    """A cache that re-asks is not a cache.
+
+    `_resolve_places` retried every cached entry with no coordinates, on the
+    grounds that holding an unlocatable one would strand a story off the map
+    forever. True for a place the family has renamed. False, and expensive, for
+    "house" and "the shop": the resolver has already looked at those and there
+    is nothing new to tell it, so the retry was permanent. Four such names in a
+    real archive made the map view take six seconds against the feed's four
+    hundred milliseconds -- on every load, for the whole life of the archive.
+
+    Asserted by counting resolver calls, because the old behaviour was correct
+    in every observable way except what it cost.
+    """
+
+    class CountingResolver:
+        def __init__(self) -> None:
+            self.asked: list[list[str]] = []
+
+        def resolve(self, names: list[str]):
+            self.asked.append(list(names))
+            return []
+
+    def _cards(self, *names: str):
+        from sampan.family import StoryCard
+
+        return [
+            StoryCard(
+                story_id=f"s{i}",
+                title="t",
+                domain="home",
+                pin_type="place",
+                narrative="n",
+                sense_detail="",
+                when_said="",
+                where_said=name,
+            )
+            for i, name in enumerate(names)
+        ]
+
+    def _resolve(self, store, cards, resolver):
+        import sampan.app as app_module
+        from sampan.config import Settings
+
+        settings = Settings(GOOGLE_CLOUD_PROJECT="p")
+        original = app_module.GeminiPlaceResolver
+        app_module.GeminiPlaceResolver = lambda _s: resolver
+        try:
+            return app_module._resolve_places(settings, store, cards)  # noqa: SLF001
+        finally:
+            app_module.GeminiPlaceResolver = original
+
+    def test_a_name_already_found_unplaceable_is_not_asked_again(self) -> None:
+        from sampan.store import InMemoryDocumentStore
+
+        store = InMemoryDocumentStore()
+        store.put(
+            "_places",
+            "the shop",
+            {"raw_name": "the shop", "precision": "unknown", "note": "generic"},
+        )
+        resolver = self.CountingResolver()
+
+        self._resolve(store, self._cards("the shop"), resolver)
+
+        assert resolver.asked == []
+
+    def test_a_name_the_family_renamed_is_asked_again(self) -> None:
+        """The one case with new information in it."""
+        from sampan.store import InMemoryDocumentStore
+
+        store = InMemoryDocumentStore()
+        store.put(
+            "_places",
+            "the shop",
+            {
+                "raw_name": "the shop",
+                "precision": "unknown",
+                "display_name": "Kedai Kopi Lam Kee, Ipoh",
+                "needs_retry": True,
+            },
+        )
+        resolver = self.CountingResolver()
+
+        self._resolve(store, self._cards("the shop"), resolver)
+
+        assert resolver.asked == [["Kedai Kopi Lam Kee, Ipoh"]]
+
+    def test_an_uncached_name_is_still_asked(self) -> None:
+        from sampan.store import InMemoryDocumentStore
+
+        resolver = self.CountingResolver()
+
+        self._resolve(InMemoryDocumentStore(), self._cards("Ipoh"), resolver)
+
+        assert resolver.asked == [["Ipoh"]]
+
+    def test_an_unplaceable_name_still_reaches_the_caller(self) -> None:
+        """Kept rather than dropped: the story has to be able to say the place
+        is one nobody could find, which is different from having no place."""
+        from sampan.store import InMemoryDocumentStore
+
+        store = InMemoryDocumentStore()
+        store.put(
+            "_places",
+            "the shop",
+            {"raw_name": "the shop", "precision": "unknown", "note": "generic"},
+        )
+
+        places = self._resolve(store, self._cards("the shop"), self.CountingResolver())
+
+        assert [p.raw_name for p in places] == ["the shop"]

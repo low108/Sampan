@@ -45,6 +45,21 @@ class Place(BaseModel):
     # said so.
     linked_from: str = ""
     linked_evidence: str = ""
+    # Whether it is worth asking about this name again.
+    #
+    # Set only when the family has renamed a place we could not locate, which
+    # is the one case where a second attempt has new information to work with.
+    # It is not set by resolution, so a name the resolver has already looked at
+    # and could not place -- "house", "the shop", "father's shop" -- is asked
+    # about exactly once.
+    #
+    # Without this the two cases are indistinguishable (both have no
+    # coordinates and `precision: unknown`) and retrying "a cached entry with
+    # no coordinates" meant re-asking a model, on every single map load,
+    # about four names that can never resolve. The map took six seconds
+    # against the feed's four hundred milliseconds, forever, and the cache
+    # whose entire purpose is avoiding that cost was doing nothing.
+    needs_retry: bool = False
 
     @property
     def locatable(self) -> bool:

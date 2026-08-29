@@ -78,6 +78,10 @@ def apply_correction(
                 # it for another attempt at the name the family just gave us.
                 "precision": "exact" if located else "unknown",
                 "confidence": 1.0 if located else 0.0,
+                # Ask again, once, using the name the family just gave. This is
+                # the only thing that reopens a name resolution has given up
+                # on, so a place nobody has corrected is never re-asked.
+                "needs_retry": not located,
                 "note": f"confirmed by family ({correction.by})"
                 if correction.by
                 else "confirmed by family",
